@@ -1,0 +1,27 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Birmingham City.png
+Blackburn Rovers.png
+Bristol City.png
+Charlton Athletic.png
+Coventry City.png
+Derby County.png
+Hull City.png
+Ipswich Town.png
+Leicester City.png
+Middlesbrough.png
+Millwall.png
+Norwich City.png
+Oxford United.png
+Portsmouth.png
+Preston North End.png
+Queens Park Rangers.png
+Sheffield United.png
+Sheffield Wednesday.png
+Southampton.png
+Stoke City.png
+Swansea City.png
+Watford.png
+West Bromwich Albion.png
+Wrexham.png

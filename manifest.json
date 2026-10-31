@@ -1,0 +1,11 @@
+{
+  "name": "Pitch to Legend",
+  "short_name": "Pitch to Legend",
+  "description": "Football player career simulator",
+  "start_url": "index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0c1524",
+  "theme_color": "#0c1524",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

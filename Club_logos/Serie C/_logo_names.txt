@@ -1,0 +1,23 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Vicenza.png
+Triestina.png
+Union Brescia.png
+Lecco.png
+Arzignano.png
+Trento.png
+Novara.png
+Alcione Milano.png
+Pro Vercelli.png
+Ternana.png
+Arezzo.png
+Perugia.png
+Ascoli.png
+Torres.png
+Gubbio.png
+Benevento.png
+Catania.png
+Salernitana.png
+Crotone.png
+Cosenza.png

@@ -1,0 +1,23 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Real Madrid.png
+Barcelona.png
+Atlético Madrid.png
+Athletic Club.png
+Villarreal.png
+Real Betis.png
+Celta Vigo.png
+Real Sociedad.png
+Rayo Vallecano.png
+Osasuna.png
+Mallorca.png
+Valencia.png
+Getafe.png
+Espanyol.png
+Girona.png
+Sevilla.png
+Alavés.png
+Elche.png
+Levante.png
+Real Oviedo.png

@@ -1,0 +1,21 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Paris Saint-Germain.png
+Marseille.png
+Monaco.png
+Lille.png
+Lyon.png
+Nice.png
+Lens.png
+Rennes.png
+Strasbourg.png
+Toulouse.png
+Brest.png
+Nantes.png
+Auxerre.png
+Angers.png
+Le Havre.png
+Lorient.png
+Metz.png
+Paris FC.png

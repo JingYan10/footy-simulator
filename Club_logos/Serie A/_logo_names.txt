@@ -1,0 +1,23 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Inter.png
+Napoli.png
+AC Milan.png
+Juventus.png
+Atalanta.png
+Roma.png
+Lazio.png
+Fiorentina.png
+Bologna.png
+Como.png
+Torino.png
+Udinese.png
+Genoa.png
+Cagliari.png
+Lecce.png
+Parma.png
+Sassuolo.png
+Hellas Verona.png
+Cremonese.png
+Pisa.png

@@ -1,0 +1,23 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Arsenal.png
+Aston Villa.png
+Bournemouth.png
+Brentford.png
+Brighton.png
+Burnley.png
+Chelsea.png
+Crystal Palace.png
+Everton.png
+Fulham.png
+Leeds United.png
+Liverpool.png
+Manchester City.png
+Manchester United.png
+Newcastle United.png
+Nottingham Forest.png
+Sunderland.png
+Tottenham Hotspur.png
+West Ham United.png
+Wolverhampton.png

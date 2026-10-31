@@ -1,0 +1,25 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Albacete.png
+Almería.png
+Burgos.png
+Cádiz.png
+Castellón.png
+Ceuta.png
+Córdoba.png
+Cultural Leonesa.png
+Deportivo La Coruña.png
+Eibar.png
+Granada.png
+Huesca.png
+Las Palmas.png
+Leganés.png
+Málaga.png
+Mirandés.png
+Racing Santander.png
+Real Sociedad B.png
+Real Valladolid.png
+Real Zaragoza.png
+Sporting Gijón.png
+Andorra.png

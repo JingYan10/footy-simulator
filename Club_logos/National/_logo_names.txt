@@ -1,0 +1,21 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Sochaux.png
+Valenciennes.png
+Caen.png
+Ajaccio.png
+Orléans.png
+Rouen.png
+Dijon.png
+Versailles.png
+Quevilly-Rouen.png
+Châteauroux.png
+Concarneau.png
+Bourg-Péronnas.png
+Aubagne.png
+Le Puy.png
+Fleury.png
+Paris 13 Atletico.png
+Villefranche.png
+Stade Briochin.png

@@ -1,0 +1,20 @@
+Player = 
+OVR - will be determine based on performance like in real life, u can check with the goals and assist count, these will affect the ovr rise and low, will decrease more after age 34
+
+Salary- will block salary negotiations after successful resign for 6 months, then need to build up affection 
+Transfers - include chance contracts offers to be a starter, not just only rotational player
+Training Equipment - 
+_____________________________________________________________________________________________
+Clubs = 
+Manager - after salsary nego, raise the difficulty for the objectives slightly, bring back the objectives that ask player what to train, and have how many energy for the games
+Board -
+_____________________________________________________________________________________________
+Tournament = 
+UEFA games(champions league, Europa league, conference league, Euro)
+Fifa games(world cup, club world cup)
+AFC 
+Copa
+_____________________________________________________________________________________________
+System = 
+
+

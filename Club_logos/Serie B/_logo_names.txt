@@ -1,0 +1,23 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Avellino.png
+Bari.png
+Carrarese.png
+Catanzaro.png
+Cesena.png
+Empoli.png
+Frosinone.png
+Juve Stabia.png
+Mantova.png
+Modena.png
+Monza.png
+Padova.png
+Palermo.png
+Pescara.png
+Reggiana.png
+Sampdoria.png
+Spezia.png
+Südtirol.png
+Venezia.png
+Virtus Entella.png

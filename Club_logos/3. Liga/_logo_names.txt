@@ -1,0 +1,23 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Energie Cottbus.png
+MSV Duisburg.png
+Hansa Rostock.png
+1860 Munich.png
+Alemannia Aachen.png
+Viktoria Köln.png
+Waldhof Mannheim.png
+SC Verl.png
+Erzgebirge Aue.png
+1. FC Saarbrücken.png
+VfL Osnabrück.png
+Rot-Weiss Essen.png
+Wehen Wiesbaden.png
+Jahn Regensburg.png
+SSV Ulm.png
+FC Ingolstadt.png
+TSG Hoffenheim II.png
+VfB Stuttgart II.png
+1. FC Schweinfurt.png
+TSV Havelse.png

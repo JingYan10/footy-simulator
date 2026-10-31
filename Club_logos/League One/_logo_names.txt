@@ -1,0 +1,27 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+AFC Wimbledon.png
+Barnsley.png
+Blackpool.png
+Bolton Wanderers.png
+Bradford City.png
+Burton Albion.png
+Cardiff City.png
+Doncaster Rovers.png
+Exeter City.png
+Huddersfield Town.png
+Leyton Orient.png
+Lincoln City.png
+Luton Town.png
+Mansfield Town.png
+Northampton Town.png
+Peterborough United.png
+Plymouth Argyle.png
+Port Vale.png
+Reading.png
+Rotherham United.png
+Stevenage.png
+Stockport County.png
+Wigan Athletic.png
+Wycombe Wanderers.png

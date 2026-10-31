@@ -1,0 +1,23 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Real Madrid Castilla.png
+Barcelona Atlètic.png
+Atlético Madrileño.png
+Celta Fortuna.png
+Ponferradina.png
+Gimnàstic Tarragona.png
+Hércules.png
+Real Murcia.png
+Alcorcón.png
+Tenerife.png
+Villarreal B.png
+Cartagena.png
+Sabadell.png
+Lugo.png
+Racing Ferrol.png
+Ibiza.png
+Algeciras.png
+Mérida.png
+Antequera.png
+Betis Deportivo.png

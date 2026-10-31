@@ -1,0 +1,21 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Bayern Munich.png
+Borussia Dortmund.png
+Bayer Leverkusen.png
+RB Leipzig.png
+VfB Stuttgart.png
+Eintracht Frankfurt.png
+SC Freiburg.png
+VfL Wolfsburg.png
+Borussia Mönchengladbach.png
+TSG Hoffenheim.png
+Mainz 05.png
+Union Berlin.png
+FC Augsburg.png
+Werder Bremen.png
+1. FC Köln.png
+Hamburger SV.png
+1. FC Heidenheim.png
+FC St. Pauli.png

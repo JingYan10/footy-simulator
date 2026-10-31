@@ -1,0 +1,21 @@
+Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Saint-Étienne.png
+Montpellier.png
+Reims.png
+Le Mans.png
+Guingamp.png
+Red Star.png
+Amiens.png
+Annecy.png
+Bastia.png
+Boulogne.png
+Clermont.png
+Dunkerque.png
+Grenoble.png
+Laval.png
+Nancy.png
+Pau.png
+Rodez.png
+Troyes.png
