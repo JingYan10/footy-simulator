@@ -643,9 +643,16 @@ function rivalBetrayal(id) {
   return (p.clubsPlayed || []).filter(x => x !== id && !isBanned(x) && areRivals(x, id));
 }
 
+// Breaking into a top flight takes 80 OVR. Players already at a top-flight club are exempt.
+const TOP_FLIGHT_OVR = 80;
+function topFlightOpen(c) {
+  const p = S.player, home = club(p.loan ? p.loan.parent : p.club);
+  return clubTier(c) !== 1 || calcOVR() >= TOP_FLIGHT_OVR || (!p.needsContract && home && clubTier(home) === 1);
+}
+
 function interestedClub() {
   const ovr = calcOVR(), mine = teamStrength(myClub());
-  const pool = Object.values(S.clubs).filter(c => c.id !== S.player.club && !isBanned(c.id) && teamStrength(c) >= mine - 3 && teamStrength(c) <= ovr + 4);
+  const pool = Object.values(S.clubs).filter(c => c.id !== S.player.club && !isBanned(c.id) && topFlightOpen(c) && teamStrength(c) >= mine - 3 && teamStrength(c) <= ovr + 4);
   return pool.length ? pick(pool) : null;
 }
 
@@ -855,7 +862,7 @@ function announceWish(id) {
 // A club far above your level is very unlikely to come, however loudly you ask.
 function wishChance(id = S.player.wish) {
   const p = S.player, c = club(id);
-  if (!c || isBanned(id)) return 0;
+  if (!c || isBanned(id) || !topFlightOpen(c)) return 0;
   const s = teamStrength(c), reach = calcOVR() + 2 + p.rep / 30;
   const normal = s <= reach ? .3 + p.rep / 300 : Math.max(0, .3 - (s - reach) * .05);
   return clamp(normal * (1.25 + (p.agent || 0) * .04), .01, .75);
@@ -879,7 +886,8 @@ function resolveWish() {
     return;
   }
   const gap = teamStrength(c) - calcOVR();
-  const why = gap > 8 ? `they think you are not ready for their level yet (team rating ${Math.round(teamStrength(c))}, you are ${calcOVR()})`
+  const why = !topFlightOpen(c) ? `top-flight clubs only sign players rated ${TOP_FLIGHT_OVR}+, and you are ${calcOVR()}`
+    : gap > 8 ? `they think you are not ready for their level yet (team rating ${Math.round(teamStrength(c))}, you are ${calcOVR()})`
     : gap > 3 ? 'they like you, but went for a more experienced player'
     : pick(['they are happy with the players they have in your position', 'the board would not approve the budget', 'their manager prefers another target']);
   p.wishResult = 'no';
@@ -1225,7 +1233,7 @@ function generateOffers(count, guarantee = false) {
   if (!guarantee && offerLocked()) return;
   const reach = ovr + 2 + p.rep / 30;
   const home = p.loan ? p.loan.parent : p.club;
-  const free = c => c.id !== p.club && c.id !== home && !isBanned(c.id) && !S.offers.some(o => o.club === c.id);
+  const free = c => c.id !== p.club && c.id !== home && !isBanned(c.id) && topFlightOpen(c) && !S.offers.some(o => o.club === c.id);
   const pool = Object.values(S.clubs).filter(c => {
     if (!free(c)) return false;
     const s = teamStrength(c), top = clubTier(c) === 1;
@@ -1263,7 +1271,7 @@ function windowOffers() {
   resolveWish();
   if (offerLocked()) { msg('Clubs are leaving you to settle in at your new club: no transfer offers this window.'); return; }
   // A club you agreed to listen to comes back with a bid.
-  if (p.interested && p.interested !== p.club && !isBanned(p.interested) && !S.offers.some(o => o.club === p.interested)) S.offers.push(makeOffer(club(p.interested), 'transfer'));
+  if (p.interested && p.interested !== p.club && !isBanned(p.interested) && topFlightOpen(club(p.interested)) && !S.offers.some(o => o.club === p.interested)) S.offers.push(makeOffer(club(p.interested), 'transfer'));
   p.interested = null;
   generateOffers(randi(1, 3) + (breakout ? 2 : 0) + (S.player.listed ? 2 : 0));
 }
@@ -1490,6 +1498,14 @@ function performanceReview(st, avg, awards) {
     d -= (avg < 6.5 ? .6 : .3) * declineFactor(age);
     notes.push(`below par after ${missed} games out injured`);
   } else if (missed >= 5) notes.push(`bounced back from ${missed} games out injured`);
+  // Standout numbers in a top flight prove you belong at a higher level, whatever your age.
+  // Each G/A over par is worth .2 OVR (up to 3.5), weighted by the league and slowing near 91.
+  const L = league(myClub().league);
+  if (L.tier === 1 && gaPar && st.apps >= 15 && ga > gaPar) {
+    const ovr = calcOVR(), ageF = age <= 30 ? 1 : age <= 33 ? .6 : .3;
+    const star = Math.min(Math.min(3.5, (ga - gaPar) * .2) * leagueWeight(L) * ageF * clamp((MAX_OVR - ovr) / 8, .2, 1), Math.max(0, MAX_OVR - ovr - d));
+    if (star >= .1) { d += star; notes.push(`standout top-flight season (+${star.toFixed(1)})`); }
+  }
   if (d > 0 && calcOVR() >= MAX_OVR) d = 0;
   nudgeOvr(d);
   return { change: Math.round(d * 10) / 10, notes };
