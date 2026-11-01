@@ -1835,6 +1835,12 @@ function archiveCurrent() {
   const rec = retiredRecord(), list = loadArchive().filter(r => r.id !== rec.id);
   try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify([rec, ...list])); } catch (e) { /* storage full or unavailable */ }
 }
+// Delete a past career for good. If it is the retired save still on this device, that goes
+// too, or it would be put straight back on the list.
+function deleteArchived(id) {
+  try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(loadArchive().filter(r => r.id !== id))); } catch (e) { /* storage unavailable */ }
+  if (S && S.phase === 'retired' && S.player.careerId === id) wipe();
+}
 
 // Back up or move a career between devices.
 function exportSave() { return JSON.stringify(S); }

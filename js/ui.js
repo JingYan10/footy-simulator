@@ -64,7 +64,7 @@ function renderLanding() {
     <button class="btn block" data-act="importAsk">Import a saved career</button>
     ${past.length ? `<section class="card"><h2>Past careers</h2><div class="inbox">${past.map(r => {
       const t = careerTotals(r);
-      return `<button class="house" data-act="viewPast" data-v="${r.id}"><span><b>${esc(r.name)}</b> · ${r.pos} · Peak ${r.peak}<br><span class="small muted">${esc(r.lastClub)} · ${r.career.length} season${r.career.length !== 1 ? 's' : ''} · ${t.goals} goals · ${r.trophies.length} trophies</span></span><span class="small flood">View</span></button>`;
+      return `<div class="pastrow"><button class="house" data-act="viewPast" data-v="${r.id}"><span><b>${esc(r.name)}</b> · ${r.pos} · Peak ${r.peak}<br><span class="small muted">${esc(r.lastClub)} · ${r.career.length} season${r.career.length !== 1 ? 's' : ''} · ${t.goals} goals · ${r.trophies.length} trophies</span></span><span class="small flood">View</span></button><button class="btn danger sm" data-act="pastDelAsk" data-v="${r.id}" aria-label="Delete ${esc(r.name)}">Delete</button></div>`;
     }).join('')}</div></section>` : ''}
     <p class="small muted">Your career saves automatically on this device. Use Export save in the Career tab to back it up.</p>
   </div>`;
@@ -427,7 +427,27 @@ function retiredHtml(rec, newAct = 'menu') {
     <div class="small muted">${POS_NAMES[rec.pos]} · ${esc(natName(rec.nat))} · Last club ${esc(rec.lastClub)} · Retired at ${rec.retiredAge}</div>
     <div class="bigstat"><div><b>${t.apps}</b><small>Apps</small></div><div><b>${t.goals}</b><small>Goals</small></div><div><b>${t.assists}</b><small>Assists</small></div><div><b>${rec.trophies.length}</b><small>Titles</small></div></div>
     <div class="small muted">Peak OVR ${rec.peak} · ${rec.caps} international caps · Earned ${money(rec.money)} in the bank</div>
-    <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + careerTables(rec);
+    <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + clubStints(rec) + careerTables(rec);
+}
+
+// Back-to-back seasons at the same club add up to one stint. Leaving and coming back later
+// starts a new stint, so each spell keeps its own numbers.
+function clubStints(rec) {
+  const stints = [];
+  rec.career.forEach(r => {
+    const last = stints[stints.length - 1];
+    if (last && last.club === r.club && r.season - last.to <= 1) {
+      last.to = r.season; last.seasons.add(r.season);
+      last.apps += r.apps; last.goals += r.goals; last.assists += r.assists; last.rsum += r.avg * r.apps;
+    } else stints.push({ club: r.club, clubId: r.clubId, league: r.league, from: r.season, to: r.season, seasons: new Set([r.season]), apps: r.apps, goals: r.goals, assists: r.assists, rsum: r.avg * r.apps });
+  });
+  if (!stints.length) return '';
+  const cards = stints.slice().reverse().map(s => {
+    const n = s.seasons.size, span = s.from === s.to ? seasonLabel(s.from) : `${seasonLabel(s.from)} – ${seasonLabel(s.to)}`;
+    return `<div class="stint"><div class="row"><div class="clubcell">${rowCrest(s)}<div style="min-width:0"><b class="club">${esc(s.club)}</b><div class="small muted">${span} · ${n} season${n !== 1 ? 's' : ''}</div></div></div></div>
+      <div class="spellstats"><span><b>${s.apps}</b> apps</span><span><b>${s.goals}</b> G</span><span><b>${s.assists}</b> A</span><span><b>${s.apps ? (s.rsum / s.apps).toFixed(2) : '–'}</b></span></div></div>`;
+  }).join('');
+  return `<section class="card"><h2>Clubs</h2><p class="small muted" style="margin:0">Every spell at a club, all competitions added up.</p>${cards}</section>`;
 }
 
 function viewRetired() { return retiredHtml(retiredRecord()); }
@@ -917,6 +937,8 @@ document.addEventListener('click', e => {
     case 'continue': landing = false; tab = 'home'; render(); window.scrollTo(0, 0); return;
     case 'viewPast': pastView = +v; render(); window.scrollTo(0, 0); return;
     case 'pastBack': pastView = null; landing = true; render(); window.scrollTo(0, 0); return;
+    case 'pastDelAsk': { const r = loadArchive().find(x => x.id === +v); if (r) confirmSheet(`Delete ${esc(r.name)}?`, `This career (${r.career.length} season${r.career.length !== 1 ? 's' : ''}, ${esc(r.lastClub)}) will be gone for good. This cannot be undone.`, 'pastDel', 'Delete', v); return; }
+    case 'pastDel': deleteArchived(+v); closeModal(); toast('Career deleted'); pastView = null; landing = true; render(); return;
     case 'freshStart': archiveCurrent(); wipe(); pastView = null; landing = false; draft.name = ''; render(); window.scrollTo(0, 0); return;
     case 'landingNew': if (!S || S.phase === 'retired') { archiveCurrent(); wipe(); landing = false; draft.name = ''; render(); window.scrollTo(0, 0); }
       else confirmSheet('Start a new career?', `${esc(S.player.name)} has not retired yet, so this deletes that career on this device. Retire first to keep it in your past careers, or export it from the Career tab.`, 'newGame', 'Delete and start over');
