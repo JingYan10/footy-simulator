@@ -13,6 +13,10 @@ $country = @{
   'Serie A' = 'Italy'; 'Serie B' = 'Italy'; 'Serie C' = 'Italy'
   'Bundesliga' = 'Germany'; '2. Bundesliga' = 'Germany'; '3. Liga' = 'Germany'
   'Ligue 1' = 'France'; 'Ligue 2' = 'France'; 'National' = 'France'
+  'Liga Portugal' = 'Portugal'; 'Liga Portugal 2' = 'Portugal'; 'Liga 3' = 'Portugal'
+  'Eredivisie' = 'Netherlands'; 'Eerste Divisie' = 'Netherlands'; 'Tweede Divisie' = 'Netherlands'
+  'Saudi Pro League' = 'Saudi Arabia'; 'Saudi First Division League' = 'Saudi Arabia'; 'Saudi Second Division League' = 'Saudi Arabia'
+  'MLS Eastern Conference' = 'MLS soccer'; 'MLS Western Conference' = 'MLS soccer'; 'USL Championship' = 'USL soccer'; 'USL League One' = 'USL soccer'
 }
 $titles = @{}
 $overrideFile = Join-Path $PSScriptRoot 'logo-titles.txt'

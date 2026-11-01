@@ -1,0 +1,21 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Katwijk.png
+Rijnsburgse Boys.png
+Spakenburg.png
+Quick Boys.png
+Kozakken Boys.png
+HHC Hardenberg.png
+De Treffers.png
+GVVV.png
+Excelsior Maassluis.png
+ACV.png
+Jong Almere City.png
+Hoek.png
+AFC.png
+Scheveningen.png
+Barendrecht.png
+IJsselmeervogels.png
+Noordwijk.png
+Jong Sparta.png

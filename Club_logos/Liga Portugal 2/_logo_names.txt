@@ -1,0 +1,21 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Marítimo.png
+Vizela.png
+Académico de Viseu.png
+Chaves.png
+Torreense.png
+Leixões.png
+Feirense.png
+Penafiel.png
+Paços de Ferreira.png
+Benfica B.png
+Porto B.png
+Sporting CP B.png
+União de Leiria.png
+Oliveirense.png
+Portimonense.png
+Felgueiras.png
+Lusitânia Lourosa.png
+Farense.png

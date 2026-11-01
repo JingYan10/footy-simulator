@@ -1,0 +1,17 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Spokane Velocity.png
+One Knoxville.png
+Greenville Triumph.png
+Charlotte Independence.png
+Richmond Kickers.png
+Chattanooga Red Wolves.png
+Forward Madison.png
+Union Omaha.png
+Westchester SC.png
+AV Alta.png
+Portland Hearts of Pine.png
+Texoma FC.png
+Corpus Christi FC.png
+South Georgia Tormenta.png

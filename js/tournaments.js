@@ -7,6 +7,7 @@ const EXTRA_NATIONS = {
   PAN: 'Panama', CRC: 'Costa Rica', JAM: 'Jamaica',
   IRN: 'Iran', KSA: 'Saudi Arabia', QAT: 'Qatar', IRQ: 'Iraq', UAE: 'UAE', UZB: 'Uzbekistan', JOR: 'Jordan',
   ALG: 'Algeria', TUN: 'Tunisia', RSA: 'South Africa',
+  MLI: 'Mali', BFA: 'Burkina Faso', COD: 'DR Congo', GUI: 'Guinea', CPV: 'Cape Verde', GAB: 'Gabon', ANG: 'Angola', ZAM: 'Zambia',
 };
 const natName = k => NATIONS[k] || EXTRA_NATIONS[k] || k;
 
@@ -18,6 +19,7 @@ const NATION_STR = {
   SCO: 75, CAN: 75, EGY: 75, PAR: 75, ALG: 75, CMR: 74, IRN: 74, CHI: 74, WAL: 73, IRL: 73, GHA: 73, AUS: 73,
   TUN: 72, PER: 72, KSA: 71, VEN: 71, PAN: 71, RSA: 70, UZB: 70, CRC: 70, QAT: 69, IRQ: 68, JOR: 68, JAM: 68,
   UAE: 67, BOL: 67, CHN: 64, IDN: 64, THA: 63, VIE: 62, MAS: 61, SGP: 55,
+  MLI: 73, COD: 73, BFA: 72, GUI: 70, CPV: 69, GAB: 69, ANG: 68, ZAM: 67,
 };
 
 const CONFED = {
@@ -25,7 +27,7 @@ const CONFED = {
   CONMEBOL: ['BRA', 'ARG', 'URU', 'COL', 'ECU', 'CHI', 'PER', 'PAR', 'VEN', 'BOL'],
   CONCACAF: ['USA', 'MEX', 'CAN', 'PAN', 'CRC', 'JAM'],
   AFC: ['JPN', 'KOR', 'CHN', 'MAS', 'SGP', 'IDN', 'THA', 'VIE', 'AUS', 'IRN', 'KSA', 'QAT', 'IRQ', 'UAE', 'UZB', 'JOR'],
-  CAF: ['NGA', 'SEN', 'CIV', 'GHA', 'MAR', 'EGY', 'CMR', 'ALG', 'TUN', 'RSA'],
+  CAF: ['NGA', 'SEN', 'CIV', 'GHA', 'MAR', 'EGY', 'CMR', 'ALG', 'TUN', 'RSA', 'MLI', 'COD', 'BFA', 'GUI', 'CPV', 'GAB', 'ANG', 'ZAM'],
 };
 const confedOf = nat => Object.keys(CONFED).find(k => CONFED[k].includes(nat));
 
@@ -46,15 +48,36 @@ const EURO_COMPS = [
   { key: 'UECL', name: 'Conference League' },
 ];
 const EURO_WEEKS = [5, 8, 11, 14, 17, 20, 30, 36, 44];
+const EURO_NATS = ['ENG', 'ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED']; // UEFA ranking order
+
+// Domestic cups, one midweek round at a time. Weeks never clash with Europe or each other:
+// main = the big knockout cup (FA Cup, Copa del Rey...), league = league cup, super = super cup
+// (2 teams, or 4 for the Spanish/Italian/Saudi format), playoff = MLS Cup playoffs.
+const CUP_WEEKS = { main: [9, 15, 21, 27, 33, 39, 43], league: [2, 4, 6, 10, 12, 18, 26], super2: [1], super4: [22, 23], playoff: [40, 42, 45, 46] };
+const DOMESTIC = {
+  ENG: [{ key: 'FAC', name: 'FA Cup', type: 'main', tiers: 3 }, { key: 'EFL', name: 'Carabao Cup', type: 'league', tiers: 3 }, { key: 'SHIELD', name: 'Community Shield', type: 'super2' }],
+  ESP: [{ key: 'CDR', name: 'Copa del Rey', type: 'main', tiers: 3 }, { key: 'SCE', name: 'Supercopa de España', type: 'super4' }],
+  ITA: [{ key: 'CIT', name: 'Coppa Italia', type: 'main', tiers: 2 }, { key: 'SCI', name: 'Supercoppa Italiana', type: 'super4' }],
+  GER: [{ key: 'DFB', name: 'DFB-Pokal', type: 'main', tiers: 3 }, { key: 'DFL', name: 'DFL-Supercup', type: 'super2' }],
+  FRA: [{ key: 'CDF', name: 'Coupe de France', type: 'main', tiers: 3 }, { key: 'TDC', name: 'Trophée des Champions', type: 'super2' }],
+  POR: [{ key: 'TDP', name: 'Taça de Portugal', type: 'main', tiers: 3 }, { key: 'TDL', name: 'Taça da Liga', type: 'league', tiers: 2 }, { key: 'STP', name: 'Supertaça', type: 'super2' }],
+  NED: [{ key: 'KNVB', name: 'KNVB Cup', type: 'main', tiers: 3 }, { key: 'JCS', name: 'Johan Cruyff Shield', type: 'super2' }],
+  KSA: [{ key: 'KC', name: 'King\'s Cup', type: 'main', tiers: 2 }, { key: 'SSC', name: 'Saudi Super Cup', type: 'super4' }],
+  USA: [{ key: 'USOC', name: 'U.S. Open Cup', type: 'main', tiers: 3 }, { key: 'MLSC', name: 'MLS Cup', type: 'playoff' }],
+};
 
 // Summer tournaments, by the calendar year they are played in (the summer after a season).
+// AFCON is played in 2027 and 2028, then every four years.
 const SUMMER_EVENTS = [
   { key: 'CWC', name: 'Club World Cup', every: 4, first: 2029 },
   { key: 'WC', name: 'World Cup', every: 4, first: 2030 },
   { key: 'EURO', name: 'European Championship', every: 4, first: 2028, confed: ['UEFA'] },
   { key: 'COPA', name: 'Copa América', every: 4, first: 2028, confed: ['CONMEBOL', 'CONCACAF'] },
   { key: 'ASIA', name: 'AFC Asian Cup', every: 4, first: 2027, confed: ['AFC'] },
+  { key: 'AFCON', name: 'Africa Cup of Nations', every: 4, first: 2028, also: [2027], confed: ['CAF'] },
 ];
+const eventOn = (ev, year) => (ev.also || []).includes(year) || (year >= ev.first && (year - ev.first) % ev.every === 0);
+function nextEventYear(ev, from) { let y = from; while (!eventOn(ev, y)) y++; return y; }
 
 // ---------- teams ----------
 // A team id is a club id ("ENG-0"), a nation ("N:ENG") or a world club ("W:3").
@@ -65,9 +88,20 @@ function teamName(id) { return isNation(id) ? natName(id.slice(2)) : isWorld(id)
 function teamCode(id) { return isNation(id) ? id.slice(2) : isWorld(id) ? shortName(WORLD_CLUBS[+id.slice(2)][0]) : club(id).short; }
 function teamStr(id) { return isNation(id) ? NATION_STR[id.slice(2)] || 60 : isWorld(id) ? WORLD_CLUBS[+id.slice(2)][2] : teamStrength(club(id)); }
 
-// The national team picks you once you are good enough for your country.
-const callUpOvr = nat => clamp(Math.round((NATION_STR[nat] || 60) - 7), 60, 82);
-const calledUp = () => calcOVR() >= callUpOvr(S.player.nat);
+// The national team picks you on merit: you need a minimum level for your country, and
+// if two or more of your compatriots in your position are rated higher, you miss out.
+const callUpFloor = nat => clamp(Math.round((NATION_STR[nat] || 60) - 12), 50, 76);
+let callUpCache = null;
+function natRivals() {
+  const p = S.player, ovr = calcOVR(), key = `${S.season}:${S.week}:${ovr}:${p.pos}:${p.nat}`;
+  if (callUpCache && callUpCache.key === key) return callUpCache.list;
+  const list = [];
+  Object.values(S.clubs).forEach(c => c.players.forEach(pl => { if (pl.nat === p.nat && pl.pos === p.pos && pl.r > ovr) list.push({ n: pl.n, r: pl.r, club: c.id }); }));
+  list.sort((a, b) => b.r - a.r);
+  callUpCache = { key, list };
+  return list;
+}
+const calledUp = () => calcOVR() >= callUpFloor(S.player.nat) && natRivals().length < 2;
 const myTeams = () => [S.player.club, ...(calledUp() ? ['N:' + S.player.nat] : [])];
 
 // ---------- generic tournament ----------
@@ -213,8 +247,9 @@ function scorerName(id) {
 // All top-flight clubs are queued by league position, the bigger leagues first on a tie,
 // then the queue is cut into 16 for each competition.
 function buildEuro() {
-  const order = ['ENG', 'ESP', 'ITA', 'GER', 'FRA'];
-  const tops = S.leagues.filter(l => l.tier === 1).sort((a, b) => order.indexOf(a.nat) - order.indexOf(b.nat));
+  // European leagues only (Saudi and US clubs play elsewhere).
+  const order = EURO_NATS;
+  const tops = S.leagues.filter(l => l.tier === 1 && order.includes(l.nat)).sort((a, b) => order.indexOf(a.nat) - order.indexOf(b.nat));
   const ranked = tops.map(l => {
     const prev = S.lastStandings && S.lastStandings[l.nat];
     const ids = prev ? prev.filter(id => club(id).league === l.id) : [];
@@ -244,7 +279,7 @@ function euroFixture() {
   const f = stageFixture(t, S.player.club);
   if (!f) return null;
   const isHome = f[0] === S.player.club;
-  return { t, home: f[0], away: f[1], isHome, opp: isHome ? f[1] : f[0], stage: t.stages[t.stage].name };
+  return { t, home: f[0], away: f[1], isHome, opp: isHome ? f[1] : f[0], stage: t.stages[t.stage].name, euro: true };
 }
 
 // Plays every European game this week. Returns the user's match, if they had one.
@@ -262,15 +297,133 @@ function euroWeek(userMatch) {
   return mine;
 }
 
+// ---------- domestic cups ----------
+// Single-leg knockouts with a fresh draw each round. When the field is not a power of two,
+// the top seeds (higher divisions first) get a bye through the first round, like the FA Cup.
+function cupRoundName(n) { return { 2: 'Final', 4: 'Semi-final', 8: 'Quarter-final', 16: 'Round of 16' }[n] || null; }
+
+function makeCup(def, nat, teams, weeks) {
+  const size = Math.pow(2, Math.ceil(Math.log2(teams.length)));
+  const rounds = Math.log2(size);
+  const seeded = teams.slice().sort((a, b) => clubTier(club(a)) - clubTier(club(b)) || teamStrength(club(b)) - teamStrength(club(a)));
+  const byes = seeded.slice(0, size - teams.length), playing = seeded.slice(size - teams.length);
+  const t = { key: def.key, name: def.name, nat, type: def.type, season: S.season, cup: true, size, weeks: weeks.slice(-rounds), r: 0, teams, byes, ties: [], rounds: [], winner: null, rep: def.type.startsWith('super') ? 2 : 4 };
+  t.ties = pairUp(playing, def.type === 'playoff');
+  return t;
+}
+
+// Random pairs, or seeded pairs (1 v 8, 2 v 7...) for the playoffs' first round.
+function pairUp(list, seeded) {
+  const l = seeded ? list.slice() : shuffle(list.slice()), ties = [];
+  if (seeded) { const n = l.length; for (let i = 0; i < n / 2; i++) ties.push([l[i], l[n - 1 - i]]); }
+  else for (let i = 0; i < l.length; i += 2) ties.push([l[i], l[i + 1]]);
+  return ties;
+}
+
+function cupStage(t) { return cupRoundName(t.size >> t.r) || `Round ${t.r + 1}`; }
+
+// The league champion and the cup winner (plus runners-up for a four-team super cup).
+function superCupTeams(nat, four) {
+  const top = S.leagues.find(l => l.nat === nat && l.tier === 1);
+  const table = (S.lastStandings && S.lastStandings[nat] || []).filter(id => S.clubs[id]);
+  const ranked = [...table, ...top.clubs.slice().sort((a, b) => teamStrength(club(b)) - teamStrength(club(a)))];
+  const main = (DOMESTIC[nat] || []).find(d => d.type === 'main');
+  const cup = main && (S.history || []).filter(h => h.key === main.key).pop();
+  const picks = four ? [ranked[0], ranked[1], cup && cup.winner, cup && cup.runnerUp] : [ranked[0], cup && cup.winner];
+  const out = [];
+  picks.concat(ranked).forEach(id => { if (id && S.clubs[id] && !out.includes(id) && out.length < (four ? 4 : 2)) out.push(id); });
+  return out;
+}
+
+function buildCups() {
+  const out = {};
+  for (const nat in DOMESTIC) {
+    if (!S.leagues.some(l => l.nat === nat)) continue;
+    DOMESTIC[nat].forEach(def => {
+      if (def.type === 'playoff') return; // drawn once the regular season is nearly done
+      const teams = def.type.startsWith('super') ? superCupTeams(nat, def.type === 'super4')
+        : S.leagues.filter(l => l.nat === nat && l.tier <= def.tiers).flatMap(l => l.clubs);
+      if (teams.length >= 2) out[def.key] = makeCup(def, nat, teams, CUP_WEEKS[def.type]);
+    });
+  }
+  return out;
+}
+
+// MLS Cup: the top eight of each conference, seeded within the conference for the first round.
+function buildPlayoffs() {
+  if (!S.cups) return;
+  for (const nat in DOMESTIC) {
+    const def = DOMESTIC[nat].find(d => d.type === 'playoff');
+    if (!def || S.cups[def.key]) continue;
+    const confs = S.leagues.filter(l => l.nat === nat && l.tier === 1);
+    if (confs.length < 2) continue;
+    const t = makeCup(def, nat, [], CUP_WEEKS.playoff);
+    t.teams = confs.flatMap(l => leagueTable(l.id).slice(0, 8).map(r => r.id));
+    t.size = 16; t.weeks = CUP_WEEKS.playoff.slice(); t.byes = [];
+    t.ties = confs.flatMap(l => pairUp(leagueTable(l.id).slice(0, 8).map(r => r.id), true));
+    S.cups[def.key] = t;
+    while (!t.winner && t.weeks[t.r] < S.week) playCupRound(t, null);
+  }
+}
+
+function playCupRound(t, userMatch) {
+  const id = S.player.club, res = [];
+  let mine = null;
+  t.ties.forEach(([h, a]) => {
+    const u = userMatch && (h === id || a === id) ? Object.assign(userMatch, { team: id }) : null;
+    const r = simTeams(h, a, u, 1.5);
+    if (r.gh === r.ga) r.pens = Math.random() < clamp(.5 + (teamStr(h) - teamStr(a)) / 60, .35, .65) ? h : a;
+    r.winner = r.gh > r.ga ? h : r.gh < r.ga ? a : r.pens;
+    res.push(r);
+    if (u) mine = { ...r, comp: t.name };
+  });
+  t.rounds.push({ name: cupStage(t), res });
+  const alive = res.map(r => r.winner).concat(t.r === 0 ? t.byes : []);
+  t.r++;
+  if (alive.length === 1) {
+    t.winner = alive[0];
+    t.runnerUp = res[0].h === t.winner ? res[0].a : res[0].h;
+    t.ties = [];
+    finishTournament(t);
+  } else t.ties = pairUp(alive, false);
+  return mine;
+}
+
+// Your domestic cup tie this week, if you are still in a cup that plays now.
+function cupFixture() {
+  const id = S.player.club;
+  for (const t of Object.values(S.cups || {})) {
+    if (t.winner || t.weeks[t.r] !== S.week) continue;
+    const f = t.ties.find(x => x.includes(id));
+    if (f) return { t, home: f[0], away: f[1], isHome: f[0] === id, opp: f[0] === id ? f[1] : f[0], stage: cupStage(t), euro: false };
+  }
+  return null;
+}
+
+// Plays this week's domestic cup rounds everywhere. Returns your match, if you had one.
+function cupWeek(userMatch) {
+  let mine = null;
+  Object.values(S.cups || {}).forEach(t => {
+    if (t.winner || t.weeks[t.r] !== S.week) return;
+    const r = playCupRound(t, userMatch);
+    if (r) mine = r;
+  });
+  return mine;
+}
+
+// The one midweek game you can have: Europe and domestic cups never share a week.
+const midweekFixture = () => euroFixture() || cupFixture();
+
 // ---------- summer tournaments ----------
 function summerTeams(ev) {
   const noisy = list => list.slice().sort((a, b) => (NATION_STR[b] + gauss() * 3) - (NATION_STR[a] + gauss() * 3));
   if (ev.key === 'CWC') {
     // Europe sends its last four Champions League winners plus the strongest top-flight clubs.
     const winners = (S.history || []).filter(h => h.key === 'UCL' && h.season > S.season - 4 && isClub(h.winner)).map(h => h.winner);
-    const strongest = Object.values(S.clubs).filter(c => clubTier(c) === 1).sort((a, b) => teamStrength(b) - teamStrength(a)).map(c => c.id);
+    const strongest = Object.values(S.clubs).filter(c => clubTier(c) === 1 && EURO_NATS.includes(league(c.league).nat)).sort((a, b) => teamStrength(b) - teamStrength(a)).map(c => c.id);
     const europe = [...new Set([...winners, ...strongest])].slice(0, 12);
-    return europe.concat(WORLD_CLUBS.map((_, i) => 'W:' + i));
+    // Sides that are in the game's own leagues (Al Hilal, Inter Miami...) play as themselves.
+    return europe.concat(WORLD_CLUBS.map((w, i) => { const c = clubByName(w[0]); return c ? c.id : 'W:' + i; }));
   }
   if (ev.key === 'WC') {
     const quota = { UEFA: 13, CONMEBOL: 5, CONCACAF: 3, AFC: 5, CAF: 6 };
@@ -285,7 +438,7 @@ function summerTeams(ev) {
 function buildSummer() {
   const year = START_YEAR + S.season + 1, p = S.player;
   S.summer = [];
-  SUMMER_EVENTS.filter(ev => (year - ev.first) % ev.every === 0).forEach(ev => {
+  SUMMER_EVENTS.filter(ev => eventOn(ev, year)).forEach(ev => {
     const teams = summerTeams(ev);
     const t = makeTournament(ev.key, `${ev.name} ${year}`, teams);
     t.teams = teams;
@@ -323,6 +476,8 @@ function playSummerStage() {
       user.rating = rating;
       if (isNation(me)) { p.caps++; p.intlGoals = (p.intlGoals || 0) + user.goals; }
       t.goals += user.goals;
+      const my = t.my = t.my || { apps: 0, goals: 0, assists: 0, rsum: 0 };
+      my.apps++; my.goals += user.goals; my.assists += user.assists; my.rsum += rating;
       p.rep = clamp(p.rep + (rating - 6.4) * .6 + user.goals * .3, 0, 100);
       nudgeOvr(perfDelta(rating, user) * .5);
     }
@@ -367,18 +522,36 @@ function simulateSummer() {
 function finishTournament(t) {
   if (t.done) return;
   t.done = true;
-  S.history = [...(S.history || []), { key: t.key, name: t.name, season: t.season, winner: t.winner }].slice(-60);
+  const final = t.ko && t.ko.length ? t.ko[t.ko.length - 1].res[0] : null;
+  const runnerUp = t.runnerUp || (final ? (final.winner === final.h ? final.a : final.h) : null);
+  S.history = [...(S.history || []), { key: t.key, name: t.name, season: t.season, winner: t.winner, runnerUp }].slice(-240);
   const p = S.player, mine = t.winner === p.club || (isNation(t.winner) && t.winner === t.mine);
+  // Season-end awards and the review pick these up (in the summer, straight into the review).
+  const note = text => { if (S.seasonSummary && S.phase === 'offseason') S.seasonSummary.awards.push(text); else (S.cupWins = S.cupWins || []).push(text); };
+  const label = t.name.replace(/ \d{4}$/, '');
   if (mine) {
-    const label = t.name.replace(/ \d{4}$/, '');
     p.trophies.push({ name: label, club: teamName(t.winner), season: t.season });
-    p.rep = clamp(p.rep + (t.key === 'UCL' || t.key === 'WC' ? 8 : 5), 0, 100);
-    nudgeOvr(.5 * growthFactor());
+    p.rep = clamp(p.rep + (t.rep || (t.key === 'UCL' || t.key === 'WC' ? 8 : 5)), 0, 100);
+    nudgeOvr((t.rep && t.rep < 4 ? .2 : .5) * growthFactor());
     msg(`You won the ${t.name}!`, 'good');
     notify('good', `${label} winners!`, `${teamName(t.winner)} won the ${t.name}, and you were part of it.`);
-    if (S.seasonSummary && S.phase === 'offseason') S.seasonSummary.awards.push(`${t.name} winner`);
-    else (S.cupWins = S.cupWins || []).push(`${t.name.replace(/ \d{4}$/, '')} winner`);
-  } else {
+    note(`${label} winner`);
+  } else if (!t.cup || t.nat === league(myClub().league).nat) {
     msg(`${teamName(t.winner)} won the ${t.name}.`);
   }
+  // Player awards for the big tournaments, judged on your own numbers in them.
+  const my = t.my;
+  if (!my || !my.apps || !(t.key === 'UCL' || SUMMER_EVENTS.some(e => e.key === t.key))) return;
+  const avg = my.rsum / my.apps, deep = mine || runnerUp === (t.mine || p.club);
+  const won = [];
+  if (my.goals >= randi(5, 8)) won.push(t.key === 'UCL' ? 'Champions League Top Scorer' : `${label} Golden Boot`);
+  if (my.apps >= 4 && avg >= 7.4 && (deep || avg >= 7.9)) won.push(t.key === 'UCL' ? 'Champions League Player of the Season' : `${label} Golden Ball`);
+  else if (t.key !== 'UCL' && ageOf(p.by) <= 21 && my.apps >= 3 && avg >= 7.1) won.push(`${label} Best Young Player`);
+  won.forEach(a => {
+    p.awards.push({ name: a, season: t.season });
+    p.rep = clamp(p.rep + 3, 0, 100);
+    note(a);
+    msg(`You won the ${a}!`, 'good');
+  });
+  if (won.length) notify('good', 'Award winner!', won.join(' · '));
 }

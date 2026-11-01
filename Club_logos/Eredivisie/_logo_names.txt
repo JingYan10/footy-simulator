@@ -1,0 +1,21 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+PSV.png
+Feyenoord.png
+Ajax.png
+AZ.png
+FC Twente.png
+FC Utrecht.png
+NEC.png
+Go Ahead Eagles.png
+Heerenveen.png
+Sparta Rotterdam.png
+Fortuna Sittard.png
+PEC Zwolle.png
+Groningen.png
+Heracles.png
+NAC Breda.png
+Excelsior.png
+FC Volendam.png
+Telstar.png

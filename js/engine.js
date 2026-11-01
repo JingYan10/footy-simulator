@@ -10,15 +10,16 @@ const TRAIN_ENERGY = 10;
 const PROMOTE = 3;
 const MAX_OVR = 91;
 const NEG_LOCK_WEEKS = 26; // about six months without salary talks after re-signing
+const OFFER_LOCK_WEEKS = 26; // and no transfer offers for six months after joining a club
 const TIER_OVR = { 1: [58, 91], 2: [55, 80], 3: [48, 72] };
-const SQUAD_TARGET = { GK: 3, CB: 4, LB: 2, RB: 2, CDM: 2, CM: 3, CAM: 2, LW: 2, RW: 2, ST: 2 };
+const SQUAD_TARGET = { GK: 3, CB: 4, LB: 2, RB: 2, CDM: 2, CM: 3, CAM: 2, LM: 1, RM: 1, LW: 2, RW: 2, ST: 2 };
 
-const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST'];
-const POS_NAMES = { GK: 'Goalkeeper', CB: 'Centre-back', LB: 'Left-back', RB: 'Right-back', CDM: 'Defensive mid', CM: 'Central mid', CAM: 'Attacking mid', LW: 'Left winger', RW: 'Right winger', ST: 'Striker' };
-const POS_GROUP = { GK: 'GK', CB: 'DEF', LB: 'DEF', RB: 'DEF', CDM: 'MID', CM: 'MID', CAM: 'MID', LW: 'FWD', RW: 'FWD', ST: 'FWD' };
+const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST'];
+const POS_NAMES = { GK: 'Goalkeeper', CB: 'Centre-back', LB: 'Left-back', RB: 'Right-back', CDM: 'Defensive mid', CM: 'Central mid', CAM: 'Attacking mid', LM: 'Left midfielder', RM: 'Right midfielder', LW: 'Left winger', RW: 'Right winger', ST: 'Striker' };
+const POS_GROUP = { GK: 'GK', CB: 'DEF', LB: 'DEF', RB: 'DEF', CDM: 'MID', CM: 'MID', CAM: 'MID', LM: 'MID', RM: 'MID', LW: 'FWD', RW: 'FWD', ST: 'FWD' };
 const GROUP_SLOTS = { GK: 1, DEF: 4, MID: 3, FWD: 3 };
-const GOAL_SHARE = { GK: 0, CB: .04, LB: .03, RB: .03, CDM: .04, CM: .08, CAM: .14, LW: .18, RW: .18, ST: .3 };
-const ASSIST_SHARE = { GK: .01, CB: .03, LB: .1, RB: .1, CDM: .06, CM: .14, CAM: .22, LW: .18, RW: .18, ST: .1 };
+const GOAL_SHARE = { GK: 0, CB: .04, LB: .03, RB: .03, CDM: .04, CM: .08, CAM: .14, LM: .11, RM: .11, LW: .18, RW: .18, ST: .3 };
+const ASSIST_SHARE = { GK: .01, CB: .03, LB: .1, RB: .1, CDM: .06, CM: .14, CAM: .22, LM: .2, RM: .2, LW: .18, RW: .18, ST: .1 };
 
 const OUT_ATTRS = ['PAC', 'SHO', 'DRI', 'PAS', 'DEF', 'PHY'];
 const GK_ATTRS = ['HAN', 'DIV', 'REF', 'KIC', 'PHY', 'POS'];
@@ -37,10 +38,12 @@ const FACE_OF = {
   'GK Reflexes': 'REF', 'GK Diving': 'DIV', 'GK Positioning': 'POS', 'GK Handling': 'HAN', 'GK Kicking': 'KIC', 'GK Physical': 'PHY',
 };
 const WINGER = { Dribbling: 16, 'Ball Control': 14, Crossing: 10, Acceleration: 7, 'Sprint Speed': 6, Reactions: 7, Finishing: 8, Agility: 6, 'Short Passing': 7, Vision: 6, 'Long Shots': 5, 'Shot Power': 4, 'Att. Positioning': 4 };
+// EA's wide midfielder (RM/LM) formula: like a winger, but more passing and stamina, less finishing.
+const WIDE_MID = { Dribbling: 15, 'Ball Control': 13, 'Short Passing': 11, Crossing: 10, 'Att. Positioning': 8, Vision: 7, Reactions: 7, Acceleration: 7, 'Sprint Speed': 6, Finishing: 6, Stamina: 5, 'Long Passing': 5 };
 const FULLBACK = { Interceptions: 12, 'Standing Tackle': 11, 'Sliding Tackle': 11, Crossing: 9, 'Def. Awareness': 8, Stamina: 8, Reactions: 8, 'Sprint Speed': 7, 'Short Passing': 7, 'Ball Control': 7, Acceleration: 5, 'Heading Accuracy': 4, Dribbling: 3 };
 const SUB_WEIGHTS = {
   ST: { Finishing: 20, 'Att. Positioning': 12, Dribbling: 11, 'Ball Control': 10, 'Shot Power': 10, Reactions: 8, Composure: 6, 'Sprint Speed': 6, Acceleration: 5, Strength: 5, 'Long Shots': 4, Volleys: 3 },
-  LW: WINGER, RW: WINGER,
+  LW: WINGER, RW: WINGER, LM: WIDE_MID, RM: WIDE_MID,
   CAM: { 'Ball Control': 15, Dribbling: 13, 'Short Passing': 12, Vision: 12, 'Att. Positioning': 9, Reactions: 7, Finishing: 7, 'Long Shots': 5, 'Shot Power': 5, Agility: 4, Acceleration: 4, 'Long Passing': 4, Composure: 3 },
   CM: { 'Short Passing': 15, 'Long Passing': 13, Vision: 12, 'Ball Control': 11, Dribbling: 8, Reactions: 8, Interceptions: 6, 'Standing Tackle': 6, Stamina: 6, 'Long Shots': 5, Composure: 5, 'Att. Positioning': 5 },
   CDM: { Interceptions: 14, 'Standing Tackle': 12, 'Def. Awareness': 12, 'Short Passing': 12, 'Long Passing': 10, Strength: 10, 'Ball Control': 8, Reactions: 7, Stamina: 6, Aggression: 6, 'Sliding Tackle': 3 },
@@ -76,6 +79,21 @@ const ASKS = [{ pct: .1, label: '+10%', pen: 5 }, { pct: .25, label: '+25%', pen
 
 const FOREIGN = ['BRA', 'POR', 'NED', 'ARG', 'SEN', 'CIV', 'BRA', 'FRA', 'ESP'];
 const SHORT_SKIP = ['FC', 'SC', 'AC', 'SV', 'VfL', 'VfB', 'TSG', 'TSV', 'SSV', 'AFC', 'CF', 'de', 'La', 'Real', 'Club', 'II', 'B'];
+
+// Real rivalries by club name. Joining a rival of a club you played for means that club never wants you back.
+const RIVALRIES = [
+  ['Real Madrid', 'Barcelona'], ['Real Madrid', 'Atlético Madrid'], ['Barcelona', 'Espanyol'], ['Sevilla', 'Real Betis'], ['Athletic Club', 'Real Sociedad'], ['Valencia', 'Levante'],
+  ['Manchester United', 'Manchester City'], ['Manchester United', 'Liverpool'], ['Liverpool', 'Everton'], ['Arsenal', 'Tottenham Hotspur'], ['Chelsea', 'Tottenham Hotspur'], ['Arsenal', 'Chelsea'],
+  ['Newcastle United', 'Sunderland'], ['Aston Villa', 'Birmingham City'], ['Sheffield United', 'Sheffield Wednesday'], ['Nottingham Forest', 'Derby County'], ['Leeds United', 'Manchester United'], ['West Ham United', 'Millwall'],
+  ['Inter', 'AC Milan'], ['Inter', 'Juventus'], ['Roma', 'Lazio'], ['Napoli', 'Juventus'], ['Juventus', 'Torino'], ['Genoa', 'Sampdoria'],
+  ['Bayern Munich', 'Borussia Dortmund'], ['Borussia Dortmund', 'Schalke 04'], ['Hamburger SV', 'Werder Bremen'], ['1. FC Köln', 'Borussia Mönchengladbach'], ['Hamburger SV', 'FC St. Pauli'],
+  ['Paris Saint-Germain', 'Marseille'], ['Lyon', 'Saint-Étienne'], ['Lens', 'Lille'], ['Nice', 'Monaco'],
+  ['Benfica', 'Sporting CP'], ['Benfica', 'Porto'], ['Porto', 'Sporting CP'], ['Braga', 'Vitória SC'],
+  ['Ajax', 'Feyenoord'], ['Ajax', 'PSV'], ['PSV', 'Feyenoord'],
+  ['Al Hilal', 'Al Nassr'], ['Al Ittihad', 'Al Ahli'], ['Al Hilal', 'Al Ittihad'], ['Al Nassr', 'Al Shabab'],
+  ['LA Galaxy', 'LAFC'], ['Seattle Sounders', 'Portland Timbers'], ['New York City FC', 'New York Red Bulls'], ['Inter Miami', 'Orlando City'], ['Columbus Crew', 'FC Cincinnati'],
+];
+const areRivals = (a, b) => { const x = club(a).name, y = club(b).name; return RIVALRIES.some(([p, q]) => (p === x && q === y) || (p === y && q === x)); };
 
 let S = null;
 
@@ -134,26 +152,32 @@ function parsePlayers(str) {
   }).filter(p => p.r > 0 && POS_GROUP[p.pos]);
 }
 
-function buildWorld() {
-  const leagues = [], clubs = {};
-  DB.leagues.forEach(L => {
-    const ids = [];
-    L.clubs.forEach((c, i) => {
-      const id = `${L.id}-${i}`;
-      let name, short, mgr, mgrNat, plStr, level;
-      if (L.tier === 1) [name, short, mgr, mgrNat, plStr] = c;
-      else { [name, mgr, mgrNat, plStr, level] = c; short = shortName(name); }
-      const players = parsePlayers(plStr);
-      fillSquad(players, L.nat, level);
-      const genMgr = !mgr;
-      if (genMgr) { mgr = randomName(L.nat); mgrNat = L.nat; }
-      clubs[id] = { id, name, short, mgr, mgrNat, genMgr, league: L.id, players };
-      ids.push(id);
-    });
-    leagues.push({ id: L.id, name: L.name, country: L.country, nat: L.nat, tier: L.tier, clubs: ids });
+// One league from the database. The original five top flights list full squads; every other
+// league uses the shorter row (notable players plus a squad level).
+function buildLeague(L, clubs) {
+  const ids = [];
+  L.clubs.forEach((c, i) => {
+    const id = `${L.id}-${i}`;
+    let name, short, mgr, mgrNat, plStr, level;
+    if (L.tier === 1 && c.length === 5 && typeof c[4] === 'string') [name, short, mgr, mgrNat, plStr] = c;
+    else { [name, mgr, mgrNat, plStr, level, short] = c; short = short || shortName(name); }
+    const players = parsePlayers(plStr);
+    fillSquad(players, L.nat, level);
+    const genMgr = !mgr;
+    if (genMgr) { mgr = randomName(L.nat); mgrNat = L.nat; }
+    clubs[id] = { id, name, short, mgr, mgrNat, genMgr, league: L.id, players };
+    ids.push(id);
   });
+  return { id: L.id, name: L.name, country: L.country, nat: L.nat, tier: L.tier, closed: !!L.closed, clubs: ids };
+}
+
+function buildWorld() {
+  const clubs = {};
+  const leagues = DB.leagues.map(L => buildLeague(L, clubs));
   return { leagues, clubs };
 }
+
+const clubByName = name => Object.values(S.clubs).find(c => c.name === name);
 
 // Average rating of the best XI (1-4-3-3). Optionally include the user with their OVR.
 function teamStrength(c, userOvr = null, userPos = null) {
@@ -185,9 +209,10 @@ function roundRobin(ids) {
 }
 
 // Spread a league's matchdays evenly over the season's weeks; -1 means no match that week.
-function weekMap(matchdays) {
-  const arr = Array(SEASON_WEEKS).fill(-1);
-  for (let k = 0; k < matchdays; k++) arr[Math.floor(k * SEASON_WEEKS / matchdays)] = k;
+// A league added to a save mid-season fits its matchdays into the weeks left (from).
+function weekMap(matchdays, from = 1, skip = 0) {
+  const arr = Array(SEASON_WEEKS).fill(-1), left = SEASON_WEEKS - from + 1, n = matchdays - skip;
+  for (let k = 0; k < n; k++) arr[from - 1 + Math.floor(k * left / n)] = skip + k;
   return arr;
 }
 
@@ -207,15 +232,49 @@ function makeSeason() {
   });
   Object.values(S.clubs).forEach(c => c.players.forEach(p => { p.g = 0; p.as = 0; }));
   S.player.st = newStats();
+  S.player.seasonSpells = [];
   S.week = 1;
   S.phase = 'season';
   S.results = [];
   S.euro = buildEuro();
+  S.cups = buildCups();
   S.cupWins = [];
 }
 
-// League numbers, plus a separate line for cup games.
-function newStats() { return { apps: 0, starts: 0, goals: 0, assists: 0, rsum: 0, motm: 0, clean: 0, cup: { apps: 0, goals: 0, assists: 0, rsum: 0 } }; }
+// League numbers, plus a separate line for cup games. missed = league games missed injured.
+function newStats() { return { apps: 0, starts: 0, goals: 0, assists: 0, rsum: 0, motm: 0, clean: 0, missed: 0, cup: { apps: 0, goals: 0, assists: 0, rsum: 0 } }; }
+
+// ---------- spells: moving club mid-season ----------
+// Like SofaScore, each club you play for in a season gets its own career row. The season's
+// totals (for awards and the OVR review) add the earlier spells to the current one.
+function closeSpell() {
+  const p = S.player, st = p.st, c = myClub();
+  if (S.phase !== 'season' || !st) return;
+  if (st.apps + st.cup.apps > 0) p.career.push(careerRow(st, c));
+  (p.seasonSpells = p.seasonSpells || []).push({ ...st, cup: { ...st.cup }, league: c.league, club: c.id });
+  p.st = newStats();
+}
+
+function careerRow(st, c) {
+  const p = S.player;
+  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), league: league(c.league).name, apps: st.apps + st.cup.apps, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.pos };
+}
+
+function seasonTotals() {
+  const p = S.player, all = [...(p.seasonSpells || []), p.st];
+  const t = newStats();
+  all.forEach(s => {
+    ['apps', 'starts', 'goals', 'assists', 'rsum', 'motm', 'clean', 'missed'].forEach(k => { t[k] += s[k] || 0; });
+    ['apps', 'goals', 'assists', 'rsum'].forEach(k => { t.cup[k] += (s.cup && s.cup[k]) || 0; });
+  });
+  return t;
+}
+
+// League goals or assists this season in one league, across spells.
+function leagueTally(lid, key) {
+  const p = S.player;
+  return (p.seasonSpells || []).filter(s => s.league === lid).reduce((n, s) => n + s[key], 0) + (myClub().league === lid ? p.st[key] : 0);
+}
 const absWeek = () => S.season * SEASON_WEEKS + Math.min(S.week, SEASON_WEEKS + 1);
 
 // ---------- player ----------
@@ -234,12 +293,14 @@ function nudgeOvr(d) {
 }
 
 // OVR change from one game: good ratings, goals and assists build it, poor games cost a little.
-// Gains slow down with age and near 91; from 34 bad games hurt more.
+// Gains slow down with age and near 91; bad games hurt more as you get older.
 function perfDelta(rating, user) {
-  const age = ageOf(S.player.by);
   const d = ((rating - 6.7) * .03 + user.goals * .015 + user.assists * .01) * user.mins / 90;
-  return d > 0 ? d * growthFactor() : d * (age >= 34 ? 1.5 : 1);
+  return d > 0 ? d * growthFactor() : d * declineFactor();
 }
+
+// How much harder drops hit with age: from 30 an OVR loss is bigger, from 34 twice as big.
+function declineFactor(age = ageOf(S.player.by)) { return age >= 34 ? 2 : age >= 32 ? 1.5 : age >= 30 ? 1.25 : 1; }
 
 function initAttrs(pos, target) {
   const w = WEIGHTS[pos], keys = attrKeys(pos), avgW = 1 / keys.length;
@@ -262,6 +323,7 @@ function prepareGame({ name, nat, pos }) {
     slots: TRAIN_SLOTS, equip: 0, house: 0,
     form: [], career: [], trophies: [], awards: [], ovrAtSign: ovr, joinedSeason: 0, caps: 0,
     aff: 50, affPen: 0, board: 50, objectives: [], objHist: [], order: null, loan: null, listed: false,
+    clubsPlayed: [], banned: [], offerLock: 0, seasonSpells: [],
   };
   S.inbox = [];
   S.offers = [];
@@ -295,10 +357,12 @@ function chooseStart(clubId) {
   const p = S.player, c = club(clubId);
   p.club = clubId;
   p.wage = startWage(clubId);
+  p.clubsPlayed = [clubId];
   S.lastMatch = null;
   S.ovrSeasonStart = calcOVR();
   delete S.startChoices;
   makeSeason();
+  p.offerLock = absWeek() + OFFER_LOCK_WEEKS;
   msg(`Welcome to ${c.name}! ${c.mgr} has handed you a 3-year youth contract at ${money(p.wage)}/week.`, 'good');
   msg('Win the manager over: hit his objectives, follow his match plans and play well. Low affection means fewer starts, and at zero you are released.');
   setObjectives();
@@ -310,6 +374,8 @@ function msg(text, kind = 'info') {
   S.inbox.unshift({ text, kind, week: S.week, season: S.season });
   S.inbox = S.inbox.slice(0, 30);
 }
+
+function ordinal(n) { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return s[(v - 20) % 10] || s[v] || s[0]; }
 
 function money(v) {
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
@@ -332,7 +398,7 @@ function tierPrestige(c) {
 // placed by OVR within the tier and by how big the club is in its league.
 function marketWage(ovr, c, pos = S.player.pos, age = ageOf(S.player.by)) {
   const l = league(c.league), table = SALARIES[l.nat], [lo, hi] = table[l.tier][pos];
-  const fx = table.currency === 'GBP' ? GBP_TO_EUR : 1;
+  const fx = table.currency === 'GBP' ? GBP_TO_EUR : table.currency === 'USD' ? USD_TO_EUR : 1;
   const [a, b] = TIER_OVR[l.tier];
   const t = clamp((ovr - a) / (b - a), 0, 1);
   const x = clamp(t * .8 + tierPrestige(c) * .2, 0, 1);
@@ -541,11 +607,22 @@ function maybeOrder() {
 function setOrderChoice(choice) { if (S.player.order) S.player.order.choice = choice; save(); }
 
 // ---------- rumours and approaches ----------
-const isRival = c => c.league === myClub().league && Math.abs(teamStrength(c) - teamStrength(myClub())) <= 5;
+// A real derby rival, or a club of similar strength in the same league.
+const isRival = c => areRivals(c.id, S.player.club) || (c.league === myClub().league && Math.abs(teamStrength(c) - teamStrength(myClub())) <= 5);
+
+// Six months after joining a club, nobody bids for you. Clubs you betrayed never do.
+const offerLocked = () => (S.player.offerLock || 0) > absWeek();
+const isBanned = id => (S.player.banned || []).includes(id);
+
+// Former clubs that would turn their back on you for good if you joined this one.
+function rivalBetrayal(id) {
+  const p = S.player;
+  return (p.clubsPlayed || []).filter(x => x !== id && !isBanned(x) && areRivals(x, id));
+}
 
 function interestedClub() {
   const ovr = calcOVR(), mine = teamStrength(myClub());
-  const pool = Object.values(S.clubs).filter(c => c.id !== S.player.club && teamStrength(c) >= mine - 3 && teamStrength(c) <= ovr + 4);
+  const pool = Object.values(S.clubs).filter(c => c.id !== S.player.club && !isBanned(c.id) && teamStrength(c) >= mine - 3 && teamStrength(c) <= ovr + 4);
   return pool.length ? pick(pool) : null;
 }
 
@@ -553,7 +630,7 @@ function maybeDecision() {
   const p = S.player;
   if (S.decision || p.needsContract || p.loan || Math.random() > .07) return;
   const c = myClub();
-  if (Math.random() < .5) {
+  if (Math.random() < .5 || offerLocked()) {
     const texts = [`A tabloid claims you are unhappy at ${c.name} and want out.`, `A pundit says you have fallen out with ${c.mgr} behind the scenes.`, 'Social media is full of stories that you skipped extra training to go partying.'];
     S.decision = { type: 'rumour', text: pick(texts) };
   } else {
@@ -581,6 +658,7 @@ function maybeRecall() {
 function recallLoan() {
   const p = S.player, from = myClub().name;
   p.loan.result = p.st.apps ? p.st.rsum / p.st.apps : 6.5;
+  closeSpell();
   endLoan();
   p.order = null;
   setObjectives();
@@ -625,6 +703,7 @@ function checkTermination() {
     msg(`${c.mgr} has had enough of you. ${c.name} have sent you back early.`, 'bad');
     notify('bad', 'Loan cut short', `${c.name} ended your loan. You are back at ${club(p.loan.parent).name}.`);
     p.loan.result = 5.5;
+    closeSpell();
     endLoan();
     setObjectives();
     return;
@@ -654,10 +733,15 @@ function findClubs() {
 function equipMult() { return EQUIP_TIERS[S.player.equip].mult; }
 
 // No hidden potential cap: the only ceiling is 91 OVR, and the last points come slowly.
-function growthFactor() {
+// Below 65 a young player levels up quicker; from 30 every point is harder to earn.
+// Saudi and US football is less competitive: the money is big, the development is slow.
+const SLOW_GROWTH = { KSA: .6, USA: .6 };
+const leagueGrowth = (c = myClub()) => SLOW_GROWTH[league(c.league).nat] || 1;
+function growthFactor(lowBoost = true) {
   const age = ageOf(S.player.by), ovr = calcOVR();
-  const ageF = age <= 21 ? 1.2 : age <= 25 ? 1 : age <= 29 ? .75 : age <= 33 ? .5 : .25;
-  return ageF * clamp(Math.pow(Math.max(0, MAX_OVR - ovr) / 20, 1.3), .06, 1);
+  const ageF = age <= 21 ? 1.2 : age <= 25 ? 1 : age <= 29 ? .75 : age <= 31 ? .5 : age <= 33 ? .4 : .2;
+  const low = !lowBoost ? 1 : ovr < 60 ? 1.5 : ovr < 65 ? 1.3 : 1;
+  return ageF * low * leagueGrowth() * clamp(Math.pow(Math.max(0, MAX_OVR - ovr) / 20, 1.3), .06, 1);
 }
 
 // High attributes get harder to raise, but a session always gives something until 91.
@@ -797,7 +881,7 @@ function applyUserMatch(user, res, isHome, cup, report) {
   const conceded = isHome ? res.ga : res.gh;
   const clean = conceded === 0 && ['GK', 'DEF'].includes(POS_GROUP[p.pos]) && user.mins >= 60;
   if (clean && !cup) st.clean++;
-  if (rating >= 8.3) { if (!cup) st.motm++; report.events.push(cup ? 'Player of the Match in Europe!' : 'Player of the Match!'); }
+  if (rating >= 8.3) { if (!cup) st.motm++; report.events.push(cup ? 'Player of the Match in the cup!' : 'Player of the Match!'); }
   p.form.push(rating); p.form = p.form.slice(-5);
   p.energy -= Math.round(user.mins / 90 * 22);
   p.rep = clamp(p.rep + (rating - 6.4) * .5 * (0.6 + clubPrestige(myClub())) * (cup ? 1.3 : 1) + user.goals * .25, 0, 100);
@@ -818,6 +902,7 @@ function advanceWeek() {
   if (fx) {
     // Manager's fitness brief: count the matchdays you turn up fresh for.
     if (!p.injured) (p.objectives || []).forEach(o => { if (o.kind === 'energy' && p.energy >= o.min) o.progress++; });
+    else p.st.missed = (p.st.missed || 0) + 1;
     user = { ...selection(), goals: 0, assists: 0 };
     // The manager's plan only matters if you actually play.
     if (p.order && user.mins) { user.follow = p.order.choice !== 'own'; user.own = p.order.choice === 'own'; }
@@ -847,13 +932,20 @@ function advanceWeek() {
   }
   p.order = null;
 
-  // Midweek European game, picked on how fresh you are after the weekend.
-  const efx = euroFixture();
+  // Midweek cup game (European or domestic), picked on how fresh you are after the weekend.
+  const efx = midweekFixture();
   const cupUser = efx ? { ...selection(), goals: 0, assists: 0 } : null;
-  const cupRes = euroWeek(cupUser);
+  const euroRes = euroWeek(efx && efx.euro ? cupUser : null);
+  const homeRes = cupWeek(efx && !efx.euro ? cupUser : null);
+  const cupRes = euroRes || homeRes;
   if (efx && cupRes) {
     report.cup = { ...cupRes, user: cupUser, isHome: efx.isHome, stage: efx.stage };
-    if (cupUser.mins) applyUserMatch(cupUser, cupRes, efx.isHome, true, report);
+    if (cupUser.mins) {
+      applyUserMatch(cupUser, cupRes, efx.isHome, true, report);
+      // Your numbers in this competition, for its end-of-tournament awards.
+      const my = efx.t.my = efx.t.my || { apps: 0, goals: 0, assists: 0, rsum: 0 };
+      my.apps++; my.goals += cupUser.goals; my.assists += cupUser.assists; my.rsum += cupUser.rating;
+    }
   }
 
   // Finances
@@ -869,19 +961,22 @@ function advanceWeek() {
     msg('You ran out of money and had to move back into a shared flat.', 'bad');
   }
 
-  // Injury
+  // Injury. Every week out costs a little sharpness, more as you get older; the big
+  // judgement comes in the end-of-season review, based on how many games you missed.
   if (p.injured) {
     p.injured--;
+    nudgeOvr(-.03 * declineFactor());
     if (!p.injured) msg('You are fit again and back in training.', 'good');
   } else {
     let chance = .012 + (p.energy < 30 ? .05 : 0) + (p.trainedThisWeek || 0) * .004 + (user && user.mins ? .01 : 0) + (cupUser && cupUser.mins ? .01 : 0);
-    chance *= 1 - .1 * p.equip;
+    chance *= (1 - .1 * p.equip) * (ageOf(p.by) >= 32 ? 1.3 : 1);
     if (Math.random() < chance) {
-      p.injured = randi(1, 6);
-      const kinds = ['hamstring strain', 'ankle sprain', 'calf tightness', 'knee knock', 'groin strain', 'thigh bruise'];
-      const kind = pick(kinds);
+      // Most knocks are short; about one in ten is a serious injury.
+      const serious = Math.random() < .1;
+      p.injured = serious ? randi(8, 20) : randi(1, 6);
+      const kind = serious ? pick(['torn knee ligament', 'broken foot', 'torn hamstring', 'ruptured achilles', 'fractured ankle']) : pick(['hamstring strain', 'ankle sprain', 'calf tightness', 'knee knock', 'groin strain', 'thigh bruise']);
       msg(`Injury: ${kind}. Out for ${p.injured} week${p.injured > 1 ? 's' : ''}.`, 'bad');
-      notify('bad', 'Injured', `You picked up a ${kind} and will be out for ${p.injured} week${p.injured > 1 ? 's' : ''}.`);
+      notify('bad', serious ? 'Serious injury' : 'Injured', `You picked up a ${kind} and will be out for ${p.injured} week${p.injured > 1 ? 's' : ''}.${serious ? ' Missing a big part of the season will cost you OVR.' : ''}`);
       report.events.push(`Injured for ${p.injured} week${p.injured > 1 ? 's' : ''}`);
     }
   }
@@ -916,6 +1011,7 @@ function advanceWeek() {
 
   S.lastMatch = report;
   S.week++;
+  if (S.week === CUP_WEEKS.playoff[0]) buildPlayoffs();
   if (S.week > SEASON_WEEKS) endSeason(report);
   else {
     tickObjectives();
@@ -994,9 +1090,11 @@ function scoutBuzz() {
 
 function generateOffers(count, guarantee = false) {
   const p = S.player, ovr = calcOVR(), { breakout, silver } = scoutBuzz();
+  // Free agents always hear from someone; otherwise clubs leave you to settle in for six months.
+  if (!guarantee && offerLocked()) return;
   const reach = ovr + 2 + p.rep / 30;
   const home = p.loan ? p.loan.parent : p.club;
-  const free = c => c.id !== p.club && c.id !== home && !S.offers.some(o => o.club === c.id);
+  const free = c => c.id !== p.club && c.id !== home && !isBanned(c.id) && !S.offers.some(o => o.club === c.id);
   const pool = Object.values(S.clubs).filter(c => {
     if (!free(c)) return false;
     const s = teamStrength(c), top = clubTier(c) === 1;
@@ -1031,8 +1129,9 @@ function generateOffers(count, guarantee = false) {
 // Offers when a window opens: more for a breakout season or a transfer request.
 function windowOffers() {
   const { breakout } = scoutBuzz(), p = S.player;
+  if (offerLocked()) { msg('Clubs are leaving you to settle in at your new club: no transfer offers this window.'); return; }
   // A club you agreed to listen to comes back with a bid.
-  if (p.interested && p.interested !== p.club && !S.offers.some(o => o.club === p.interested)) S.offers.push(makeOffer(club(p.interested), 'transfer'));
+  if (p.interested && p.interested !== p.club && !isBanned(p.interested) && !S.offers.some(o => o.club === p.interested)) S.offers.push(makeOffer(club(p.interested), 'transfer'));
   p.interested = null;
   generateOffers(randi(1, 3) + (breakout ? 2 : 0) + (S.player.listed ? 2 : 0));
 }
@@ -1089,7 +1188,19 @@ function acceptOffer(id) {
   const p = S.player;
   if (o.type === 'transfer') {
     const from = myClub().name;
+    // Joining a rival of a former club: that club will never come for you again.
+    const betrayed = rivalBetrayal(o.club);
+    if (betrayed.length) {
+      p.banned = [...(p.banned || []), ...betrayed];
+      const names = betrayed.map(id => club(id).name).join(' and ');
+      msg(`${names} will never forgive you for joining ${club(o.club).name}. They will not approach you again.`, 'bad');
+      notify('bad', 'Burned bridges', `You joined ${names}'s rivals. ${names} fans and board will hate you: they will never make you an offer again.`);
+    }
+    // Your stats so far this season stay with your old club as their own career row.
+    closeSpell();
     p.club = o.club;
+    p.clubsPlayed = [...new Set([...(p.clubsPlayed || []), o.club])];
+    p.offerLock = absWeek() + OFFER_LOCK_WEEKS;
     p.loan = null;
     p.joinedSeason = S.season;
     p.aff = o.promised ? 60 : 50;
@@ -1184,21 +1295,27 @@ function leagueTable(lid) {
     .sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
 }
 
-function topScorers(lid, n = 10) {
-  const p = S.player, list = [];
-  league(lid).clubs.forEach(id => club(id).players.forEach(pl => { if (pl.g) list.push({ n: pl.n, club: id, g: pl.g }); }));
-  if (myClub().league === lid && p.st.goals) list.push({ n: p.name, club: p.club, g: p.st.goals, me: true });
+// Goals (or assists) in a league this season. Your goals for every club you played for in
+// that league this season count, like they would in real life.
+function leagueChart(lid, key, n) {
+  const p = S.player, list = [], aiKey = key === 'goals' ? 'g' : 'as';
+  league(lid).clubs.forEach(id => club(id).players.forEach(pl => { if (pl[aiKey]) list.push({ n: pl.n, club: id, g: pl[aiKey] }); }));
+  const mine = S.phase === 'season' || S.phase === 'offseason' ? leagueTally(lid, key) : 0;
+  if (mine) list.push({ n: p.name, club: p.club, g: mine, me: true });
   return list.sort((a, b) => b.g - a.g).slice(0, n);
 }
+const topScorers = (lid, n = 10) => leagueChart(lid, 'goals', n);
+const topAssists = (lid, n = 10) => leagueChart(lid, 'assists', n);
 
-function topAssists(lid, n = 10) {
-  const p = S.player, list = [];
-  league(lid).clubs.forEach(id => club(id).players.forEach(pl => { if (pl.as) list.push({ n: pl.n, club: id, g: pl.as }); }));
-  if (myClub().league === lid && p.st.assists) list.push({ n: p.name, club: p.club, g: p.st.assists, me: true });
-  return list.sort((a, b) => b.g - a.g).slice(0, n);
-}
+// How much each kind of award lifts your OVR in the end-of-season review. Each award counts
+// once, under the first line it matches (so a young player award is never a senior one too).
+const AWARD_OVR = [
+  [/Young Player|Kopa|Golden Boy/, .6], [/Ballon d'Or|The Best/, 1], [/Golden Shoe|Golden Boot|Gerd Müller|Top Scorer/, .8],
+  [/Player of the (Season|Year)|Golden Ball/, .8], [/Top Assists/, .6], [/Yashin/, .8], [/World 11|Team of the Season/, .3],
+];
+const awardValue = a => (AWARD_OVR.find(([re]) => re.test(a)) || [0, 0])[1];
 
-// End-of-season OVR review: ratings, goals and awards move your OVR like they would in real life.
+// End-of-season OVR review: ratings, goals, awards and injuries move your OVR like they would in real life.
 function performanceReview(st, avg, awards) {
   const p = S.player, age = ageOf(p.by), notes = [];
   let d = 0;
@@ -1206,18 +1323,106 @@ function performanceReview(st, avg, awards) {
     const r = avg >= 7.5 ? 1.5 : avg >= 7 ? .8 : avg >= 6.5 ? .2 : avg >= 6 ? -.6 : -1.2;
     d += r;
     notes.push(`${avg.toFixed(2)} average rating`);
-  } else if (age >= 22) { d -= .6; notes.push('too few games'); }
+  } else if (age >= 22 && !st.missed) { d -= .6; notes.push('too few games'); }
   const g = POS_GROUP[p.pos];
   const ga = st.goals + st.assists + (st.cup ? st.cup.goals + st.cup.assists : 0);
   const gaPar = { FWD: 18, MID: 12, DEF: 4, GK: 0 }[g];
   if (gaPar && ga >= gaPar) { d += .7; notes.push(`${ga} goals + assists`); }
-  const bonus = { 'Golden Boot': 1.5, 'Top Assists': 1, 'Player of the Season': 1.5, 'Young Player of the Season': .8, "Ballon d'Or": 1 };
-  awards.forEach(a => { if (bonus[a]) { d += bonus[a]; notes.push(a); } });
-  // Teenagers are judged gently; from 34 a poor season costs more.
-  d = d > 0 ? d * growthFactor() / .9 : d * (age >= 34 ? 1.5 : age <= 20 ? .3 : 1);
+  awards.forEach(a => { const v = awardValue(a); if (v) { d += v; notes.push(a); } });
+  // A great season is worth up to about 3 OVR before age and level scale it.
+  d = Math.min(d, 3);
+  // Teenagers are judged gently; a poor season costs more as you get older.
+  d = d > 0 ? d * growthFactor(false) / .9 : d * (age <= 20 ? .3 : declineFactor(age));
+  // Injuries: missing a quarter of the league games always costs OVR, more the longer you
+  // were out and the older you are. A shorter spell out only hurts if you came back below par.
+  const games = (league(myClub().league).clubs.length - 1) * 2, missed = st.missed || 0, share = games ? missed / games : 0;
+  if (share >= .25) {
+    d -= (1 + (share - .25) * 6) * declineFactor(age) * (age <= 21 ? .6 : 1);
+    notes.push(`missed ${missed} games injured`);
+  } else if (missed >= 3 && st.apps >= 5 && avg < 6.9) {
+    d -= (avg < 6.5 ? .6 : .3) * declineFactor(age);
+    notes.push(`below par after ${missed} games out injured`);
+  } else if (missed >= 5) notes.push(`bounced back from ${missed} games out injured`);
   if (d > 0 && calcOVR() >= MAX_OVR) d = 0;
   nudgeOvr(d);
   return { change: Math.round(d * 10) / 10, notes };
+}
+
+// ---------- individual accolades ----------
+// The Ballon d'Or and friends are decided against the best players in the world (the AI
+// squads), on rating, goals, assists and team success.
+const GOLDEN_SHOE_COEF = { ENG: 2, ESP: 2, ITA: 2, GER: 2, FRA: 2, POR: 1.5, NED: 1.5 };
+const BIG_TROPHY = [[/World Cup$/, 12], [/Champions League/, 10], [/European Championship|Copa América|Africa Cup|Asian Cup/, 6], [/champion$/, 6], [/Cup|Copa|Coppa|Coupe|Pokal|Taça|Shield|Super/, 2]];
+
+// Goals in a weaker league impress the voters less.
+function leagueWeight(l) {
+  if (l.tier === 3) return .3;
+  if (l.tier === 2) return .45;
+  return GOLDEN_SHOE_COEF[l.nat] === 2 ? 1 : GOLDEN_SHOE_COEF[l.nat] ? .8 : .7;
+}
+
+function worldCandidates() {
+  const champs = new Set(S.leagues.filter(l => l.tier === 1).map(l => leagueTable(l.id)[0].id));
+  const ucl = (S.history || []).find(h => h.key === 'UCL' && h.season === S.season);
+  const out = [];
+  S.leagues.filter(l => l.tier === 1).forEach(l => l.clubs.forEach(id => club(id).players.forEach(pl => {
+    if (pl.r < 80) return;
+    const team = (champs.has(id) ? 6 : 0) + (ucl && ucl.winner === id ? 10 : 0), w = leagueWeight(l);
+    out.push({ n: pl.n, club: id, pos: pl.pos, age: ageOf(pl.by), base: (pl.r - 84) * 2.2 + (pl.g * .9 + (pl.as || 0) * .5) * w + team, r: pl.r, g: pl.g, team, euro: !!GOLDEN_SHOE_COEF[l.nat] });
+  })));
+  return out;
+}
+
+function myCandidate(tot, avg) {
+  const p = S.player, ovr = calcOVR();
+  const won = p.trophies.filter(t => t.season >= S.season - 1);
+  const team = won.reduce((s, t) => s + ((BIG_TROPHY.find(([re]) => re.test(t.name)) || [0, 0])[1]), 0);
+  const clean = ['GK', 'DEF'].includes(POS_GROUP[p.pos]) ? tot.clean * .3 : 0;
+  const w = leagueWeight(league(myClub().league));
+  const base = (ovr - 84) * 2.2 + (tot.goals * .8 + tot.cup.goals * .4 + tot.assists * .45 + tot.cup.assists * .25 + (tot.apps >= 15 ? (avg - 7) * 4 : -10) + clean) * w + team - 4;
+  return { n: p.name, club: p.club, pos: p.pos, age: ageOf(p.by), base, r: ovr, me: true, euro: !!GOLDEN_SHOE_COEF[league(myClub().league).nat] };
+}
+
+// Rank everyone for one award; each award gets its own bit of luck.
+function rankFor(list, noise = 4) { return list.map(c => ({ ...c, s: c.base + gauss() * noise })).sort((a, b) => b.s - a.s); }
+
+function accolades(tot, avg) {
+  const p = S.player, mine = [], honours = [];
+  const all = worldCandidates(), me = myCandidate(tot, avg);
+  const award = (name, ranked, extra = '') => {
+    const w = ranked[0];
+    if (!w) return;
+    honours.push({ name, winner: w.n, club: w.club, me: !!w.me, note: extra });
+    if (w.me) mine.push(name);
+  };
+  const ballon = rankFor([...all, me]);
+  const myRank = ballon.findIndex(c => c.me) + 1;
+  award("Ballon d'Or", ballon, myRank > 1 && myRank <= 30 ? `You finished ${myRank}${ordinal(myRank)}` : '');
+  award('The Best FIFA Men\'s Player', rankFor([...all, me]));
+  if (rankFor([...all, me], 3).findIndex(c => c.me) < 11 && me.base > -5) mine.push('FIFPRO World 11');
+  const young = c => c.age <= 21;
+  award('Kopa Trophy', rankFor([...all.filter(young), ...(young(me) ? [me] : [])]));
+  award('Golden Boy', rankFor([...all.filter(c => young(c) && c.euro), ...(young(me) && me.euro ? [me] : [])]));
+  const keepers = all.filter(c => c.pos === 'GK').map(c => ({ ...c, base: (c.r - 84) * 2.5 + c.team }));
+  if (p.pos === 'GK') keepers.push({ ...me, base: (me.r - 84) * 2.5 + tot.clean * .5 });
+  award('Yashin Trophy', rankFor(keepers));
+  // European Golden Shoe: league goals, doubled in the top five leagues.
+  const shoe = [];
+  S.leagues.forEach(l => {
+    const k = GOLDEN_SHOE_COEF[l.nat] ? (l.tier === 1 ? GOLDEN_SHOE_COEF[l.nat] : 1) : 0;
+    if (k) l.clubs.forEach(id => club(id).players.forEach(pl => { if (pl.g >= 10) shoe.push({ n: pl.n, club: id, s: pl.g * k }); }));
+  });
+  const myShoe = [...(p.seasonSpells || []), { ...p.st, league: myClub().league }].reduce((s, sp) => {
+    const l = league(sp.league), k = GOLDEN_SHOE_COEF[l.nat] ? (l.tier === 1 ? GOLDEN_SHOE_COEF[l.nat] : 1) : 0;
+    return s + sp.goals * k;
+  }, 0);
+  if (myShoe) shoe.push({ n: p.name, club: p.club, s: myShoe, me: true });
+  shoe.sort((a, b) => b.s - a.s || (b.me ? 1 : -1));
+  award('European Golden Shoe', shoe, shoe[0] ? `${shoe[0].s} points` : '');
+  // Gerd Müller Trophy: the most goals in all competitions.
+  const aiTop = Math.round(Math.max(0, ...all.map(c => c.g)) * 1.2);
+  if (tot.goals + tot.cup.goals > aiTop && tot.goals + tot.cup.goals >= 20) mine.push('Gerd Müller Trophy');
+  return { mine, honours, myRank };
 }
 
 // Three up, three down between each pair of tiers in a country.
@@ -1225,6 +1430,8 @@ function promotionRelegation() {
   const moves = [], byNat = {};
   S.leagues.forEach(l => (byNat[l.nat] = byNat[l.nat] || []).push(l));
   for (const nat in byNat) {
+    // US soccer is a closed system: no promotion or relegation.
+    if (byNat[nat].some(l => l.closed)) continue;
     const tiers = byNat[nat].sort((a, b) => a.tier - b.tier);
     for (let i = 0; i < tiers.length - 1; i++) {
       const up = tiers[i], down = tiers[i + 1];
@@ -1245,25 +1452,32 @@ function applyMoves(moves) {
 }
 
 function endSeason() {
-  const p = S.player, c = myClub(), lid = c.league, st = p.st;
+  const p = S.player, c = myClub(), lid = c.league, st = p.st, L = league(lid);
   const table = leagueTable(lid);
   const pos = table.findIndex(r => r.id === c.id) + 1;
-  const avg = st.apps ? st.rsum / st.apps : 0;
+  // Awards and the review judge your whole season, every club you played for.
+  const tot = seasonTotals();
+  const avg = tot.apps ? tot.rsum / tot.apps : 0;
   const age = ageOf(p.by);
   const awards = [];
-  if (pos === 1) { awards.push(`${league(lid).name} champion`); p.trophies.push({ name: league(lid).name, club: c.name, season: S.season }); p.rep = clamp(p.rep + 6, 0, 100); }
+  const give = (short, full, rep) => { awards.push(short); p.awards.push({ name: full, season: S.season }); p.rep = clamp(p.rep + rep, 0, 100); };
+  if (pos === 1) { awards.push(`${L.name} champion`); p.trophies.push({ name: L.name, club: c.name, season: S.season }); p.rep = clamp(p.rep + 6, 0, 100); }
   const scorers = topScorers(lid, 1);
-  if (scorers[0] && scorers[0].me) { awards.push('Golden Boot'); p.awards.push({ name: `${league(lid).name} Golden Boot`, season: S.season }); p.rep = clamp(p.rep + 4, 0, 100); }
+  if (scorers[0] && scorers[0].me) give('Golden Boot', `${L.name} Golden Boot`, 4);
   const assisters = topAssists(lid, 1);
-  if (assisters[0] && assisters[0].me) { awards.push('Top Assists'); p.awards.push({ name: `${league(lid).name} Top Assists`, season: S.season }); p.rep = clamp(p.rep + 3, 0, 100); }
-  if (st.apps >= 20 && avg >= 7.8) { awards.push('Player of the Season'); p.awards.push({ name: `${league(lid).name} Player of the Season`, season: S.season }); p.rep = clamp(p.rep + 4, 0, 100); }
-  else if (age <= 21 && st.apps >= 15 && avg >= 7.1) { awards.push('Young Player of the Season'); p.awards.push({ name: `${league(lid).name} Young Player`, season: S.season }); p.rep = clamp(p.rep + 3, 0, 100); }
-  const ovrBefore = calcOVR();
-  const bigWin = (S.cupWins || []).some(w => /Champions League/.test(w));
-  if (ovrBefore >= 86 && avg >= 7.8 && st.goals + st.assists >= 28 && (pos === 1 || bigWin || st.goals >= 28) && Math.random() < .6) { awards.push('Ballon d\'Or'); p.awards.push({ name: 'Ballon d\'Or', season: S.season }); p.rep = clamp(p.rep + 8, 0, 100); }
+  if (assisters[0] && assisters[0].me) give('Top Assists', `${L.name} Top Assists`, 3);
+  // England's awards are the PFA's; elsewhere the league names its own.
+  const pfa = L.nat === 'ENG' && L.tier === 1;
+  if (tot.apps >= 20 && avg >= 7.8) give(pfa ? 'PFA Player of the Year' : 'Player of the Season', pfa ? 'PFA Player of the Year' : `${L.name} Player of the Season`, 4);
+  else if (age <= 21 && tot.apps >= 15 && avg >= 7.1) give(pfa ? 'PFA Young Player of the Year' : 'Young Player of the Season', pfa ? 'PFA Young Player of the Year' : `${L.name} Young Player`, 3);
+  if (tot.apps >= 18 && avg >= 7.3) give('Team of the Season', `${L.name} Team of the Season`, 1);
+  // World awards, decided against the best players in the world.
+  const acc = accolades(tot, avg);
+  const ACC_REP = { "Ballon d'Or": 8, "The Best FIFA Men's Player": 6, 'European Golden Shoe': 5, 'Kopa Trophy': 4, 'Golden Boy': 4, 'Yashin Trophy': 5, 'Gerd Müller Trophy': 4, 'FIFPRO World 11': 2 };
+  acc.mine.forEach(a => give(a, a, ACC_REP[a] || 2));
   if (calledUp()) { const caps = randi(4, 8); p.caps += caps; awards.push(`${caps} caps for ${natName(p.nat)} (qualifiers and friendlies)`); }
   (S.cupWins || []).forEach(w => awards.push(w));
-  const review = performanceReview(st, avg, awards);
+  const review = performanceReview(tot, avg, awards);
   const ovr = calcOVR();
   // Remember the final top-flight tables for next season's European places.
   S.lastStandings = {};
@@ -1274,14 +1488,15 @@ function endSeason() {
   if (myMove) awards.push(myMove.up ? `Promoted to ${league(myMove.to).name}` : `Relegated to ${league(myMove.to).name}`);
   if (pos === 1) notify('good', `${league(lid).name} champions!`, `${c.name} won the league. You were part of it.`);
   if (myMove) notify(myMove.up ? 'good' : 'bad', myMove.up ? 'Promoted!' : 'Relegated', `${c.name} ${myMove.up ? 'go up' : 'go down'} to the ${league(myMove.to).name}.`);
-  const personal = awards.filter(a => /Golden Boot|Top Assists|Player of the Season|Young Player|Ballon/.test(a));
+  const personal = awards.filter(awardValue);
   if (personal.length) notify('good', 'Award winner!', personal.join(' · '));
   // The board judges the season: results and your own performances.
   changeBoard((pos === 1 ? 10 : 0) + (myMove ? (myMove.up ? 8 : -8) : 0) + (st.apps >= 10 ? (avg >= 7 ? 5 : avg < 6.2 ? -4 : 1) : 0));
 
-  const cup = st.cup || { apps: 0, goals: 0, assists: 0 };
-  p.career.push({ season: S.season, club: c.name + (p.loan ? ' (loan)' : ''), league: league(lid).name, apps: st.apps + cup.apps, goals: st.goals + cup.goals, assists: st.assists + cup.assists, avg: Math.round(avg * 100) / 100, ovr, pos });
-  S.seasonSummary = { season: S.season, club: c.name, pos, apps: st.apps, goals: st.goals, assists: st.assists, avg, awards, ovrStart: S.ovrSeasonStart || ovr, ovrEnd: ovr, clean: st.clean, starts: st.starts, loanNext: false, returning: false, cup, review };
+  // This club's row; earlier clubs this season already have theirs.
+  if (st.apps + st.cup.apps > 0 || !(p.seasonSpells || []).length) p.career.push(careerRow(st, c));
+  const clubs = [...(p.seasonSpells || []).map(s => club(s.club).name), c.name].filter((n, i, a) => a.indexOf(n) === i);
+  S.seasonSummary = { season: S.season, club: c.name, clubs, pos, apps: tot.apps, goals: tot.goals, assists: tot.assists, avg, awards, ovrStart: S.ovrSeasonStart || ovr, ovrEnd: ovr, clean: tot.clean, starts: st.starts, missed: tot.missed, loanNext: false, returning: false, cup: tot.cup, review, honours: acc.honours };
 
   // Ageing for the player (applied at the birthday that comes with the new season).
   // A gentle decline from 31 that speeds up sharply from 34.
@@ -1408,10 +1623,7 @@ function startNextSeason() {
 // You can hang up your boots at any age, even mid-season.
 function retire() {
   const p = S.player, st = p.st;
-  if (S.phase === 'season' && st && st.apps + st.cup.apps > 0) {
-    const c = myClub();
-    p.career.push({ season: S.season, club: c.name + (p.loan ? ' (loan)' : ''), league: league(c.league).name, apps: st.apps + st.cup.apps, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round(st.rsum / Math.max(1, st.apps) * 100) / 100, ovr: calcOVR(), pos: p.pos });
-  }
+  if (S.phase === 'season' && st && st.apps + st.cup.apps > 0) p.career.push(careerRow(st, myClub()));
   S.offers = [];
   S.decision = null;
   S.phase = 'retired';
@@ -1430,12 +1642,46 @@ function load() { try { const raw = localStorage.getItem(SAVE_KEY); if (raw) S =
 function migrate() {
   const p = S.player;
   if (p.st && !p.st.cup) p.st.cup = { apps: 0, goals: 0, assists: 0, rsum: 0 };
+  if (p.st && p.st.missed == null) p.st.missed = 0;
+  p.seasonSpells = p.seasonSpells || [];
+  p.banned = p.banned || [];
+  addNewLeagues();
+  // Wide midfielders arrived later: give every squad one on each side.
+  Object.values(S.clubs).forEach(c => ['LM', 'RM'].forEach(pos => {
+    if (!c.players.some(pl => pl.pos === pos)) c.players.push(genPlayer(pos, teamStrength(c) - 6, league(c.league).nat));
+  }));
+  if (!p.clubsPlayed) {
+    // Rebuild the list of clubs you have played for from your career rows (loans don't count).
+    const names = p.career.filter(r => !/\(loan\)$/.test(r.club)).map(r => r.club);
+    p.clubsPlayed = [...new Set([...names.map(n => clubByName(n)).filter(Boolean).map(c => c.id), ...(p.club && !p.loan ? [p.club] : []), ...(p.loan ? [p.loan.parent] : [])])];
+  }
   if (!p.club || S.phase !== 'season') return;
+  // Domestic cups: rounds whose week has already gone are played without you.
+  if (!S.cups) {
+    S.cups = buildCups();
+    Object.values(S.cups).forEach(t => { while (!t.winner && t.weeks[t.r] < S.week) playCupRound(t, null); });
+    if (S.week > CUP_WEEKS.playoff[0]) buildPlayoffs();
+  }
   // Saves from before manager objectives existed get a fresh set; older ones get a training brief.
   if (!p.objectives) setObjectives();
   else if (!p.objectives.some(o => o.span === 'drill')) setObjectives(['drill']);
   // European competitions start straight away if the group stage has not begun yet.
   if (!S.euro && S.week <= EURO_WEEKS[0]) S.euro = buildEuro();
+}
+
+// Leagues added to the game after this save was made join the world straight away. Mid-season
+// they squeeze their fixtures into the weeks left (simulating any that do not fit).
+function addNewLeagues() {
+  DB.leagues.filter(L => !S.leagues.some(l => l.id === L.id)).forEach(L => {
+    const l = buildLeague(L, S.clubs);
+    S.leagues.push(l);
+    l.clubs.forEach(id => { S.table[id] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }; });
+    if (S.phase !== 'season' || !S.fixtures) return;
+    S.fixtures[l.id] = roundRobin(l.clubs);
+    const mds = S.fixtures[l.id].length, skip = Math.max(0, mds - (SEASON_WEEKS - S.week + 1));
+    for (let k = 0; k < skip; k++) S.fixtures[l.id][k].forEach(([h, a]) => playFixture(h, a, null));
+    S.mdMap[l.id] = weekMap(mds, S.week, skip);
+  });
 }
 
 // Retired careers are kept in a small list of their own (just the player's story, not the

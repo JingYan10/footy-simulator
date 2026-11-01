@@ -1,0 +1,21 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Abha.png
+Al Wehda.png
+Al Raed.png
+Al Orobah.png
+Al Jabalain.png
+Al Faisaly.png
+Al Adalah.png
+Al Batin.png
+Al Jandal.png
+Al Ula.png
+Al Bukiryah.png
+Al Zulfi.png
+Al Arabi.png
+Al Diriyah.png
+Jeddah.png
+Al Anwar.png
+Al Tai.png
+Ohod.png

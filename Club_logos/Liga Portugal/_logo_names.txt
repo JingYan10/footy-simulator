@@ -1,0 +1,21 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Benfica.png
+Porto.png
+Sporting CP.png
+Braga.png
+Vitória SC.png
+Famalicão.png
+Gil Vicente.png
+Moreirense.png
+Estoril.png
+Santa Clara.png
+Rio Ave.png
+Casa Pia.png
+Arouca.png
+Nacional.png
+Estrela da Amadora.png
+Alverca.png
+Tondela.png
+AVS.png

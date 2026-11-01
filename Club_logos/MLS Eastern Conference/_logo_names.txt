@@ -1,0 +1,18 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Inter Miami.png
+FC Cincinnati.png
+Philadelphia Union.png
+Charlotte FC.png
+Orlando City.png
+New York City FC.png
+New York Red Bulls.png
+Columbus Crew.png
+Nashville SC.png
+Chicago Fire.png
+Atlanta United.png
+Toronto FC.png
+CF Montréal.png
+D.C. United.png
+New England Revolution.png

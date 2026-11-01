@@ -81,7 +81,7 @@ function renderCreate() {
     <div class="field"><label>Position</label><div class="posgrid">${posBtns}</div><span class="small muted">${POS_NAMES[draft.pos]}</span></div>
     <button class="btn primary block" type="submit">See club offers</button>
     <button class="btn block" type="button" data-act="menu">Back</button>
-    <p class="small muted">15 leagues across England, Spain, Italy, Germany and France. Squads and managers are based on the 2025-26 season. Ratings are game estimates.</p>
+    <p class="small muted">${DB.leagues.length} leagues across ${[...new Set(DB.leagues.map(l => l.country))].join(', ').replace(/, ([^,]+)$/, ' and $1')}. Squads and managers are based on the 2025-26 season. Ratings are game estimates.</p>
   </form>`;
   const form = document.getElementById('createForm');
   form.addEventListener('input', e => {
@@ -215,14 +215,16 @@ function offersHtml() {
       <span class="chip ${o.type === 'renew' ? '' : 'flood'}">${o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b></div><div><small>Role</small><b class="${o.promised ? 'good' : ''}">${o.status}${o.promised ? ' (promised)' : ''}</b></div></div>
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
+      ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again.</div>` : ''}
+      ${o.type === 'transfer' && leagueGrowth(c) < 1 ? '<div class="small flood">Big money, weaker league: your OVR will grow more slowly here.</div>' : ''}
       ${talk}
       <div class="btns"><button class="btn good sm" data-act="accept" data-v="${o.id}">Sign</button><button class="btn sm" data-act="negAsk" data-v="${o.id}" ${canNegotiate(o) ? '' : 'disabled'}>Negotiate</button><button class="btn sm" data-act="decline" data-v="${o.id}">Decline</button></div>
     </div>`;
   }).join('')}</section>`;
 }
 
-function lockWeekLabel() {
-  const w = S.player.negLock, s = Math.floor((w - 1) / SEASON_WEEKS), wk = w - s * SEASON_WEEKS;
+function lockWeekLabel(w = S.player.negLock) {
+  const s = Math.floor((w - 1) / SEASON_WEEKS), wk = w - s * SEASON_WEEKS;
   return `${wk}${s !== S.season ? ` of ${seasonLabel(s)}` : ''}`;
 }
 
@@ -294,6 +296,8 @@ function contractCard() {
   return `<section class="card"><div class="row"><h2>Contract</h2><span class="small">${money(p.wage)}/wk · ${p.years} yr${p.years !== 1 ? 's' : ''}</span></div>
     <div class="small muted">Market value for you here: about ${money(marketWage(calcOVR(), myClub()))}/wk${breakout ? ' · <span class="flood">Breakout season: top-flight scouts are watching</span>' : ''}</div>
     ${negLocked() ? `<div class="small muted">You just re-signed: no salary talks until about week ${lockWeekLabel()}.</div>` : ''}
+    ${leagueGrowth() < 1 ? '<div class="small muted">Weaker league: your OVR grows about 40% slower here than in Europe.</div>' : ''}
+    ${offerLocked() ? `<div class="small muted">Settling in: other clubs will not bid for you until about week ${lockWeekLabel(S.player.offerLock)}.</div>` : ''}
     ${p.listed ? `<div class="small flood">You are transfer-listed. ${inWindow() ? 'Clubs are bidding now.' : `Bids arrive when the window opens (week ${JAN_WINDOW[0]} or summer).`}</div>` : ''}
     <div class="btns">
       <button class="btn sm" data-act="askContract">Ask for new contract</button>
@@ -331,7 +335,7 @@ function viewHome() {
   } else {
     matchCard = `<section class="card hero"><h2>Week ${S.week}</h2><p class="muted" style="margin:0">No league match this week. Rest, train and get ready.</p>
       ${euroLine()}
-      <button class="btn primary block" data-act="advance">${euroFixture() ? 'Play European game' : 'Next week'}</button></section>`;
+      <button class="btn primary block" data-act="advance">${midweekFixture() ? 'Play cup game' : 'Next week'}</button></section>`;
   }
   const form = p.form.length ? `<section class="card"><div class="row"><h2>Form</h2><span class="small muted">Season avg ${avgRating(p.st)}</span></div><div class="form">${p.form.map(r => `<span class="${ratingClass(r)}">${r.toFixed(1)}</span>`).join('')}</div>
     <div class="small muted">${p.st.apps} apps · ${p.st.goals} goals · ${p.st.assists} assists</div></section>` : '';
@@ -341,16 +345,14 @@ function viewHome() {
   return matchCard + offersHtml() + managerCard() + contractCard() + form + money_ + inboxHtml();
 }
 
-// The midweek European game, played straight after the league match.
+// The midweek cup game (European or domestic), played straight after the league match.
 function euroLine() {
-  const e = euroFixture();
+  const e = midweekFixture();
   if (!e) return '';
-  return `<div class="order"><div class="small flood"><b>Midweek · ${e.t.name}</b> · ${e.stage}</div>
+  return `<div class="order"><div class="small flood"><b>Midweek · ${esc(e.t.name)}</b> · ${e.stage}</div>
     <div class="clubcell">${crest(e.opp, 'small')}<span>${e.isHome ? 'vs' : 'at'} <b>${club(e.opp).name}</b> <span class="muted small">${Math.round(teamStrength(club(e.opp)))} rated</span></span></div>
     <div class="small muted">Two games this week, so watch your energy: under 25 and you will probably be benched.</div></div>`;
 }
-
-function ordinal(n) { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return s[(v - 20) % 10] || s[v] || s[0]; }
 
 function viewOffseason() {
   const sum = S.seasonSummary, p = S.player, age = ageOf(p.by);
@@ -358,12 +360,15 @@ function viewOffseason() {
   return `<section class="card hero">
       <h2>Season ${seasonLabel(sum.season)} review</h2>
       <div class="row"><b style="font:800 24px var(--display)">${sum.club}</b><span>Finished <b>${sum.pos}${ordinal(sum.pos)}</b></span></div>
+      ${sum.clubs && sum.clubs.length > 1 ? `<div class="small muted">This season: ${sum.clubs.map(esc).join(' → ')}. Stats cover all of them.</div>` : ''}
       <div class="bigstat"><div><b>${sum.apps}</b><small>Apps</small></div><div><b>${sum.goals}</b><small>Goals</small></div><div><b>${sum.assists}</b><small>Assists</small></div><div><b>${sum.apps ? sum.avg.toFixed(1) : '–'}</b><small>Rating</small></div></div>
-      ${sum.cup && sum.cup.apps ? `<div class="small muted">Europe: ${sum.cup.apps} apps · ${sum.cup.goals} goals · ${sum.cup.assists} assists</div>` : ''}
+      ${sum.cup && sum.cup.apps ? `<div class="small muted">Cups: ${sum.cup.apps} apps · ${sum.cup.goals} goals · ${sum.cup.assists} assists</div>` : ''}
+      ${sum.missed ? `<div class="small bad">Missed ${sum.missed} league game${sum.missed !== 1 ? 's' : ''} injured</div>` : ''}
       <div class="small">OVR ${sum.ovrStart} → <b>${sum.ovrEnd}</b> <span class="${delta >= 0 ? 'good' : 'bad'}">(${delta >= 0 ? '+' : ''}${delta})</span></div>
       ${sum.review ? `<div class="small muted">Performance review: <b class="${sum.review.change > 0 ? 'good' : sum.review.change < 0 ? 'bad' : ''}">${sum.review.change > 0 ? '+' : ''}${sum.review.change} OVR</b>${sum.review.notes.length ? ` (${esc(sum.review.notes.join(', '))})` : ''}</div>` : ''}
       ${sum.awards.map(a => `<div class="award">${esc(a)}</div>`).join('')}
     </section>
+    ${honoursCard(sum)}
     ${summerCard()}
     <section class="card"><h2>Contract</h2>
       ${p.needsContract ? '<p class="bad" style="margin:0">Your contract has run out. Sign with a club below to continue.</p>' : `<p style="margin:0">${money(p.wage)}/week · ${p.years} year${p.years !== 1 ? 's' : ''} left at ${club(p.loan ? p.loan.parent : p.club).name}</p>`}
@@ -377,6 +382,12 @@ function viewOffseason() {
       <button class="btn primary block" data-act="nextSeason" ${p.needsContract || summerPending() ? 'disabled' : ''}>Start ${seasonLabel(S.season + 1)}</button>
       <button class="btn danger block" data-act="retireAsk">Retire${age < 30 ? ' early' : ''}</button>
     </section>` + inboxHtml();
+}
+
+// The world's individual awards this season and who won them.
+function honoursCard(sum) {
+  if (!sum.honours || !sum.honours.length) return '';
+  return `<section class="card"><h2>Season awards</h2><div class="tablewrap"><table><tbody>${sum.honours.map(h => `<tr class="${h.me ? 'me' : ''}"><td>${esc(h.name)}${h.note ? `<div class="small muted">${esc(h.note)}</div>` : ''}</td><td class="r"><b>${esc(h.winner)}</b><div class="small muted">${esc(club(h.club).name)}</div></td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 // Your summer tournament: the group table or the next tie, and a button to play on.
@@ -516,17 +527,43 @@ function tournamentHtml(t, open) {
   return `<details class="card" ${open ? 'open' : ''}><summary><b>${esc(t.name)}</b></summary>${status}${ko}<div class="cupgrid">${groups}</div></details>`;
 }
 
+// A domestic knockout cup: every round played so far, then the next draw.
+function domesticCupHtml(t, open) {
+  const id = S.player.club;
+  const tie = (h, a, r) => {
+    const name = x => r && r.winner === x ? `<b class="w">${esc(teamName(x))}</b>` : esc(teamName(x));
+    return `<div class="tie ${h === id || a === id ? 'me' : ''}"><span>${name(h)}</span><b class="num">${r ? `${r.gh}–${r.ga}${r.pens ? ' p' : ''}` : 'vs'}</b><span class="r">${name(a)}</span></div>`;
+  };
+  // Early rounds of a big cup have dozens of ties: show the ones with your club, plus later rounds in full.
+  const show = (list, getHA) => list.filter(x => list.length <= 8 || getHA(x).includes(id));
+  const rounds = t.rounds.map(rd => {
+    const list = show(rd.res, r => [r.h, r.a]);
+    return list.length ? `<div><div class="small flood"><b>${rd.name}</b>${list.length < rd.res.length ? ` <span class="muted">(${rd.res.length} ties)</span>` : ''}</div>${list.map(r => tie(r.h, r.a, r)).join('')}</div>` : '';
+  }).join('');
+  const next = t.winner ? '' : (() => {
+    const list = show(t.ties, x => x);
+    return `<div><div class="small flood"><b>Next: ${cupStage(t)}</b> <span class="muted">(week ${t.weeks[t.r]}${t.r === 0 && t.byes.length ? `, ${t.byes.length} clubs have a bye` : ''})</span></div>${list.map(([h, a]) => tie(h, a, null)).join('')}</div>`;
+  })();
+  const out = !t.winner && !t.ties.some(x => x.includes(id)) && !(t.r === 0 && t.byes.includes(id)) && t.teams.includes(id) ? '<div class="small muted">You are out.</div>' : '';
+  const status = t.winner ? `<div class="award">Winner: ${esc(teamName(t.winner))}</div>` : '';
+  return `<details class="card" ${open ? 'open' : ''}><summary><b>${esc(t.name)}</b></summary>${status}${out}${rounds}${next}</details>`;
+}
+
 function cupsView() {
   const comps = Object.values(S.euro || {});
-  const mine = euroComp();
-  const euro = comps.length ? comps.map(t => tournamentHtml(t, t === mine)).join('') : '<section class="card"><p class="small muted" style="margin:0">European competitions start next season.</p></section>';
+  const mine = euroComp(), myNat = league(myClub().league).nat;
+  const euro = comps.length ? comps.map(t => tournamentHtml(t, t === mine)).join('') : '';
+  const home = Object.values(S.cups || {}).filter(t => t.nat === myNat).map(t => domesticCupHtml(t, t.teams.includes(S.player.club) && !t.winner)).join('');
   const summer = (S.summer || []).map(t => tournamentHtml(t, false)).join('');
-  const past = (S.history || []).slice().reverse().slice(0, 15);
+  // Other countries' domestic cups would crowd the list out.
+  const foreignCups = new Set(Object.entries(DOMESTIC).filter(([n]) => n !== myNat).flatMap(([, defs]) => defs.map(d => d.key)));
+  const past = (S.history || []).slice().reverse().filter(h => !foreignCups.has(h.key)).slice(0, 20);
   const hist = past.length ? `<section class="card"><h2>Recent winners</h2><div class="tablewrap"><table><tbody>${past.map(h => `<tr><td class="muted">${seasonLabel(h.season)}</td><td>${esc(h.name)}</td><td class="r"><b>${esc(teamName(h.winner))}</b></td></tr>`).join('')}</tbody></table></div></section>` : '';
   const year = START_YEAR + S.season + 1;
-  const next = SUMMER_EVENTS.map(ev => { let y = ev.first; while (y < year) y += ev.every; return [y, `${ev.name} ${y}`]; }).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(' · ');
-  return `<section class="card"><p class="small muted" style="margin:0">Top-flight clubs qualify for Europe from their league finish: Champions League, Europa League and Conference League, 16 clubs each. Games are midweek. Summer tournaments: ${next}. You are picked for ${esc(natName(S.player.nat))} at ${callUpOvr(S.player.nat)}+ OVR.</p></section>`
-    + euro + summer + hist;
+  const next = SUMMER_EVENTS.map(ev => { const y = nextEventYear(ev, year); return [y, `${ev.name} ${y}`]; }).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(' · ');
+  const cupNames = (DOMESTIC[myNat] || []).map(d => d.name).join(', ');
+  return `<section class="card"><p class="small muted" style="margin:0">${cupNames ? `Domestic cups: ${esc(cupNames)}. ` : ''}European top-flight clubs qualify for the Champions League, Europa League and Conference League from their league finish. Cup games are midweek. Summer tournaments: ${next}.</p></section>`
+    + home + euro + summer + hist;
 }
 
 // ---------- career ----------
@@ -544,11 +581,12 @@ function viewCareer() {
   const live = S.phase === 'season' ? p.st : { apps: 0, goals: 0, assists: 0 };
   const value = Math.round(marketWage(calcOVR(), myClub()) * 52 * Math.max(1, 30 - ageOf(p.by)) / 3 / 1e4) * 1e4;
   return `<section class="card hero"><h2>Profile</h2>
-      <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div><div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Call-up at</small><b>${callUpOvr(p.nat)} OVR</b></div>
+      <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div><div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${calledUp() ? 'In squad' : 'Not picked'}</b></div>
       <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div><small>Value</small><b>${money(value)}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b></div></div>
-      <div class="small muted">${calledUp() ? `You are in the ${esc(natName(p.nat))} squad.` : `Reach ${callUpOvr(p.nat)} OVR to be picked for ${esc(natName(p.nat))}.`} Max OVR is ${MAX_OVR}.</div></section>
+      <div class="small muted">${nationNote()} Max OVR is ${MAX_OVR}.</div></section>
     <section class="card"><h2>This season</h2><div class="bigstat"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div><div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
-      ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Europe: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}
+      ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Cups: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}
+      ${(p.seasonSpells || []).length ? `<div class="small muted">These are your numbers at ${esc(myClub().name)}. Earlier spells this season have their own rows in your career history.</div>` : ''}
       <div class="small muted">Career: ${t.apps + live.apps} apps · ${t.goals + live.goals} goals · ${t.assists + live.assists} assists</div></section>
     ${careerTables()}
     <section class="card"><h2>Game</h2><p class="small muted" style="margin:0">Progress saves automatically on this device. Export a backup to keep it safe or move it to another device.</p>
@@ -556,6 +594,14 @@ function viewCareer() {
       <button class="btn block" data-act="menu">Main menu</button>
       ${S.phase !== 'retired' ? '<button class="btn danger block" data-act="retireAsk">Retire now</button>' : ''}
       <button class="btn ${S.phase === 'retired' ? 'primary' : 'danger'} block" data-act="${S.phase === 'retired' ? 'menu' : 'newAsk'}">Start a new career</button></section>`;
+}
+
+// Why you are (or aren't) in your national team.
+function nationNote() {
+  const p = S.player, nat = esc(natName(p.nat)), floor = callUpFloor(p.nat), ahead = natRivals();
+  if (calledUp()) return ahead.length ? `You are in the ${nat} squad, with ${esc(ahead[0].n)} (${ahead[0].r}) ahead of you at ${p.pos}.` : `You are ${nat}'s first-choice ${p.pos}.`;
+  if (calcOVR() < floor) return `${nat} only look at players rated ${floor}+.`;
+  return `${ahead.length} compatriots are ahead of you at ${p.pos}: ${ahead.slice(0, 3).map(r => `${esc(r.n)} (${r.r})`).join(', ')}. With two or more ahead, you are left out.`;
 }
 
 function showExport() {
@@ -719,8 +765,8 @@ function showSummerReport(rep) {
   openModal(matchBlock(rep.match, `${rep.comp} · ${rep.stage}`, false) + `<button class="btn primary block" data-act="close">Continue</button>`);
 }
 
-function confirmSheet(title, text, act, label) {
-  openModal(`<h3>${title}</h3><p class="muted" style="margin:0">${text}</p><div class="btns"><button class="btn danger" data-act="${act}">${label}</button><button class="btn" data-act="close">Cancel</button></div>`);
+function confirmSheet(title, text, act, label, v = '') {
+  openModal(`<h3>${title}</h3><p class="muted" style="margin:0">${text}</p><div class="btns"><button class="btn danger" data-act="${act}" data-v="${v}">${label}</button><button class="btn" data-act="close">Cancel</button></div>`);
 }
 
 // ---------- events ----------
@@ -762,7 +808,12 @@ document.addEventListener('click', e => {
     case "unlist": withdrawTransferRequest(); render(); return;
     case 'house': setHouse(+v); render(); return;
     case 'choose': chooseStart(v); tab = 'home'; render(); window.scrollTo(0, 0); return;
-    case 'accept': acceptOffer(v); toast('Contract signed'); render(); return;
+    case 'accept': {
+      const o = S.offers.find(x => x.id === v), burned = o && o.type === 'transfer' ? rivalBetrayal(o.club) : [];
+      if (burned.length) { const names = burned.map(id => esc(club(id).name)).join(' and '); confirmSheet(`Join ${esc(club(o.club).name)}?`, `They are rivals of ${names}. If you join them, ${names} fans and board will hate you, and they will never approach you again.`, 'acceptGo', 'Sign anyway', v); return; }
+      acceptOffer(v); toast('Contract signed'); render(); return;
+    }
+    case 'acceptGo': acceptOffer(v); closeModal(); toast('Contract signed'); render(); return;
     case 'negAsk': showNegotiate(v); return;
     case 'neg': { const [id, i] = v.split(':'); const r = negotiate(id, +i); closeModal(); toast(r === 'accepted' ? 'They agreed!' : r === 'withdrawn' ? 'Offer withdrawn' : 'They said no'); render(); return; }
     case 'decline': declineOffer(v); render(); return;

@@ -1,0 +1,19 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Al Sahel.png
+Al Qaisumah.png
+Hajer.png
+Al Nojoom.png
+Al Kawkab.png
+Al Hejaz.png
+Al Washm.png
+Al Safa.png
+Al Shoulla.png
+Najran.png
+Al Entesar.png
+Al Nahda.png
+Al Taraji.png
+Al Rawdhah.png
+Al Draih.png
+Wej.png

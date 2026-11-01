@@ -1,0 +1,27 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Louisville City.png
+Charleston Battery.png
+Tampa Bay Rowdies.png
+Pittsburgh Riverhounds.png
+North Carolina FC.png
+Hartford Athletic.png
+Detroit City.png
+Indy Eleven.png
+Loudoun United.png
+Miami FC.png
+Birmingham Legion.png
+Rhode Island FC.png
+New Mexico United.png
+Sacramento Republic.png
+Orange County SC.png
+San Antonio FC.png
+Phoenix Rising.png
+Colorado Springs Switchbacks.png
+El Paso Locomotive.png
+Las Vegas Lights.png
+Oakland Roots.png
+Monterey Bay.png
+FC Tulsa.png
+Lexington SC.png

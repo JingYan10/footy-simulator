@@ -1,0 +1,18 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+LAFC.png
+San Diego FC.png
+Vancouver Whitecaps.png
+Seattle Sounders.png
+Minnesota United.png
+LA Galaxy.png
+Portland Timbers.png
+Austin FC.png
+San Jose Earthquakes.png
+Real Salt Lake.png
+Colorado Rapids.png
+Houston Dynamo.png
+FC Dallas.png
+Sporting Kansas City.png
+St. Louis City SC.png

@@ -1,0 +1,23 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Académica.png
+Belenenses.png
+Varzim.png
+Braga B.png
+Vitória SC B.png
+Trofense.png
+Amora.png
+Caldas.png
+Sanjoanense.png
+Atlético CP.png
+Fafe.png
+Mafra.png
+Lusitano de Évora.png
+São João de Ver.png
+Sporting da Covilhã.png
+Anadia.png
+Boavista.png
+Länk Vilaverdense.png
+Cova da Piedade.png
+Moncarapachense.png

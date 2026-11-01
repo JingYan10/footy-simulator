@@ -181,7 +181,7 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .field { display: grid; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .field input, .field select { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-height: 46px; width: 100%; }
-.posgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.posgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .posgrid button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 0; font: 700 15px var(--display); letter-spacing: .06em; }
 .posgrid button.on { background: var(--flood); color: var(--flood-ink); border-color: var(--flood); }
 
@@ -273,3 +273,5 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .tie b.w { color: var(--chalk); }
 .tie span { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .savebox { width: 100%; min-height: 120px; font: 12px/1.4 ui-monospace, monospace; background: var(--surface-2); color: var(--chalk); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.tie.me { box-shadow: inset 3px 0 var(--flood); padding-left: 8px; }
+.tie.me span { color: var(--chalk); }

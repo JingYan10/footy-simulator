@@ -1,0 +1,23 @@
+﻿Put each club's logo in this folder, named exactly as below.
+PNG works best (square, transparent background). SVG, WEBP and JPG also work.
+
+Willem II.png
+Almere City.png
+RKC Waalwijk.png
+Cambuur.png
+De Graafschap.png
+ADO Den Haag.png
+Roda JC.png
+FC Dordrecht.png
+FC Den Bosch.png
+Helmond Sport.png
+FC Emmen.png
+MVV Maastricht.png
+VVV-Venlo.png
+TOP Oss.png
+FC Eindhoven.png
+Vitesse.png
+Jong Ajax.png
+Jong PSV.png
+Jong AZ.png
+Jong FC Utrecht.png
