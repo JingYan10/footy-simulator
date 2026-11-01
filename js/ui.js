@@ -17,6 +17,7 @@ const ICONS = {
   train: '<path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/>',
   shop: '<path d="M4 8h16l-1.5 11a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM9 8V6a3 3 0 0 1 6 0v2"/>',
   club: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  agent: '<path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 7h18v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM3 12h18"/>',
   career: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>`;
@@ -147,7 +148,7 @@ function topbar() {
 }
 
 function nav() {
-  const tabs = [['home', 'Home'], ['train', 'Train'], ['shop', 'Shop'], ['club', 'Club'], ['career', 'Career']];
+  const tabs = [['home', 'Home'], ['train', 'Train'], ['shop', 'Shop'], ['agent', 'Agent'], ['club', 'Club'], ['career', 'Career']];
   return `<nav class="tabs"><div class="in">${tabs.map(([k, l]) => `
     <button class="${tab === k ? 'on' : ''}" data-act="tab" data-v="${k}" aria-label="${l}">
       ${icon(k)}<span>${l}</span>${k === 'home' && S.offers.length ? '<i class="dot"></i>' : ''}${k === 'train' && S.phase === 'season' && S.player.slots > 0 && !S.player.injured ? '<i class="dot" style="background:var(--flood)"></i>' : ''}
@@ -160,7 +161,7 @@ function render() {
   if (!S) { renderCreate(); return; }
   if (S.phase === 'choose') { renderChoose(); return; }
   const scrollY = window.scrollY;
-  const views = { home: viewHome, train: viewTrain, shop: viewShop, club: viewClub, career: viewCareer };
+  const views = { home: viewHome, train: viewTrain, shop: viewShop, agent: viewAgent, club: viewClub, career: viewCareer };
   app.innerHTML = topbar() + `<main class="wrap">${views[tab]()}</main>` + nav();
   window.scrollTo(0, scrollY);
   nextPopup();
@@ -479,26 +480,45 @@ function viewShop() {
   }).join('');
   const houses = HOUSING.map((h, i) => `<button class="house ${p.house === i ? 'on' : ''}" data-act="house" data-v="${i}">
       <span><b>${h.name}</b><br><span class="small muted">${h.energy ? `+${h.energy} energy/week` : 'No energy bonus'}</span></span><span class="num small">${money(h.rent)}/wk</span></button>`).join('');
-  return fin + agentCard() + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing</h2><div class="inbox">${houses}</div></section>`;
+  return fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing</h2><div class="inbox">${houses}</div></section>`;
 }
 
-function agentCard() {
-  const p = S.player, ovr = calcOVR(), cur = p.agent || 0;
-  const rows = AGENTS.map((a, i) => {
-    const locked = ovr < a.minOvr, poor = p.money < a.fee;
-    const perks = i ? `+${Math.round(a.wage * 100)}% wage offers · +${Math.round(a.neg * 100)}% talk success · ${a.offers}× club interest · takes ${Math.round(a.cut * 100)}%` : 'No fee, no cut, no help';
+// ---------- agent ----------
+function viewAgent() {
+  const p = S.player, ovr = calcOVR(), cur = p.agent || 0, a = agent();
+  const me = `<section class="card hero"><h2>Your agent</h2>
+    <div class="kv"><div><small>Agent</small><b>${a.name}</b></div><div><small>Their cut</small><b>${cur ? `${Math.round(a.cut * 100)}%` : '–'}</b></div><div><small>Per week</small><b class="num ${cur ? 'bad' : ''}">${cur ? `−${money(agentCut())}` : '–'}</b></div></div>
+    <div class="small muted">${cur ? `Bigger wage offers (+${Math.round(a.wage * 100)}%), better odds in salary talks (+${Math.round(a.neg * 100)}%) and ${a.offers}× the club interest.${cur >= 4 ? ' Buying clubs also allow one extra round of talks.' : ''}` : 'You handle your own deals. An agent gets you bigger offers, more clubs calling and better odds in salary talks, and can tell the world which club you dream of joining.'}</div></section>`;
+  // Dream club: status, then the button to name one.
+  const w = p.wish && club(p.wish);
+  const status = !w ? '' : p.wishPending
+    ? `<div class="row"><span class="clubcell">${crest(p.wish, 'mini')}<b>${esc(w.name)}</b></span><span class="chip flood">Waiting</span></div><div class="small muted">They decide at the transfer window. Chance: ${wishOdds(p.wish).toLowerCase()}.</div>`
+    : `<div class="row"><span class="clubcell">${crest(p.wish, 'mini')}<b>${esc(w.name)}</b></span>${p.wishResult === 'offer' ? '<span class="chip good">Offered</span>' : p.wishResult === 'no' ? '<span class="chip bad">No bid</span>' : `<span class="small muted">${seasonLabel(p.wishSeason)}</span>`}</div>`;
+  const why = !cur ? 'You need an agent to do this.' : p.loan ? 'Not while you are on loan.' : p.wishSeason === S.season ? 'You can name a dream club once per season.' : '';
+  const dream = `<section class="card"><h2>Dream club</h2><p class="small muted" style="margin:0">Name any club in the game. ${esc(myClub().mgr)} and the board will not like it (manager −10, board −12). The club still decides for itself: going public makes them a bit more likely to bid, but nothing is guaranteed. If they bid, it is a normal offer you can negotiate.</p>
+    ${status}<div class="btns"><button class="btn primary sm" data-act="wishAsk" ${canAnnounce() ? '' : 'disabled'}>Announce dream club</button></div>${why ? `<div class="small muted">${why}</div>` : ''}</section>`;
+  const log = (p.agentLog || []).slice().reverse().slice(0, 12);
+  const msgs = `<section class="card"><h2>Messages</h2>${log.length ? `<div class="inbox">${log.map(m => `<div class="msg ${m.kind}">${esc(m.text)}<small>${seasonLabel(m.season)} · Week ${Math.min(m.week, SEASON_WEEKS)}</small></div>`).join('')}</div>` : '<span class="small muted">No messages from your agent yet.</span>'}</section>`;
+  const rows = AGENTS.map((ag, i) => {
+    const locked = ovr < ag.minOvr, poor = p.money < ag.fee;
+    const perks = i ? `+${Math.round(ag.wage * 100)}% wage offers · +${Math.round(ag.neg * 100)}% talk success · ${ag.offers}× club interest · takes ${Math.round(ag.cut * 100)}%` : 'No fee, no cut, no help';
     return `<button class="house ${cur === i ? 'on' : ''}" data-act="agent" data-v="${i}" ${cur !== i && (locked || poor) ? 'disabled' : ''}>
-      <span><b>${a.name}</b><br><span class="small muted">${a.desc}</span><br><span class="small">${perks}</span>${locked ? `<br><span class="small bad">Only takes players rated ${a.minOvr}+</span>` : ''}</span><span class="num small">${a.fee ? money(a.fee) : 'Free'}</span></button>`;
+      <span><b>${ag.name}</b><br><span class="small muted">${ag.desc}</span><br><span class="small">${perks}</span>${locked ? `<br><span class="small bad">Only takes players rated ${ag.minOvr}+</span>` : ''}</span><span class="num small">${ag.fee ? money(ag.fee) : 'Free'}</span></button>`;
   }).join('');
-  const wish = p.wish && club(p.wish) ? `<div class="small flood">Dream move: ${esc(club(p.wish).name)} are keeping an eye on you.</div>` : '';
-  const btn = cur ? `<button class="btn sm" data-act="wishAsk" ${canAnnounce() ? '' : 'disabled'}>Announce dream club</button>${canAnnounce() ? '' : `<span class="small muted"> ${p.loan ? 'Not while on loan.' : 'Once per season.'}</span>`}` : '';
-  return `<section class="card"><h2>Agent</h2><p class="small muted" style="margin:0">A better agent gets you bigger offers, more clubs calling and a better chance in salary talks. You pay a fee to sign them, then they take a cut of your wage every week.</p>
-    ${wish}${btn ? `<div class="btns">${btn}</div>` : ''}<div class="inbox">${rows}</div></section>`;
+  const hire = `<section class="card"><h2>Agents</h2><p class="small muted" style="margin:0">Pay a fee to sign an agent, then they take a cut of your wage every week. The best agents only take players who are already good. You have ${money(p.money)}.</p><div class="inbox">${rows}</div></section>`;
+  return me + dream + msgs + hire;
 }
 
+// Pick a dream club from any league in the game.
+let wishLeague = null;
 function showWishSheet() {
-  const list = wishClubs().map(c => `<button class="house" data-act="wishGo" data-v="${c.id}"><span class="clubcell">${crest(c.id, 'mini')}<span><b>${esc(c.name)}</b><br><span class="small muted">${esc(league(c.league).name)} · Team rating ${Math.round(teamStrength(c))}</span></span></span></button>`).join('');
-  openModal(`<h3>Announce your dream club</h3><p class="muted small" style="margin:0">Your agent tells the press where you want to play. ${esc(myClub().mgr)} and the board will not like it (manager −10, board −12), but the club you name will watch you closely and be a little more likely to make an offer.</p><div class="inbox" style="max-height:50vh;overflow:auto">${list || '<span class="small muted">No realistic clubs right now.</span>'}</div><button class="btn block" data-act="close">Cancel</button>`);
+  const lid = wishLeague || myClub().league;
+  const opts = S.leagues.map(l => `<option value="${l.id}" ${l.id === lid ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
+  const list = league(lid).clubs.map(club).filter(c => c.id !== S.player.club).sort((a, b) => teamStrength(b) - teamStrength(a)).map(c => {
+    const odds = isBanned(c.id) ? 'Will not talk to you' : `Chance: ${wishOdds(c.id).toLowerCase()}`;
+    return `<button class="house" data-act="wishGo" data-v="${c.id}" ${isBanned(c.id) ? 'disabled' : ''}><span class="clubcell">${crest(c.id, 'mini')}<span><b>${esc(c.name)}</b><br><span class="small muted">Team rating ${Math.round(teamStrength(c))} · ${odds}</span></span></span></button>`;
+  }).join('');
+  openModal(`<h3>Announce your dream club</h3><select data-act="wishLeague" class="pick">${opts}</select><div class="inbox" style="max-height:50vh;overflow:auto">${list}</div><button class="btn block" data-act="close">Cancel</button>`);
 }
 
 // ---------- club ----------
@@ -927,6 +947,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   if (e.target.dataset && e.target.dataset.act === 'league') { viewLeague = e.target.value; render(); }
+  if (e.target.dataset && e.target.dataset.act === 'wishLeague') { wishLeague = e.target.value; showWishSheet(); }
 });
 
 modal.addEventListener('click', e => { if (e.target === modal) { closeModal(); render(); } });

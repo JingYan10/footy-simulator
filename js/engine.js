@@ -820,36 +820,71 @@ function hireAgent(i) {
   return true;
 }
 
-// Clubs your agent could talk up as your dream move: a little above your level at most.
-function wishClubs() {
-  const p = S.player, ovr = calcOVR(), reach = ovr + 6 + (p.agent || 0);
-  return Object.values(S.clubs).filter(c => c.id !== p.club && !(p.loan && c.id === p.loan.parent) && !isBanned(c.id) && teamStrength(c) <= reach && teamStrength(c) >= ovr - 8)
-    .sort((a, b) => teamStrength(b) - teamStrength(a)).slice(0, 30);
+// Your agent's messages to you, newest last, shown in the Agent tab.
+function agentSay(text, kind = 'info') {
+  const p = S.player;
+  p.agentLog = [...(p.agentLog || []), { text, kind, season: S.season, week: S.week }].slice(-30);
+  msg(`Agent: ${text}`, kind);
 }
+
 const canAnnounce = () => (S.player.agent || 0) > 0 && S.player.wishSeason !== S.season && !S.player.loan;
 
-// Your agent tells the press which club you dream of joining. Your manager and board take it
-// badly; that club starts watching you, which makes an offer from them a little more likely.
+// Your agent tells the press which club you dream of joining: any club in the game. Your manager
+// and board take it badly. The club still decides for itself at the next transfer window; going
+// public only makes them a bit more likely to bid than they would be anyway.
 function announceWish(id) {
   const p = S.player;
-  if (!canAnnounce()) return false;
+  if (!canAnnounce() || id === p.club || !club(id)) return false;
   p.wish = id;
   p.wishSeason = S.season;
+  p.wishPending = true;
+  p.wishResult = null;
+  p.wishAt = absWeek();
   changeAff(-10);
   changeBoard(-12);
-  msg(`Your agent told the press you would love to play for ${club(id).name}. ${myClub().mgr} and the board are not happy (manager −10, board −12).`, 'bad');
-  notify('info', 'Dream move made public', `${club(id).name} have heard. Their scouts will be keeping an eye on you.`);
+  msg(`You told the press you would love to play for ${club(id).name}. ${myClub().mgr} and the board are not happy (manager −10, board −12).`, 'bad');
+  agentSay(`I have let ${club(id).name} know you want to join. They will decide ${inWindow() ? 'in the next couple of weeks' : 'when the next transfer window opens'}; I will tell you what they say.`);
+  // In the summer there are no weeks to wait through: they answer straight away.
+  if (S.phase === 'offseason') resolveWish();
   checkTermination();
   save();
   return true;
 }
 
-// Chance the club you named comes in for you when offers go out.
-function wishChance() {
-  const p = S.player;
-  if (!p.wish || p.wish === p.club || isBanned(p.wish) || S.offers.some(o => o.club === p.wish)) return 0;
-  const gap = teamStrength(club(p.wish)) - calcOVR();
-  return clamp(.15 + (p.agent || 0) * .02 - Math.max(0, gap) * .025, .03, .3);
+// How likely the club is to bid: about what it would be anyway, plus a little for going public.
+// A club far above your level is very unlikely to come, however loudly you ask.
+function wishChance(id = S.player.wish) {
+  const p = S.player, c = club(id);
+  if (!c || isBanned(id)) return 0;
+  const s = teamStrength(c), reach = calcOVR() + 2 + p.rep / 30;
+  const normal = s <= reach ? .3 + p.rep / 300 : Math.max(0, .3 - (s - reach) * .05);
+  return clamp(normal * (1.25 + (p.agent || 0) * .04), .01, .75);
+}
+const wishOdds = id => { const c = wishChance(id); return c >= .4 ? 'Good' : c >= .25 ? 'Fair' : c >= .1 ? 'Low' : c > .01 ? 'Very low' : 'Almost none'; };
+
+// At the transfer window the club makes up its mind, and your agent tells you why.
+function resolveWish() {
+  const p = S.player, c = club(p.wish);
+  if (!p.wishPending || !c) return;
+  if (p.wish === p.club) { p.wishPending = false; return; }
+  if (isBanned(p.wish)) { p.wishPending = false; agentSay(`${c.name} will not talk to us. They have not forgiven you for joining their rivals.`, 'bad'); return; }
+  if (offerLocked()) { agentSay(`Clubs will not bid while you are settling in at ${myClub().name}. ${c.name} will look again at the next window.`); return; }
+  p.wishPending = false;
+  if (S.offers.some(o => o.club === p.wish)) { p.wishResult = 'offer'; agentSay(`${c.name} already have an offer on the table for you.`, 'good'); return; }
+  if (Math.random() < wishChance()) {
+    S.offers.push(makeOffer(c, 'transfer'));
+    p.wishResult = 'offer';
+    agentSay(`Great news: ${c.name} have made you an offer! It is on your Home screen.`, 'good');
+    notify('good', `${c.name} want you!`, 'Your agent says your dream club have made an offer.');
+    return;
+  }
+  const gap = teamStrength(c) - calcOVR();
+  const why = gap > 8 ? `they think you are not ready for their level yet (team rating ${Math.round(teamStrength(c))}, you are ${calcOVR()})`
+    : gap > 3 ? 'they like you, but went for a more experienced player'
+    : pick(['they are happy with the players they have in your position', 'the board would not approve the budget', 'their manager prefers another target']);
+  p.wishResult = 'no';
+  agentSay(`${c.name} have decided not to bid: ${why}. You can name a dream club again next season.`, 'bad');
+  notify('bad', 'No move to your dream club', `${c.name} decided not to make an offer.`);
 }
 
 function setHouse(i) { S.player.house = i; msg(`Moved into a ${HOUSING[i].name.toLowerCase()} (${money(HOUSING[i].rent)}/week).`); save(); }
@@ -1087,6 +1122,8 @@ function advanceWeek() {
   // January transfer window
   if (S.week === JAN_WINDOW[0]) { msg('The January transfer window is open.'); windowOffers(); }
   else if (S.week > JAN_WINDOW[0] && S.week <= JAN_WINDOW[1] && Math.random() < (p.listed ? .7 : .35)) generateOffers(1);
+  // A dream club named during the window answers within two weeks, or before it shuts.
+  if (p.wishPending && S.week > JAN_WINDOW[0] && S.week <= JAN_WINDOW[1] && (absWeek() - p.wishAt >= 2 || S.week === JAN_WINDOW[1])) resolveWish();
   if (S.week === JAN_WINDOW[1] + 1) { expireOffers('transfer'); msg('The January transfer window has closed.'); }
 
   S.lastMatch = report;
@@ -1187,8 +1224,6 @@ function generateOffers(count, guarantee = false) {
   let added = 0;
   const names = [];
   const add = c => { S.offers.push(makeOffer(c, 'transfer')); added++; names.push(c.name); msg(`${c.name} (${league(c.league).name}) have made you an offer.`, 'good'); };
-  // The club you publicly want to join has been watching.
-  if (Math.random() < wishChance() && teamStrength(club(p.wish)) <= reach + 4) add(club(p.wish));
   for (const c of pool.slice(0, 24)) {
     if (added >= count) break;
     // Silver: second-tier clubs are much keener, top-flight clubs a little.
@@ -1211,6 +1246,7 @@ function generateOffers(count, guarantee = false) {
 // Offers when a window opens: more for a breakout season or a transfer request.
 function windowOffers() {
   const { breakout } = scoutBuzz(), p = S.player;
+  resolveWish();
   if (offerLocked()) { msg('Clubs are leaving you to settle in at your new club: no transfer offers this window.'); return; }
   // A club you agreed to listen to comes back with a bid.
   if (p.interested && p.interested !== p.club && !isBanned(p.interested) && !S.offers.some(o => o.club === p.interested)) S.offers.push(makeOffer(club(p.interested), 'transfer'));
