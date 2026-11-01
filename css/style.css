@@ -275,3 +275,24 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .savebox { width: 100%; min-height: 120px; font: 12px/1.4 ui-monospace, monospace; background: var(--surface-2); color: var(--chalk); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 .tie.me { box-shadow: inset 3px 0 var(--flood); padding-left: 8px; }
 .tie.me span { color: var(--chalk); }
+
+/* Career history: one block per season, clubs side by side */
+details.season { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+details.season > summary { list-style: none; cursor: pointer; }
+details.season > summary::-webkit-details-marker { display: none; }
+details.season[open] { background: var(--surface-2); }
+.spells { display: grid; gap: 8px; margin-top: 8px; }
+.spells.n2 { grid-template-columns: 1fr 1fr; }
+.spell { min-width: 0; }
+.spell .club { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spellstats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; margin-top: 4px; }
+.spellcomps { min-width: 0; }
+table.comps td, table.comps th { font-size: 12px; }
+.compline { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.compline:last-child { border-bottom: 0; }
+
+/* Honours, Wikipedia style */
+.honteam { margin-top: 10px; }
+.honhead { font-size: 15px; }
+.honline { font-size: 14px; padding: 3px 0 3px 12px; border-left: 2px solid var(--flood); margin: 4px 0 0 2px; }
+.honline b { color: var(--flood); }

@@ -5,6 +5,7 @@ const modal = document.getElementById('modal');
 let tab = 'home';
 let clubView = 'table';
 let viewLeague = null;
+let honTab = 'ind';
 const draft = { name: '', nat: 'ENG', pos: 'ST' };
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -468,12 +469,36 @@ function viewShop() {
     <div class="row small"><span class="muted">Sponsors (reputation ${Math.round(p.rep)})</span><b class="num">${money(sponsorIncome())}/wk</b></div>
     <div class="row small"><span class="muted">Rent</span><b class="num bad">−${money(HOUSING[p.house].rent)}/wk</b></div>
     <div class="row small"><span class="muted">Equipment</span><b class="num bad">−${money(EQUIP_TIERS[p.equip].fee)}/wk</b></div>
-    <div class="row"><span>Net per week</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${money(weeklyNet())}</b></div></section>`;
-  const tiers = EQUIP_TIERS.map((t, i) => `<button class="house tier-${t.name.toLowerCase()} ${p.equip === i ? 'on' : ''}" data-act="equip" data-v="${i}" ${i && p.equip !== i && p.money < t.fee ? 'disabled' : ''}>
-      <span><b class="tiername">${t.name}</b> · ×${t.mult} training XP${t.energy ? ` · +${t.energy} energy` : ''}<br><span class="small muted">${t.desc}</span></span><span class="num small">${t.fee ? `${money(t.fee)}/wk` : 'Free'}</span></button>`).join('');
+    ${p.agent ? `<div class="row small"><span class="muted">Agent (${Math.round(agent().cut * 100)}% of wage)</span><b class="num bad">−${money(agentCut())}/wk</b></div>` : ''}
+    <div class="row"><span>Net per week</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${money(weeklyNet())}</b></div>
+    <div class="row small"><span class="muted">Bank</span><b class="num">${money(p.money)}</b></div></section>`;
+  const tiers = EQUIP_TIERS.map((t, i) => {
+    const cost = equipCost(i), owned = i && !cost;
+    return `<button class="house tier-${t.name.toLowerCase()} ${p.equip === i ? 'on' : ''}" data-act="equip" data-v="${i}" ${i && p.equip !== i && p.money < cost + t.fee ? 'disabled' : ''}>
+      <span><b class="tiername">${t.name}</b> · ×${t.mult} training XP${t.energy ? ` · +${t.energy} energy` : ''}<br><span class="small muted">${t.desc}</span></span><span class="num small r">${!i ? 'Free' : `${owned ? 'Owned' : money(cost)}<br><span class="muted">${money(t.fee)}/wk</span>`}</span></button>`;
+  }).join('');
   const houses = HOUSING.map((h, i) => `<button class="house ${p.house === i ? 'on' : ''}" data-act="house" data-v="${i}">
       <span><b>${h.name}</b><br><span class="small muted">${h.energy ? `+${h.energy} energy/week` : 'No energy bonus'}</span></span><span class="num small">${money(h.rent)}/wk</span></button>`).join('');
-  return fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Paid weekly; if you run out of money you drop back to Normal.</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing</h2><div class="inbox">${houses}</div></section>`;
+  return fin + agentCard() + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing</h2><div class="inbox">${houses}</div></section>`;
+}
+
+function agentCard() {
+  const p = S.player, ovr = calcOVR(), cur = p.agent || 0;
+  const rows = AGENTS.map((a, i) => {
+    const locked = ovr < a.minOvr, poor = p.money < a.fee;
+    const perks = i ? `+${Math.round(a.wage * 100)}% wage offers · +${Math.round(a.neg * 100)}% talk success · ${a.offers}× club interest · takes ${Math.round(a.cut * 100)}%` : 'No fee, no cut, no help';
+    return `<button class="house ${cur === i ? 'on' : ''}" data-act="agent" data-v="${i}" ${cur !== i && (locked || poor) ? 'disabled' : ''}>
+      <span><b>${a.name}</b><br><span class="small muted">${a.desc}</span><br><span class="small">${perks}</span>${locked ? `<br><span class="small bad">Only takes players rated ${a.minOvr}+</span>` : ''}</span><span class="num small">${a.fee ? money(a.fee) : 'Free'}</span></button>`;
+  }).join('');
+  const wish = p.wish && club(p.wish) ? `<div class="small flood">Dream move: ${esc(club(p.wish).name)} are keeping an eye on you.</div>` : '';
+  const btn = cur ? `<button class="btn sm" data-act="wishAsk" ${canAnnounce() ? '' : 'disabled'}>Announce dream club</button>${canAnnounce() ? '' : `<span class="small muted"> ${p.loan ? 'Not while on loan.' : 'Once per season.'}</span>`}` : '';
+  return `<section class="card"><h2>Agent</h2><p class="small muted" style="margin:0">A better agent gets you bigger offers, more clubs calling and a better chance in salary talks. You pay a fee to sign them, then they take a cut of your wage every week.</p>
+    ${wish}${btn ? `<div class="btns">${btn}</div>` : ''}<div class="inbox">${rows}</div></section>`;
+}
+
+function showWishSheet() {
+  const list = wishClubs().map(c => `<button class="house" data-act="wishGo" data-v="${c.id}"><span class="clubcell">${crest(c.id, 'mini')}<span><b>${esc(c.name)}</b><br><span class="small muted">${esc(league(c.league).name)} · Team rating ${Math.round(teamStrength(c))}</span></span></span></button>`).join('');
+  openModal(`<h3>Announce your dream club</h3><p class="muted small" style="margin:0">Your agent tells the press where you want to play. ${esc(myClub().mgr)} and the board will not like it (manager −10, board −12), but the club you name will watch you closely and be a little more likely to make an offer.</p><div class="inbox" style="max-height:50vh;overflow:auto">${list || '<span class="small muted">No realistic clubs right now.</span>'}</div><button class="btn block" data-act="close">Cancel</button>`);
 }
 
 // ---------- club ----------
@@ -568,11 +593,81 @@ function cupsView() {
 
 // ---------- career ----------
 function careerTables(p = S.player) {
-  const rows = p.career.slice().reverse().map(r => `<tr><td>${seasonLabel(r.season)}</td><td class="clubname">${r.club}</td><td class="r">${r.apps}</td><td class="r">${r.goals}</td><td class="r">${r.assists}</td><td class="r">${r.apps ? r.avg.toFixed(2) : '–'}</td><td class="r">${r.ovr}</td></tr>`).join('');
-  const honours = [...p.trophies.map(t => `${t.name} (${t.club})`), ...p.awards.map(a => a.name)];
-  const seasons = [...p.trophies.map(t => t.season), ...p.awards.map(a => a.season)];
-  return `<section class="card"><h2>Career history</h2>${rows ? `<div class="tablewrap"><table><thead><tr><th>Season</th><th>Club</th><th class="r">App</th><th class="r">G</th><th class="r">A</th><th class="r">Avg</th><th class="r">OVR</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<span class="small muted">Your first season is under way.</span>'}</section>
-    <section class="card"><h2>Honours</h2>${honours.length ? `<div class="inbox">${honours.map((h, i) => `<div class="award">${esc(h)} <span class="small muted">${seasonLabel(seasons[i])}</span></div>`).join('')}</div>` : '<span class="small muted">No trophies yet.</span>'}</section>`;
+  return careerHistory(p) + honoursCardTabs(p);
+}
+
+// Crest for a career row, only when that club exists in the save on screen.
+function rowCrest(r) {
+  if (!S || !S.clubs) return '';
+  const name = r.club.replace(' (loan)', ''), c = (r.clubId && S.clubs[r.clubId] && S.clubs[r.clubId].name === name) ? S.clubs[r.clubId] : clubByName(name);
+  return c ? crest(c.id, 'mini') : '';
+}
+
+// SofaScore-style history: one block per season, clubs side by side, tap for every competition.
+function careerHistory(p = S.player) {
+  const rows = p.career.slice();
+  if (p === S?.player && S.phase === 'season' && p.st && p.st.apps + p.st.cup.apps > 0) rows.push({ ...careerRow(p.st, myClub()), live: true });
+  if (!rows.length) return '<section class="card"><h2>Career history</h2><span class="small muted">Your first season is under way.</span></section>';
+  const bySeason = {};
+  rows.forEach(r => (bySeason[r.season] = bySeason[r.season] || []).push(r));
+  const line = (n, c) => `<tr><td>${esc(n)}</td><td class="r">${c.apps}</td><td class="r">${c.goals}</td><td class="r">${c.assists}</td><td class="r">${c.apps ? (c.rsum / c.apps).toFixed(2) : '–'}</td></tr>`;
+  const compTable = list => `<div class="tablewrap"><table class="comps"><thead><tr><th>Competition</th><th class="r">App</th><th class="r">G</th><th class="r">A</th><th class="r">Avg</th></tr></thead><tbody>${list.map(([n, c]) => line(n, c)).join('')}</tbody></table></div>`;
+  const ORDER = { league: 0, cup: 1, euro: 2 };
+  const seasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a).map(s => {
+    const spells = bySeason[s];
+    const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><b class="club">${esc(r.club)}</b><div class="small muted">${esc(r.league)}</div></div></div>
+      <div class="spellstats"><span><b>${r.apps}</b> apps</span><span><b>${r.goals}</b> G</span><span><b>${r.assists}</b> A</span><span><b>${r.apps ? r.avg.toFixed(2) : '–'}</b></span></div></div>`).join('');
+    const clubParts = spells.map(r => {
+      const list = Object.entries(r.comps || {}).filter(([, c]) => c.kind !== 'nat').sort((a, b) => ORDER[a[1].kind] - ORDER[b[1].kind]);
+      // Two clubs side by side are too narrow for a table: one line per competition instead.
+      const compact = list.map(([n, c]) => `<div class="compline"><span>${esc(n)}</span><span class="small muted">${c.apps} apps · ${c.goals} G · ${c.assists} A</span></div>`).join('');
+      return `<div class="spellcomps">${list.length ? (spells.length > 1 ? compact : compTable(list)) : '<span class="small muted">No breakdown recorded for this season.</span>'}</div>`;
+    }).join('');
+    const nat = spells.flatMap(r => Object.entries(r.comps || {}).filter(([, c]) => c.kind === 'nat'));
+    const ovr = spells[spells.length - 1].ovr;
+    return `<details class="season"><summary><div class="row"><b>${seasonLabel(s)}${spells.some(r => r.live) ? ' <span class="small flood">ongoing</span>' : ''}</b><span class="small muted">OVR ${ovr} ▾</span></div><div class="spells n${Math.min(spells.length, 2)}">${cards}</div></summary>
+      <div class="spells n${Math.min(spells.length, 2)}">${clubParts}</div>
+      ${nat.length ? `<div class="small muted" style="margin-top:8px">${esc(natName(p.nat))}</div>${compTable(nat)}` : ''}</details>`;
+  }).join('');
+  return `<section class="card"><h2>Career history</h2><p class="small muted" style="margin:0">Tap a season to see every competition you played in.</p>${seasons}</section>`;
+}
+
+// Honours split into what you won yourself, with your clubs and with your country.
+const NAT_EVENT = /^(World Cup|European Championship|Copa América|AFC Asian Cup|Africa Cup of Nations)\b/;
+function honoursCardTabs(p = S.player) {
+  const natNames = new Set(Object.keys({ ...NATIONS, ...(typeof EXTRA_NATIONS !== 'undefined' ? EXTRA_NATIONS : {}) }).map(natName));
+  const isNatTrophy = t => t.nat || natNames.has(t.club);
+  const groups = {
+    ind: p.awards.filter(a => !(a.nat || NAT_EVENT.test(a.name))).map(a => ({ name: a.name, season: a.season })),
+    club: p.trophies.filter(t => !isNatTrophy(t)).map(t => ({ name: t.name, sub: t.club, season: t.season })),
+    nat: [...p.trophies.filter(isNatTrophy).map(t => ({ name: t.name, season: t.season })), ...p.awards.filter(a => a.nat || NAT_EVENT.test(a.name)).map(a => ({ name: a.name, season: a.season }))],
+  };
+  // The same honour won more than once shows as one line with a count and every season.
+  const grouped = list => {
+    const m = new Map();
+    list.forEach(h => { const k = h.name + '|' + (h.sub || ''); const g = m.get(k) || { ...h, seasons: [] }; g.seasons.push(h.season); m.set(k, g); });
+    return [...m.values()].sort((a, b) => b.seasons.length - a.seasons.length || Math.min(...a.seasons) - Math.min(...b.seasons));
+  };
+  const tabs = [['ind', 'Individual'], ['club', 'Club'], ['nat', 'Country']];
+  const list = grouped(groups[honTab] || []);
+  const empty = { ind: 'No individual awards yet.', club: 'No club trophies yet.', nat: 'Nothing won with your country yet.' }[honTab];
+  // Club and Country read like a Wikipedia honours list: the team as a heading, then
+  // "Competition: season, season" under it.
+  // National tournaments are played in the summer after the season, so they show a single year.
+  const label = honTab === 'nat' ? s => String(START_YEAR + s + 1) : seasonLabel;
+  const hline = h => `<div class="honline"><b>${esc(h.name)}</b>: ${h.seasons.slice().sort((a, b) => a - b).map(label).join(', ')}</div>`;
+  const teamBlock = (name, items, crestHtml = '', sub = '') => `<div class="honteam"><div class="clubcell">${crestHtml}<span><b class="honhead">${esc(name)}</b>${sub ? `<div class="small muted">${sub}</div>` : ''}</span></div>${items.map(hline).join('')}</div>`;
+  let body;
+  if (honTab === 'club') {
+    const teams = new Map();
+    list.forEach(h => { const t = teams.get(h.sub) || []; t.push(h); teams.set(h.sub, t); });
+    // Clubs in the order you first won something there.
+    body = [...teams.entries()].sort((a, b) => Math.min(...a[1].flatMap(h => h.seasons)) - Math.min(...b[1].flatMap(h => h.seasons)))
+      .map(([name, items]) => { const c = S && S.clubs ? clubByName(name) : null; return teamBlock(name, items, c ? crest(c.id, 'mini') : ''); }).join('');
+  } else if (honTab === 'nat') body = teamBlock(natName(p.nat), list, '', `${p.caps || 0} caps · ${p.intlGoals || 0} goals`);
+  else body = `<div class="honteam">${list.map(hline).join('')}</div>`;
+  return `<section class="card"><h2>Honours</h2><div class="seg">${tabs.map(([k, l]) => `<button class="${honTab === k ? 'on' : ''}" data-act="honTab" data-v="${k}">${l} (${grouped(groups[k]).reduce((n, g) => n + g.seasons.length, 0)})</button>`).join('')}</div>
+    ${list.length ? body : honTab === 'nat' ? teamBlock(natName(p.nat), [], '', `${p.caps || 0} caps · ${p.intlGoals || 0} goals · nothing won yet`) : `<span class="small muted">${empty}</span>`}</section>`;
 }
 
 function viewCareer() {
@@ -787,6 +882,10 @@ document.addEventListener('click', e => {
     case 'popNext': closePopup(); return;
     case 'findClubs': toast(findClubs() ? 'Your agent is making calls' : 'Try again next week'); render(); return;
     case "equip": if (setEquip(+v)) toast(`${EQUIP_TIERS[+v].name} equipment`); render(); return;
+    case 'agent': if (hireAgent(+v)) toast(+v ? `Signed: ${AGENTS[+v].name}` : 'Agent released'); render(); return;
+    case 'wishAsk': showWishSheet(); return;
+    case 'wishGo': if (announceWish(v)) toast('Dream move announced'); closeModal(); render(); return;
+    case 'honTab': honTab = v; render(); return;
     case "refresh": refreshStartChoices(); render(); window.scrollTo(0, 0); return;
     case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The board said no" : r === "soon" ? "Too soon to ask again" : r === "locked" ? "You only just re-signed" : "Not possible right now"); render(); return; }
     case 'summerPlay': { const r = playSummerStage(); render(); showSummerReport(r); return; }

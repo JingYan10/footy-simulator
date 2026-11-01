@@ -1,11 +1,14 @@
-Player = 
+Player = add 2 new roles for wide midfields(LM & RM) calculate the same like ea, add personal accolates like ballondor, European goldenboots leave golden boots, pfa player of the year and so on
+
 Body Condition - 
 
-OVR - 
+OVR - Getting injured should affect the ovr, if injured and perform still ok-ish, ovr should either drop a bit or remain depending on how ok it is. if injured, missed a quarter of the games, definitely an ovr drop but by how much should be logical. Age should also contribute to the ovr. makes it harder to increase and easier to go down.
 
 Salary- 
 
-Transfers - 
+Transfers - newly join a club, there wont be any offers coming your way for 6 months. i notice if i left half a season, the half a season wont count and it will be like a new season. fix that, when i join other clubs halfway into the season, i continue that season. i want to see that in my carrer history. like sofascore. 
+
+Joining a rival clubs for the first time like if i was at real madrid then i accept approach from Barcelona and join them, i will never receive any approach from real madrid ever again(show an alert for this, something like if u join rivals this club will hate u somewhere along the lines)
 
 Training Equipment - 
 _____________________________________________________________________________________________
@@ -14,7 +17,12 @@ Manager -
 
 Board -
 _____________________________________________________________________________________________
-Tournament = 
-_____________________________________________________________________________________________
-System = 
+Tournament = Afcon to add, league cups example copa del rey, fa cup carabao cup community shield, i assume u know the structure of the competitions and schedules. 
 
+call ups for national team depends on the countries squad. if there are 2 or more competitors of the same position, u wont be called up
+_____________________________________________________________________________________________
+System = make ovr leveling up quicker when u are below 65 ovr
+
+
+
+add the following leagues and the 2 leagues below them with the images of them just like the rest Saudi league, mls (eastern and western conference), portugese league, eredevise

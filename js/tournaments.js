@@ -478,6 +478,12 @@ function playSummerStage() {
       t.goals += user.goals;
       const my = t.my = t.my || { apps: 0, goals: 0, assists: 0, rsum: 0 };
       my.apps++; my.goals += user.goals; my.assists += user.assists; my.rsum += rating;
+      // Goes into the season just finished, under the club you ended it with.
+      const row = p.career.filter(r => r.season === S.season).pop();
+      if (row) {
+        addComp(row.comps = row.comps || {}, t.name.replace(/ \d{4}$/, ''), isNation(me) ? 'nat' : 'cup', 1, user.goals, user.assists, rating);
+        if (!isNation(me)) { row.apps++; row.goals += user.goals; row.assists += user.assists; }
+      }
       p.rep = clamp(p.rep + (rating - 6.4) * .6 + user.goals * .3, 0, 100);
       nudgeOvr(perfDelta(rating, user) * .5);
     }
@@ -530,7 +536,7 @@ function finishTournament(t) {
   const note = text => { if (S.seasonSummary && S.phase === 'offseason') S.seasonSummary.awards.push(text); else (S.cupWins = S.cupWins || []).push(text); };
   const label = t.name.replace(/ \d{4}$/, '');
   if (mine) {
-    p.trophies.push({ name: label, club: teamName(t.winner), season: t.season });
+    p.trophies.push({ name: label, club: teamName(t.winner), season: t.season, nat: isNation(t.winner) });
     p.rep = clamp(p.rep + (t.rep || (t.key === 'UCL' || t.key === 'WC' ? 8 : 5)), 0, 100);
     nudgeOvr((t.rep && t.rep < 4 ? .2 : .5) * growthFactor());
     msg(`You won the ${t.name}!`, 'good');
@@ -548,7 +554,7 @@ function finishTournament(t) {
   if (my.apps >= 4 && avg >= 7.4 && (deep || avg >= 7.9)) won.push(t.key === 'UCL' ? 'Champions League Player of the Season' : `${label} Golden Ball`);
   else if (t.key !== 'UCL' && ageOf(p.by) <= 21 && my.apps >= 3 && avg >= 7.1) won.push(`${label} Best Young Player`);
   won.forEach(a => {
-    p.awards.push({ name: a, season: t.season });
+    p.awards.push({ name: a, season: t.season, nat: !!t.mine && isNation(t.mine) });
     p.rep = clamp(p.rep + 3, 0, 100);
     note(a);
     msg(`You won the ${a}!`, 'good');

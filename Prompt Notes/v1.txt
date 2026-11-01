@@ -22,7 +22,6 @@ training equipment - different tier of equipment comes with different price rang
 
 transfers - allow to ask for transfers (will lower affections from board and manager). clubs approaching chances will be similar to how it goes base on your ovr as stated in the ovr section
 
-luck - slim chances of getting into and starting clubs in top 5 leagues, medium chance of getting into and starting for 1st tier clubs, and alot of chance getting into and starting for 2nd tier clubs
 _____________________________________
 Clubs = 
 manager affection - will give u objectives to achieve for one month, 3 months and a season like goals if u are a forward, goals and assist if u are a midlfielder, will love u if u hit 95% of the time and more likely to raise salary cap if u nego for saalary, if u hit between 80-95% of the objectives will be a little likely to raise salary cap if u nego for salary, affection still loves u just not as much as 95%. if u hit between 70-80%, slim chance for salary nego above market, and affection will only raise a little. if u hit between 60%-70% of the objectives, u wont get a salary nego above market price. the objective difficuly will be based on the level of the league u r in. will increase in affection if u deny viles rumours and reject incoming transfer request approach from other clubs, will love u more if u reject from rivals. Affection will do a quick math
@@ -32,10 +31,6 @@ will give u task and ask u to execute his in game start from time to time, not e
 board affection - 
 
 Tournaments =
-UEFA games(champions league, Europa league, conference league, Euro)
-Fifa games(world cup, club world cup)
-AFC 
-Copa
 
 System= have a eye catching soothing pop up can make like a fireworks gif for good events and a slight dark or depressing gif animated for bad events for any event happening like u joined a new club, u signed a new contract, u got injured, u got approach by another club etc
 
