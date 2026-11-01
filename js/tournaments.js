@@ -219,21 +219,35 @@ function simTeams(h, a, user, home = 2) {
   }
   const gh = poisson(1.35 * Math.exp((sh - sa + home) / 13));
   const ga = poisson(1.35 * Math.exp((sa - sh - home) / 13));
-  const scorers = [];
+  const scorers = [], onPitch = userMinutes(user);
+  // A teammate who set it up, never the scorer.
+  const helper = (id, n) => { for (let k = 0; k < 4; k++) { const x = scorerName(id); if (x !== n) return x; } return null; };
   const credit = (id, goals, mine) => {
     const str = mine ? (mineHome ? sh : sa) : 0;
     for (let i = 0; i < goals; i++) {
+      let goal = null;
       if (mine && user.mins) {
         const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / str, 3) * user.mins / 90, 0, .7);
-        if (Math.random() < pGoal) { user.goals++; scorers.push({ n: p.name, me: true, home: id === h }); continue; }
+        if (Math.random() < pGoal) {
+          user.goals++;
+          goal = { n: p.name, me: true, home: id === h, min: randi(...onPitch) };
+          if (Math.random() < .7) goal.ast = helper(id, p.name);
+          scorers.push(goal);
+          continue;
+        }
         const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / str, 2) * user.mins / 90 * 1.3, 0, .7);
-        if (Math.random() < pAst) user.assists++;
+        if (Math.random() < pAst) { user.assists++; goal = { n: scorerName(id), home: id === h, min: randi(...onPitch), ast: p.name, astMe: true }; }
       }
-      scorers.push({ n: scorerName(id), home: id === h });
+      if (!goal) {
+        goal = { n: scorerName(id), home: id === h, min: randi(1, 90) };
+        if (Math.random() < .7) goal.ast = helper(id, goal.n);
+      }
+      scorers.push(goal);
     }
   };
   credit(h, gh, user && mineHome);
   credit(a, ga, user && !mineHome);
+  scorers.sort((x, y) => x.min - y.min);
   return { h, a, gh, ga, scorers };
 }
 

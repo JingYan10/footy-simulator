@@ -61,9 +61,9 @@ const WEIGHTS = Object.fromEntries(Object.entries(SUB_WEIGHTS).map(([pos, subs])
 // attribute gains, but it is priced so a lower-league wage takes a long time to afford it.
 const EQUIP_TIERS = [
   { name: 'Normal', buy: 0, fee: 0, mult: 1, energy: 0, desc: 'Club-issue kit and the public gym.' },
-  { name: 'Bronze', buy: 40000, fee: 2000, mult: 1.6, energy: 2, desc: 'Proper boots, a home gym and a ball machine.' },
-  { name: 'Silver', buy: 150000, fee: 6000, mult: 2.3, energy: 4, desc: 'Personal trainer, video analysis and recovery tools.' },
-  { name: 'Gold', buy: 750000, fee: 20000, mult: 3.2, energy: 6, desc: 'Elite performance team, nutritionist and cryo suite.' },
+  { name: 'Bronze', buy: 32000, fee: 1600, mult: 1.6, energy: 2, desc: 'Proper boots, a home gym and a ball machine.' },
+  { name: 'Silver', buy: 120000, fee: 5000, mult: 2.3, energy: 4, desc: 'Personal trainer, video analysis and recovery tools.' },
+  { name: 'Gold', buy: 600000, fee: 16000, mult: 3.2, energy: 6, desc: 'Elite performance team, nutritionist and cryo suite.' },
 ];
 
 // Agents: a one-off fee to sign, then a cut of your wage every week. Better agents get you
@@ -763,7 +763,7 @@ const leagueGrowth = (c = myClub()) => SLOW_GROWTH[league(c.league).nat] || 1;
 function growthFactor(lowBoost = true) {
   const age = ageOf(S.player.by), ovr = calcOVR();
   const ageF = age <= 21 ? 1.2 : age <= 25 ? 1 : age <= 29 ? .75 : age <= 31 ? .5 : age <= 33 ? .4 : .2;
-  const low = !lowBoost ? 1 : ovr < 60 ? 1.5 : ovr < 65 ? 1.3 : 1;
+  const low = !lowBoost ? 1 : ovr < 60 ? 2.2 : ovr < 65 ? 1.8 : 1;
   return ageF * low * leagueGrowth() * clamp(Math.pow(Math.max(0, MAX_OVR - ovr) / 20, 1.3), .06, 1);
 }
 
@@ -893,6 +893,11 @@ function sponsorIncome() { const r = S.player.rep; return Math.round(r * r * 4.5
 const agentCut = () => Math.round(S.player.wage * agent().cut);
 function weeklyCosts() { const p = S.player; return HOUSING[p.house].rent + EQUIP_TIERS[p.equip].fee + agentCut(); }
 function weeklyNet() { return S.player.wage + sponsorIncome() - weeklyCosts(); }
+// Physicality protects you: a strong body gets injured less often, and less badly.
+// 50 PHY is about normal risk; 90 is roughly half the injuries and a third of the serious ones.
+const physOf = () => S.player.attrs.PHY || 50;
+const injuryMult = () => clamp(1.15 - (physOf() - 50) * .015, .5, 1.45);
+const seriousChance = () => clamp(.12 - (physOf() - 60) * .0025, .03, .18);
 function energyRegen() { const p = S.player; return 30 + HOUSING[p.house].energy + EQUIP_TIERS[p.equip].energy; }
 
 // ---------- matches ----------
@@ -904,10 +909,15 @@ function nextFixture() {
   return { home: f[0], away: f[1], isHome: f[0] === p.club, opp: f[0] === p.club ? f[1] : f[0] };
 }
 
-function selection() {
+// The minutes you were on the pitch: from kick-off as a starter, the closing spell as a sub.
+const userMinutes = u => !u || !u.mins ? [1, 90] : u.start ? [1, Math.min(90, u.mins)] : [Math.max(1, 91 - u.mins), 90];
+
+function selection(domesticCup = false) {
   const p = S.player;
   if (p.injured) return { mins: 0, start: false };
-  const { start, subShare } = startChance();
+  let { start, subShare } = startChance();
+  // Managers rotate for domestic cups: fringe players get their chance to start.
+  if (domesticCup && start < .6 && p.energy >= 25) start = Math.max(start, .55 + start * .5);
   const r = Math.random();
   if (r < start) return { mins: randi(75, 90), start: true };
   if (r < start + (1 - start) * subShare) return { mins: randi(12, 35), start: false };
@@ -938,27 +948,31 @@ function playFixture(h, a, user) {
   const gh = poisson(1.45 * Math.exp((sh - sa + 2) / 13));
   const ga = poisson(1.15 * Math.exp((sa - sh - 2) / 13));
   recordResult(h, a, gh, ga);
-  const scorers = [];
+  const scorers = [], onPitch = userMinutes(user);
   const credit = (c, goals, mine) => {
     for (let i = 0; i < goals; i++) {
-      let s = null, myAssist = false;
+      let s = null, myAssist = false, goal = null;
       if (mine && user.mins) {
         const teamStr = teamStrength(c);
         const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / teamStr, 3) * user.mins / 90 * (user.own ? 1.3 : 1), 0, .7);
-        if (Math.random() < pGoal) { user.goals++; scorers.push({ n: p.name, me: true, home: c.id === h }); }
+        if (Math.random() < pGoal) { user.goals++; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch) }; }
         else {
           const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * 1.3 * (user.own ? 1.3 : 1), 0, .7);
           if (Math.random() < pAst) { user.assists++; myAssist = true; }
           s = aiScorer(c);
         }
       } else s = aiScorer(c);
-      if (s) { s.g++; scorers.push({ n: s.n, home: c.id === h }); }
+      if (s) { s.g++; goal = { n: s.n, home: c.id === h, min: myAssist ? randi(...onPitch) : randi(1, 90) }; }
+      if (!goal) continue;
       // Most goals have an assist; credit a teammate unless it was yours.
-      if (!myAssist && Math.random() < .7) { const a = aiAssister(c, s); if (a) a.as = (a.as || 0) + 1; }
+      if (myAssist) { goal.ast = p.name; goal.astMe = true; }
+      else if (Math.random() < .7) { const a = aiAssister(c, s); if (a) { a.as = (a.as || 0) + 1; goal.ast = a.n; } }
+      scorers.push(goal);
     }
   };
   credit(ch, gh, user && h === p.club);
   credit(ca, ga, user && a === p.club);
+  scorers.sort((x, y) => x.min - y.min);
   return { h, a, gh, ga, scorers };
 }
 
@@ -1041,7 +1055,7 @@ function advanceWeek() {
 
   // Midweek cup game (European or domestic), picked on how fresh you are after the weekend.
   const efx = midweekFixture();
-  const cupUser = efx ? { ...selection(), goals: 0, assists: 0 } : null;
+  const cupUser = efx ? { ...selection(!efx.euro), goals: 0, assists: 0 } : null;
   const euroRes = euroWeek(efx && efx.euro ? cupUser : null);
   const homeRes = cupWeek(efx && !efx.euro ? cupUser : null);
   const cupRes = euroRes || homeRes;
@@ -1078,11 +1092,11 @@ function advanceWeek() {
       setObjectives(OBJ_ORDER.filter(s => s !== 'season' || !p.objectives.some(o => o.span === 'season')));
     }
   } else {
-    let chance = .012 + (p.energy < 30 ? .05 : 0) + (p.trainedThisWeek || 0) * .004 + (user && user.mins ? .01 : 0) + (cupUser && cupUser.mins ? .01 : 0);
-    chance *= (1 - .1 * p.equip) * (ageOf(p.by) >= 32 ? 1.3 : 1);
+    let chance = .009 + (p.energy < 30 ? .045 : 0) + (p.trainedThisWeek || 0) * .003 + (user && user.mins ? .008 : 0) + (cupUser && cupUser.mins ? .008 : 0);
+    chance *= (1 - .1 * p.equip) * (ageOf(p.by) >= 32 ? 1.3 : 1) * injuryMult();
     if (Math.random() < chance) {
-      // Most knocks are short; about one in ten is a serious injury.
-      const serious = Math.random() < .1;
+      // Most knocks are short; a strong body makes a serious one rarer.
+      const serious = Math.random() < seriousChance();
       p.injured = serious ? randi(8, 20) : randi(1, 6);
       const kind = serious ? pick(['torn knee ligament', 'broken foot', 'torn hamstring', 'ruptured achilles', 'fractured ankle']) : pick(['hamstring strain', 'ankle sprain', 'calf tightness', 'knee knock', 'groin strain', 'thigh bruise']);
       msg(`Injury: ${kind}. Out for ${p.injured} week${p.injured > 1 ? 's' : ''}.`, 'bad');
@@ -1255,6 +1269,21 @@ function windowOffers() {
 }
 
 function expireOffers(type) { S.offers = S.offers.filter(o => o.type !== type); }
+
+// Summer only: wait a little longer for more clubs, three times per offseason.
+// Offers already on the table stay; new clubs add to them.
+const canRefreshOffers = () => S.phase === 'offseason' && (S.offerRerolls || 0) > 0 && (S.player.needsContract || !offerLocked());
+function refreshOffers() {
+  if (!canRefreshOffers()) return 0;
+  const p = S.player, before = S.offers.length;
+  S.offerRerolls--;
+  if (p.needsContract) generateOffers(randi(1, 3), true);
+  else generateOffers(randi(1, 2) + (scoutBuzz().breakout ? 1 : 0) + (p.listed ? 1 : 0));
+  const added = S.offers.length - before;
+  if (!added) msg('You waited, but no new clubs came forward.');
+  save();
+  return added;
+}
 
 // How far above market value a deal can go depends on your objective hit rate at this club.
 function wageCap(o) {
@@ -1652,6 +1681,7 @@ function endSeason() {
   p.objectives = [];
   p.order = null;
   expireOffers('transfer');
+  S.offerRerolls = 3;
   if (p.years <= 0) {
     if (p.loan) endLoan();
     S.offers = [];

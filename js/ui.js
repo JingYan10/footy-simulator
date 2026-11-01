@@ -19,6 +19,7 @@ const ICONS = {
   club: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
   agent: '<path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 7h18v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM3 12h18"/>',
   career: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',
+  contract: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>`;
 
@@ -148,10 +149,10 @@ function topbar() {
 }
 
 function nav() {
-  const tabs = [['home', 'Home'], ['train', 'Train'], ['shop', 'Shop'], ['agent', 'Agent'], ['club', 'Club'], ['career', 'Career']];
+  const tabs = [['home', 'Home'], ['train', 'Train'], ['contract', 'Contract'], ['shop', 'Shop'], ['agent', 'Agent'], ['club', 'Club'], ['career', 'Career']];
   return `<nav class="tabs"><div class="in">${tabs.map(([k, l]) => `
     <button class="${tab === k ? 'on' : ''}" data-act="tab" data-v="${k}" aria-label="${l}">
-      ${icon(k)}<span>${l}</span>${k === 'home' && S.offers.length ? '<i class="dot"></i>' : ''}${k === 'train' && S.phase === 'season' && S.player.slots > 0 && !S.player.injured ? '<i class="dot" style="background:var(--flood)"></i>' : ''}
+      ${icon(k)}<span>${l}</span>${k === 'contract' && S.offers.length ? '<i class="dot"></i>' : ''}${k === 'train' && S.phase === 'season' && S.player.slots > 0 && !S.player.injured ? '<i class="dot" style="background:var(--flood)"></i>' : ''}
     </button>`).join('')}</div></nav>`;
 }
 
@@ -161,7 +162,7 @@ function render() {
   if (!S) { renderCreate(); return; }
   if (S.phase === 'choose') { renderChoose(); return; }
   const scrollY = window.scrollY;
-  const views = { home: viewHome, train: viewTrain, shop: viewShop, agent: viewAgent, club: viewClub, career: viewCareer };
+  const views = { home: viewHome, train: viewTrain, contract: viewContract, shop: viewShop, agent: viewAgent, club: viewClub, career: viewCareer };
   app.innerHTML = topbar() + `<main class="wrap">${views[tab]()}</main>` + nav();
   window.scrollTo(0, scrollY);
   nextPopup();
@@ -206,8 +207,10 @@ document.addEventListener('load', e => {
 }, true);
 
 function offersHtml() {
-  if (!S.offers.length) return '';
-  return `<section class="card"><h2>Contract offers</h2>${S.offers.map(o => {
+  const summer = S.phase === 'offseason' && (S.offerRerolls || 0) > 0;
+  if (!S.offers.length && !summer) return '';
+  const refresh = summer ? `<button class="btn block" data-act="refreshOffers" ${canRefreshOffers() ? '' : 'disabled'}>Wait for more offers (${S.offerRerolls} left)</button>` : '';
+  return `<section class="card"><h2>Contract offers</h2>${S.offers.length ? '' : '<p class="small muted">No offers right now.</p>'}${S.offers.map(o => {
     const c = club(o.club), left = maxRounds(o) - o.rounds;
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
@@ -222,7 +225,7 @@ function offersHtml() {
       ${talk}
       <div class="btns"><button class="btn good sm" data-act="accept" data-v="${o.id}">Sign</button><button class="btn sm" data-act="negAsk" data-v="${o.id}" ${canNegotiate(o) ? '' : 'disabled'}>Negotiate</button><button class="btn sm" data-act="decline" data-v="${o.id}">Decline</button></div>
     </div>`;
-  }).join('')}</section>`;
+  }).join('')}${refresh}</section>`;
 }
 
 function lockWeekLabel(w = S.player.negLock) {
@@ -288,15 +291,46 @@ function orderBox() {
 
 function freeAgentView() {
   return `<section class="card hero"><h2>Free agent</h2><p style="margin:0">You have no club. You can't play until you sign for someone, but free agents can sign at any time.</p>
-    <button class="btn block" data-act="findClubs">Ask your agent to find clubs</button></section>` + offersHtml() + inboxHtml();
+    <button class="btn primary block" data-act="tab" data-v="contract">Find a club in Contract</button></section>` + inboxHtml();
+}
+
+// Home only points at the Contract tab, where the offers live.
+function offersBanner() {
+  const n = S.offers.length, waits = S.phase === 'offseason' && canRefreshOffers();
+  if (!n && !waits) return '';
+  return `<section class="card"><div class="row"><h2>Contract offers</h2><span class="chip ${n ? 'flood' : ''}">${n} waiting</span></div>
+    <button class="btn block" data-act="tab" data-v="contract">${n ? 'View offers' : 'Wait for offers'}</button></section>`;
+}
+
+function viewContract() {
+  const p = S.player;
+  if (S.phase === 'retired') return '<section class="card"><h2>Contract</h2><p class="muted" style="margin:0">You have retired.</p></section>';
+  if (p.needsContract) return `<section class="card hero"><h2>Free agent</h2><p class="bad" style="margin:0">${S.phase === 'offseason' ? 'Your contract has run out.' : 'You have no club.'} Sign with a club below to keep playing.</p>
+    <button class="btn block" data-act="findClubs">Ask your agent to find clubs</button></section>` + offersHtml();
+  return contractDetails() + offersHtml() + contractCard();
+}
+
+// The deal you are on now.
+function contractDetails() {
+  const p = S.player, home = club(p.loan ? p.loan.parent : p.club), mkt = marketWage(calcOVR(), myClub());
+  // In the summer the season just ended has already come off the contract.
+  const ends = S.season + p.years - (S.phase === 'offseason' ? 0 : 1), a = agent();
+  const pct = Math.round((p.wage / Math.max(1, mkt) - 1) * 100);
+  return `<section class="card hero"><div class="row"><div class="clubcell">${crest(home.id, 'small')}<div><div class="club">${home.name}</div><div class="small muted">${league(home.league).name}</div></div></div>
+      <span class="chip">${p.years > 0 ? `${p.years} yr${p.years !== 1 ? 's' : ''} left` : 'Expiring'}</span></div>
+    <div class="kv"><div><small>Wage</small><b class="num">${money(p.wage)}/wk</b></div><div><small>Per year</small><b class="num">${money(p.wage * 52)}</b></div><div><small>Expires</small><b>End of ${seasonLabel(ends)}</b></div></div>
+    <div class="kv"><div><small>Role</small><b class="${p.promise > 0 ? 'good' : ''}">${squadStatus()}${p.promise > 0 ? ' (promised)' : ''}</b></div><div><small>Market value</small><b class="num">${money(mkt)}/wk</b></div><div><small>vs market</small><b class="${pct >= 0 ? 'good' : 'bad'}">${pct >= 0 ? '+' : ''}${pct}%</b></div></div>
+    ${p.loan ? `<div class="small flood">On loan at ${myClub().name} until the end of the season. ${home.name} still pay your wage.</div>` : ''}
+    <div class="small muted">Agent: ${a.name}${agentCut() ? ` · takes ${money(agentCut())}/wk` : ''}</div>
+  </section>`;
 }
 
 function contractCard() {
   const p = S.player;
-  if (p.loan) return `<section class="card"><h2>Contract</h2><p class="small" style="margin:0">On loan from ${club(p.loan.parent).name} · ${money(p.wage)}/wk · ${p.years} year${p.years !== 1 ? 's' : ''} left</p></section>`;
+  if (p.loan) return '';
   const { breakout } = scoutBuzz();
-  return `<section class="card"><div class="row"><h2>Contract</h2><span class="small">${money(p.wage)}/wk · ${p.years} yr${p.years !== 1 ? 's' : ''}</span></div>
-    <div class="small muted">Market value for you here: about ${money(marketWage(calcOVR(), myClub()))}/wk${breakout ? ' · <span class="flood">Breakout season: top-flight scouts are watching</span>' : ''}</div>
+  return `<section class="card"><h2>Your options</h2>
+    ${breakout ? '<div class="small flood">Breakout season: top-flight scouts are watching.</div>' : ''}
     ${negLocked() ? `<div class="small muted">You just re-signed: no salary talks until about week ${lockWeekLabel()}.</div>` : ''}
     ${leagueGrowth() < 1 ? '<div class="small muted">Weaker league: your OVR grows about 40% slower here than in Europe.</div>' : ''}
     ${offerLocked() ? `<div class="small muted">Settling in: other clubs will not bid for you until about week ${lockWeekLabel(S.player.offerLock)}.</div>` : ''}
@@ -344,7 +378,7 @@ function viewHome() {
   const tbl = leagueTable(myClub().league), myPos = tbl.findIndex(r => r.id === p.club) + 1;
   const money_ = `<section class="card"><div class="row"><h2>This week</h2><span class="small">Table: <b>${S.table[p.club].p ? myPos + ordinal(myPos) : "–"}</b></span></div>
     <div class="row small"><span class="muted">Wage + sponsors − rent</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${weeklyNet() >= 0 ? '+' : ''}${money(weeklyNet())}</b></div></section>`;
-  return matchCard + offersHtml() + managerCard() + contractCard() + form + money_ + inboxHtml();
+  return matchCard + offersBanner() + managerCard() + form + money_ + inboxHtml();
 }
 
 // The midweek cup game (European or domestic), played straight after the league match.
@@ -373,12 +407,11 @@ function viewOffseason() {
     ${honoursCard(sum)}
     ${summerCard()}
     <section class="card"><h2>Contract</h2>
-      ${p.needsContract ? '<p class="bad" style="margin:0">Your contract has run out. Sign with a club below to continue.</p>' : `<p style="margin:0">${money(p.wage)}/week · ${p.years} year${p.years !== 1 ? 's' : ''} left at ${club(p.loan ? p.loan.parent : p.club).name}</p>`}
+      ${p.needsContract ? '<p class="bad" style="margin:0">Your contract has run out. Sign with a club in the Contract tab to continue.</p>' : `<p style="margin:0">${money(p.wage)}/week · ${p.years} year${p.years !== 1 ? 's' : ''} left at ${club(p.loan ? p.loan.parent : p.club).name}</p>`}
       ${sum.loanNext ? `<p class="small flood" style="margin:0">You made only ${sum.starts} starts, so you will be sent out on loan next season. Sign for another club to avoid it.</p>` : ''}
       ${sum.returning && p.loan ? `<p class="small muted" style="margin:0">Your loan ends. You return to ${club(p.loan.parent).name} for pre-season.</p>` : ''}
+      <button class="btn block" data-act="tab" data-v="contract">${S.offers.length ? `View ${S.offers.length} offer${S.offers.length > 1 ? 's' : ''}` : 'Open Contract'}</button>
     </section>
-    ${offersHtml()}
-    ${p.needsContract ? "" : contractCard()}
     <section class="card">
       ${summerPending() ? `<p class="small muted" style="margin:0">Finish the ${summerPending().name} first.</p>` : ''}
       <button class="btn primary block" data-act="nextSeason" ${p.needsContract || summerPending() ? 'disabled' : ''}>Start ${seasonLabel(S.season + 1)}</button>
@@ -465,6 +498,7 @@ function viewTrain() {
   const can = S.phase === 'season' && p.slots > 0 && !p.injured;
   const head = `<section class="card"><div class="row"><h2>Training</h2><span class="small"><b>${p.slots}</b>/${TRAIN_SLOTS} sessions left</span></div>
     <p class="small muted" style="margin:0">Each session uses ${TRAIN_ENERGY} energy. Your ${EQUIP_TIERS[p.equip].name.toLowerCase()} equipment gives ×${EQUIP_TIERS[p.equip].mult} XP; upgrade it in the Shop. Gains slow with age (a lot from 34) and as you get close to the maximum of ${MAX_OVR} OVR. Match ratings, goals, assists and awards also move your OVR up or down. Your OVR is weighted the way EA rates a ${POS_NAMES[p.pos].toLowerCase()}.</p>
+    <p class="small" style="margin:6px 0 0">Physicality ${Math.round(physOf())}: injury risk <b class="${injuryMult() <= 1 ? 'good' : 'bad'}">×${injuryMult().toFixed(2)}</b>, and ${Math.round(seriousChance() * 100)}% of injuries are serious. More Physicality means fewer and milder injuries.</p>
     ${calcOVR() >= MAX_OVR ? `<p class="small good" style="margin:0">You are at the maximum ${MAX_OVR} OVR. Training now just keeps you sharp.</p>` : ''}
     ${p.injured ? '<p class="bad small" style="margin:0">You are injured and cannot train.</p>' : ''}
     ${S.phase !== 'season' ? '<p class="small muted" style="margin:0">Training resumes when the season starts.</p>' : ''}
@@ -864,12 +898,23 @@ function openModal(html) { modal.innerHTML = `<div class="sheet" role="dialog" a
 function closeModal() { modal.hidden = true; modal.innerHTML = ''; }
 
 // One finished game: score, scorers and your own numbers.
+const BALL = '<svg class="ico ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-label="Goal"><circle cx="12" cy="12" r="9"/><path d="M12 7.5l4 2.9-1.5 4.7h-5L8 10.4z"/><path d="M12 7.5V3M16 10.4l4.3-1.4M14.5 15.1l2.7 3.7M9.5 15.1l-2.7 3.7M8 10.4L3.7 9"/></svg>';
+const BOOT = '<svg class="ico boot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="Assist"><path d="M3 6h6l1 4c3.5 0 7 1 9.5 3.2 1 .9 1.5 2 1.5 3.3V18H3z"/><path d="M5 18v2M9 18v2M13 18v2M17 18v2"/></svg>';
+
+// Goals in the order they went in: home side on the left, away side on the right.
+function goalTimeline(scorers) {
+  const list = scorers.some(s => s.min) ? [...scorers].sort((x, y) => (x.min || 0) - (y.min || 0)) : scorers;
+  return list.map(s => {
+    const goal = `<div class="g ${s.home ? '' : 'a'}">
+      <div class="${s.me ? 'me' : ''}">${BALL}<span>${esc(s.n)}</span>${s.min ? `<b class="num">${s.min}'</b>` : ''}</div>
+      ${s.ast ? `<div class="ast ${s.astMe ? 'me' : ''}">${BOOT}<span>${esc(s.ast)}</span></div>` : ''}</div>`;
+    return s.home ? goal + '<div></div>' : '<div></div>' + goal;
+  }).join('');
+}
+
 function matchBlock(m, title, injured) {
   const u = m.user;
-  const home = m.scorers.filter(s => s.home), away = m.scorers.filter(s => !s.home);
-  const lines = Math.max(home.length, away.length);
-  let sc = '';
-  for (let i = 0; i < lines; i++) sc += `<span class="${home[i] && home[i].me ? 'me' : ''}">${home[i] ? esc(home[i].n) : ''}</span><span class="a ${away[i] && away[i].me ? 'me' : ''}">${away[i] ? esc(away[i].n) : ''}</span>`;
+  const sc = goalTimeline(m.scorers);
   const mine = m.isHome ? m.gh : m.ga, theirs = m.isHome ? m.ga : m.gh;
   const won = m.winner ? m.winner === (m.isHome ? m.h : m.a) : null;
   const verdict = mine > theirs || (mine === theirs && won) ? '<span class="good">Win</span>' : mine < theirs || won === false ? '<span class="bad">Defeat</span>' : '<span class="muted">Draw</span>';
@@ -927,6 +972,7 @@ document.addEventListener('click', e => {
     case 'wishGo': if (announceWish(v)) toast('Dream move announced'); closeModal(); render(); return;
     case 'honTab': honTab = v; render(); return;
     case "refresh": refreshStartChoices(); render(); window.scrollTo(0, 0); return;
+    case "refreshOffers": { const n = refreshOffers(); toast(n ? `${n} more club${n > 1 ? 's' : ''} came in` : 'No new clubs this time'); render(); return; }
     case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The board said no" : r === "soon" ? "Too soon to ask again" : r === "locked" ? "You only just re-signed" : "Not possible right now"); render(); return; }
     case 'summerPlay': { const r = playSummerStage(); render(); showSummerReport(r); return; }
     case 'summerSim': simulateSummer(); render(); return;
