@@ -1721,7 +1721,7 @@ function makeOffer(c, type, fixedWage = 0, loyalty = false) {
   if (age >= OLD_RENEW_AGE) years = 1;
   // A loyalty deal (only when the club or manager comes to you, aged 20 to 28): 25% above your
   // current wage or your market value, whichever is higher, with a clause of 2–3 seasons with no bids from other clubs and no salary talks.
-  // The deal is take it or leave it.
+  // Its wage cannot be negotiated.
   const clause = loyalty && type === 'renew' && age >= CLAUSE_AGES[0] && age <= CLAUSE_AGES[1] && S.player.wage > 0 && !fixedWage ? randi(2, 3) : 0;
   if (clause) years = Math.min(5, Math.max(years, clause + (S.phase === 'season' ? 1 : 0)));
   const clauseBase = Math.max(S.player.wage, marketWage(ovr, c));

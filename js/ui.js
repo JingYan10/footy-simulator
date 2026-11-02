@@ -208,6 +208,65 @@ document.addEventListener('load', e => {
   if (img.tagName === 'IMG' && img.dataset.club) logoState[img.dataset.club] = +img.dataset.ext;
 }, true);
 
+// What the club says when it hands you an offer: a few heartfelt lines that fit the deal.
+// The same offer always shows the same words.
+function offerPitch(o, c) {
+  const p = S.player, age = ageOf(p.by), seed = [...o.id].reduce((s, ch) => s + ch.charCodeAt(0), 0);
+  const one = list => list[seed % list.length];
+  if (o.clause) {
+    const yrs = `${o.clause} seasons`, more = `${raisePct(o)}% more`;
+    return one([
+      `We really, truly love you as a player. From the first day you walked through those doors, we knew you were special. We want to spend the next ${yrs} turning you into the star this club is built around, and we've put ${more} than you earn now on the table, because you deserve to feel how much you mean to us. And don't worry about the noise from outside. Other clubs, phone calls... we'll take care of all of that. You just play, and let us look after you.`,
+      `Do you know what you mean to this club? The kitman, the cleaners, the fans in the stands... everyone smiles when your name comes up. We want ${yrs} with you, to watch you become everything we know you can be. Here's ${more} than you earn now, from the bottom of our hearts. We'll keep every distraction far away from you, if you know what we mean. This is your family now.`,
+      `We've had a lot of players through here, but very few like you. You're not just part of our plans, you are the plan. Give us ${yrs}, and we promise we'll make you our star. We're offering ${more} than you earn now, because we want you to know, without any doubt, how much we believe in you. Let us handle the outside world, the agents, the rumours, the other clubs. You focus on being you.`,
+    ]);
+  }
+  if (o.type === 'renew') {
+    if (p.needsContract) return one([
+      'Your contract may have run out, but our belief in you never did. This is your home. Let\'s go again, together.',
+      'We couldn\'t imagine this dressing room without you. Sign, and let\'s finish what we started.',
+    ]);
+    if (vetYears(age)) return one([
+      `You've been a leader for us, on the pitch and off it. The young lads look up to you. Give us ${o.years > 1 ? 'a couple more years' : 'one more year'}, and let them learn from the best.`,
+      'Players like you don\'t come around often. The fans sing your name every week. We\'d love you to stay a little longer.',
+    ]);
+    return one([
+      'You\'ve given everything for this badge, and the supporters adore you for it. We want you to keep writing your story here.',
+      'This club feels different with you in it. Stay with us, and let\'s win something special together.',
+      'We\'ve watched you grow into this shirt. There\'s so much more to come, and we want to be there for all of it.',
+    ]);
+  }
+  if (p.needsContract) return one([
+    'Others let you go. We see exactly what they missed. Come to us, and let\'s prove them all wrong together.',
+    'Every player has a tough spell. We believe in you, and we\'re ready to give you a fresh start and a real home.',
+  ]);
+  if (o.promised) return one([
+    'We\'ve followed you for months and we\'re convinced. Come to us and the starting shirt is yours. That\'s a promise.',
+    'You won\'t be sitting on any bench here. We want you on the pitch every week, at the heart of everything we do.',
+  ]);
+  if (o.status === 'Reserve') return one([
+    'We know it may take a little time to break into this team, but we see a future star in you. Be patient with us, and we\'ll make you great.',
+    'Train with the best every day, learn, and when your chance comes, take it. We believe you will.',
+  ]);
+  if (richLeague(c)) return one([
+    'Come and be the face of our project. The fans here will treat you like a king, and you\'ll be part of history.',
+    'We\'re building something huge, and we want you at the centre of it. A new city, a new challenge, and people who will love you.',
+  ]);
+  if (vetYears(age)) return one([
+    'You still have so much to give. Bring your experience to our dressing room. Our young players need someone like you.',
+    'Age is just a number. We\'ve seen you play, and we know you can still make the difference for us.',
+  ]);
+  if (teamStrength(c) > teamStrength(myClub()) + 2) return one([
+    'Our scouts can\'t stop talking about you. This is the stage you were made for. Come and show the world.',
+    'Big nights, full stadiums, trophies. We think you\'re ready for it all, and we want you to do it in our colours.',
+  ]);
+  return one([
+    'We\'d build our team around you. Here, you wouldn\'t just be one of the players, you\'d be the player.',
+    'Our fans already know your name. Join us, and we\'ll give you the platform and the love to become someone special.',
+    'We\'ve been watching you for a long time. You\'re exactly the player we\'ve been looking for.',
+  ]);
+}
+
 function offersHtml() {
   const summer = S.phase === 'offseason' && (S.offerRerolls || 0) > 0;
   if (!S.offers.length && !summer) return '';
@@ -216,8 +275,7 @@ function offersHtml() {
     const c = club(o.club), left = maxRounds(o) - o.rounds;
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
-      : o.clause ? `<div class="loyal"><p>"We really love you as a player. We want to spend the next ${o.clause} seasons developing you into our star, and we've put ${raisePct(o)}% more than you earn now on the table to show we mean it. We'll also make sure nothing distracts you along the way. Other clubs, phone calls... you know what we mean. Just focus on your football."</p><span>— ${esc(c.mgr)}, ${esc(c.name)}</span></div>
-        <div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}. Take it or leave it.</div>`
+      : o.clause ? `<div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}.</div>`
       : o.talksOver ? '<div class="small bad">Talks broke down. You can still sign this offer or decline it, but not negotiate.</div>'
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
@@ -227,6 +285,7 @@ function offersHtml() {
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
       ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again.</div>` : ''}
       ${o.type === 'transfer' && leagueGrowth(c) < 1 ? '<div class="small flood">Big money, weaker league: your OVR will grow more slowly here.</div>' : ''}
+      <div class="loyal ${o.type === 'transfer' ? 'away' : ''}"><p>"${offerPitch(o, c)}"</p><span>— ${esc(c.mgr)}, ${esc(c.name)}</span></div>
       ${talk}
       <div class="btns"><button class="btn good sm" data-act="accept" data-v="${o.id}">Sign</button><button class="btn sm" data-act="negAsk" data-v="${o.id}" ${canNegotiate(o) ? '' : 'disabled'}>Negotiate</button><button class="btn sm" data-act="decline" data-v="${o.id}">Decline</button></div>
     </div>`;
