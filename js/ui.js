@@ -762,7 +762,7 @@ function resultsView() {
     const res = r.gf > r.ga || (r.gf === r.ga && won) ? ['W', 'good'] : r.gf < r.ga || won === false ? ['L', 'bad'] : ['D', 'draw'];
     const me = r.mins ? `${r.mins}' · ${r.start ? 'Started' : 'Sub'} · ${r.goals} G · ${r.assists} A · <b>${r.rating ? r.rating.toFixed(1) : '–'}</b>` : r.rested ? 'Rested' : 'Did not play';
     const goals = r.scorers && r.scorers.length ? `<div class="scorers">${goalTimeline(r.scorers)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
-    return `<details class="result"><summary>
+    return `<details class="result ${r.comp === 'Champions League' ? 'ucl' : ''}"><summary>
         <span class="rmeta"><span class="small muted">Wk ${Math.min(r.week, SEASON_WEEKS)}</span><span class="rcomp ${r.kind || 'league'}">${esc(r.comp || 'League')}</span></span>
         <span class="rline">${tieRow(h, a, { gh, ga, pens: r.pens, winner: r.winner || (gh > ga ? h : ga > gh ? a : null) })}</span>
         <span class="rbadge ${res[1]}">${res[0]}</span></summary>

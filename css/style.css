@@ -328,6 +328,8 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 /* results */
 .results { display: grid; gap: 6px; }
 .result { border-radius: 10px; background: var(--surface-2); }
+/* Champions League nights stand out */
+.result.ucl { box-shadow: inset 0 0 0 1.5px #7cc7ff; background: linear-gradient(rgba(124, 199, 255, .07), rgba(124, 199, 255, .07)), var(--surface-2); }
 .result summary { list-style: none; display: grid; grid-template-columns: 1fr 26px; grid-template-areas: "meta badge" "line line"; gap: 4px 8px; padding: 8px 10px; cursor: pointer; }
 .result summary::-webkit-details-marker { display: none; }
 .rmeta { grid-area: meta; display: flex; align-items: center; gap: 8px; min-width: 0; }
