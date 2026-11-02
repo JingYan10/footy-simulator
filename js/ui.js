@@ -270,6 +270,9 @@ function managerCard() {
   // The objectives record only speaks for him while he still likes you.
   const note = eff <= FROZEN_AFF ? `You are frozen out: he won't pick you until affection is above ${FROZEN_AFF}.`
     : eff < 45 && ['elite', 'great', 'good'].includes(band) ? 'You hit your targets, but he has gone cold on you. Win him back before asking for money.'
+    // Straight after contract talks there's no room to promise: he's still sore, or talks are locked.
+    : negLocked() ? `You just re-signed: no salary talks until about week ${lockWeekLabel()}.`
+    : p.affPen >= 1 ? 'He is still sore from your contract talks. Let it settle before asking for more money.'
     : BAND_NOTE[band];
   const cls = eff >= 60 ? '' : eff >= 40 ? 'mid' : 'low';
   const objs = (p.objectives || []).map(o => {
