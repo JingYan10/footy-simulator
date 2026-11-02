@@ -420,7 +420,7 @@ function viewOffseason() {
       <h2>Season ${seasonLabel(sum.season)} review</h2>
       <div class="row"><b style="font:800 24px var(--display)">${sum.club}</b><span>Finished <b>${sum.pos}${ordinal(sum.pos)}</b></span></div>
       ${sum.clubs && sum.clubs.length > 1 ? `<div class="small muted">This season: ${sum.clubs.map(esc).join(' → ')}. Stats cover all of them.</div>` : ''}
-      <div class="bigstat"><div><b>${sum.apps}</b><small>Apps</small></div><div><b>${sum.goals}</b><small>Goals</small></div><div><b>${sum.assists}</b><small>Assists</small></div><div><b>${sum.apps ? sum.avg.toFixed(1) : '–'}</b><small>Rating</small></div></div>
+      <div class="${statGrid(p.pos)}"><div><b>${sum.apps}</b><small>Apps</small></div><div><b>${sum.goals}</b><small>Goals</small></div><div><b>${sum.assists}</b><small>Assists</small></div>${gkCells(p.pos, sum.saves, sum.cleanAll)}<div><b>${sum.apps ? sum.avg.toFixed(1) : '–'}</b><small>Rating</small></div></div>
       ${sum.cup && sum.cup.apps ? `<div class="small muted">Cups: ${sum.cup.apps} apps · ${sum.cup.goals} goals · ${sum.cup.assists} assists</div>` : ''}
       ${sum.missed ? `<div class="small bad">Missed ${sum.missed} league game${sum.missed !== 1 ? 's' : ''} injured</div>` : ''}
       <div class="small">OVR ${sum.ovrStart} → <b>${sum.ovrEnd}</b> <span class="${delta >= 0 ? 'good' : 'bad'}">(${delta >= 0 ? '+' : ''}${delta})</span></div>
@@ -475,7 +475,7 @@ function summerCard() {
     const g = t.groups.findIndex(gr => gr.includes(me));
     const table = `<div class="tablewrap"><table><thead><tr><th>Group ${'ABCDEFGH'[g]}</th><th class="r">P</th><th class="r">GD</th><th class="r">Pts</th></tr></thead><tbody>
       ${groupTable(t, g).map((r, i) => `<tr class="${r.id === me ? 'me' : ''} ${i < 2 ? 'zone-cl' : ''}"><td class="clubname"><span class="clubcell">${crest(r.id, 'mini')}${esc(teamName(r.id))}</span></td><td class="r">${r.p}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r"><b>${r.pts}</b></td></tr>`).join('')}</tbody></table></div>`;
-    const ko = t.ko.map(k => { const r = k.res.find(x => x.h === me || x.a === me); return r ? `<div class="small">${k.name}: ${esc(teamName(r.h))} ${r.gh}–${r.ga} ${esc(teamName(r.a))}${r.pens ? ` (${esc(teamName(r.pens))} on penalties)` : ''}</div>` : ''; }).join('');
+    const ko = t.ko.map(k => { const r = k.res.find(x => x.h === me || x.a === me); return r ? `<div class="small">${k.name}: ${esc(teamName(r.h))} ${r.gh}–${r.ga} ${esc(teamName(r.a))}${r.pens ? ` (${esc(teamName(r.pens))} win ${r.pensScore ? pensText(r) + ' ' : ''}on penalties)` : ''}</div>` : ''; }).join('');
     return `<section class="card hero"><div class="row"><h2>${esc(t.name)}</h2><span class="small">${isNation(me) ? esc(natName(me.slice(2))) : esc(teamName(me))}</span></div>
       ${body}${table}${ko}
       ${t.winner ? '' : `<div class="btns"><button class="btn primary sm" data-act="summerPlay">Play ${st.name.toLowerCase()}</button><button class="btn sm" data-act="summerSim">Simulate the rest</button></div>`}</section>`;
@@ -485,8 +485,14 @@ function summerCard() {
 function careerTotals(p = S.player) {
   // Season rows include cup games; the live season adds its own cup line.
   const c = p.career.concat(p === S?.player && S.phase === 'season' && p.st.cup ? [p.st.cup] : []);
-  return { apps: c.reduce((s, r) => s + r.apps, 0), goals: c.reduce((s, r) => s + r.goals, 0), assists: c.reduce((s, r) => s + r.assists, 0) };
+  const sum = k => c.reduce((s, r) => s + (r[k] || 0), 0);
+  return { apps: sum('apps'), goals: sum('goals'), assists: sum('assists'), saves: sum('saves'), cleanAll: sum('cleanAll') };
 }
+
+// Keepers also show saves and clean sheets next to goals and assists.
+const gkCells = (pos, saves, clean) => pos === 'GK' ? `<div><b>${saves || 0}</b><small>Saves</small></div><div><b>${clean || 0}</b><small>Clean sheets</small></div>` : '';
+const gkSpans = (pos, saves, clean) => pos === 'GK' ? `<span><b>${saves || 0}</b> Sv</span><span><b>${clean || 0}</b> CS</span>` : '';
+const statGrid = pos => `bigstat${pos === 'GK' ? ' six' : ''}`;
 
 // Summary of a finished career: the current save after retiring, or one from the past-careers list.
 function retiredHtml(rec, newAct = 'menu') {
@@ -494,7 +500,7 @@ function retiredHtml(rec, newAct = 'menu') {
   return `<section class="card hero"><h2>Career over</h2>
     <b style="font:800 28px var(--display)">${esc(rec.name)}</b>
     <div class="small muted">${POS_NAMES[rec.pos]} · ${esc(natName(rec.nat))} · Last club ${esc(rec.lastClub)} · Retired at ${rec.retiredAge}</div>
-    <div class="bigstat"><div><b>${t.apps}</b><small>Apps</small></div><div><b>${t.goals}</b><small>Goals</small></div><div><b>${t.assists}</b><small>Assists</small></div><div><b>${rec.trophies.length}</b><small>Titles</small></div></div>
+    <div class="${statGrid(rec.pos)}"><div><b>${t.apps}</b><small>Apps</small></div><div><b>${t.goals}</b><small>Goals</small></div><div><b>${t.assists}</b><small>Assists</small></div>${gkCells(rec.pos, t.saves, t.cleanAll)}<div><b>${rec.trophies.length}</b><small>Titles</small></div></div>
     <div class="small muted">Peak OVR ${rec.peak} · ${rec.caps} international caps · Earned ${money(rec.money)} in the bank</div>
     <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + legacyCard(rec) + clubStints(rec) + careerTables(rec);
 }
@@ -537,14 +543,14 @@ function clubStints(rec) {
     const last = stints[stints.length - 1];
     if (last && last.club === r.club && r.season - last.to <= 1) {
       last.to = r.season; last.seasons.add(r.season);
-      last.apps += r.apps; last.goals += r.goals; last.assists += r.assists; last.rsum += r.avg * r.apps;
-    } else stints.push({ club: r.club, clubId: r.clubId, league: r.league, from: r.season, to: r.season, seasons: new Set([r.season]), apps: r.apps, goals: r.goals, assists: r.assists, rsum: r.avg * r.apps });
+      last.apps += r.apps; last.goals += r.goals; last.assists += r.assists; last.rsum += r.avg * r.apps; last.saves += r.saves || 0; last.clean += r.cleanAll || 0;
+    } else stints.push({ club: r.club, clubId: r.clubId, league: r.league, from: r.season, to: r.season, seasons: new Set([r.season]), apps: r.apps, goals: r.goals, assists: r.assists, rsum: r.avg * r.apps, saves: r.saves || 0, clean: r.cleanAll || 0 });
   });
   if (!stints.length) return '';
   const cards = stints.slice().reverse().map(s => {
     const n = s.seasons.size, span = s.from === s.to ? seasonLabel(s.from) : `${seasonLabel(s.from)} – ${seasonLabel(s.to)}`;
     return `<div class="stint"><div class="row"><div class="clubcell">${rowCrest(s)}<div style="min-width:0"><b class="club">${esc(s.club)}</b><div class="small muted">${span} · ${n} season${n !== 1 ? 's' : ''}</div></div></div></div>
-      <div class="spellstats"><span><b>${s.apps}</b> apps</span><span><b>${s.goals}</b> G</span><span><b>${s.assists}</b> A</span><span><b>${s.apps ? (s.rsum / s.apps).toFixed(2) : '–'}</b></span></div></div>`;
+      <div class="spellstats"><span><b>${s.apps}</b> apps</span><span><b>${s.goals}</b> G</span><span><b>${s.assists}</b> A</span>${gkSpans(rec.pos, s.saves, s.clean)}<span><b>${s.apps ? (s.rsum / s.apps).toFixed(2) : '–'}</b></span></div></div>`;
   }).join('');
   return `<section class="card"><h2>Clubs</h2><p class="small muted" style="margin:0">Every spell at a club, all competitions added up.</p>${cards}</section>`;
 }
@@ -774,7 +780,7 @@ function resultsView() {
     const goals = r.scorers && r.scorers.length ? `<div class="scorers">${goalTimeline(r.scorers)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
     return `<details class="result ${r.comp === 'Champions League' ? 'ucl' : ''}"><summary>
         <span class="rmeta"><span class="small muted">Wk ${Math.min(r.week, SEASON_WEEKS)}</span><span class="rcomp ${r.kind || 'league'}">${esc(r.comp || 'League')}</span></span>
-        <span class="rline">${tieRow(h, a, { gh, ga, pens: r.pens, winner: r.winner || (gh > ga ? h : ga > gh ? a : null) })}</span>
+        <span class="rline">${tieRow(h, a, { gh, ga, pens: r.pens, pensScore: r.pensScore, winner: r.winner || (gh > ga ? h : ga > gh ? a : null) })}</span>
         <span class="rbadge ${res[1]}">${res[0]}</span></summary>
       <div class="rbody">${r.stage ? `<div class="small muted">${esc(r.stage)}</div>` : ''}${goals}<div class="small muted">You: ${me}</div></div></details>`;
   }).join('');
@@ -792,7 +798,7 @@ function tieRow(h, a, r) {
     const cls = !r || !r.winner ? '' : r.winner === x ? 'w' : 'l';
     return `<span class="tside ${right ? 'r' : ''} ${cls}">${right ? '' : crest(x, 'mini')}<span class="tname">${esc(teamName(x))}</span>${right ? crest(x, 'mini') : ''}</span>`;
   };
-  return `<div class="tie2 ${mine ? 'me' : ''}">${side(h)}<span class="tscore num">${r ? `${r.gh}–${r.ga}` : 'v'}${r && r.pens ? '<small>pens</small>' : ''}</span>${side(a, true)}</div>`;
+  return `<div class="tie2 ${mine ? 'me' : ''}">${side(h)}<span class="tscore num">${r ? `${r.gh}–${r.ga}` : 'v'}${r && r.pens ? `<small>${r.pensScore ? pensText(r) + ' ' : ''}pens</small>` : ''}</span>${side(a, true)}</div>`;
 }
 const roundBlock = (name, meta, ties) => `<div class="round"><div class="roundhead"><b>${name}</b>${meta ? `<span class="muted">${meta}</span>` : ''}</div>${ties}</div>`;
 
@@ -901,7 +907,7 @@ function careerHistory(p = S.player) {
   const seasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a).map(s => {
     const spells = bySeason[s];
     const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><b class="club">${esc(r.club)}</b><div class="small muted">${esc(r.league)}</div></div></div>
-      <div class="spellstats"><span><b>${r.apps}</b> apps</span><span><b>${r.goals}</b> G</span><span><b>${r.assists}</b> A</span><span><b>${r.apps ? r.avg.toFixed(2) : '–'}</b></span></div></div>`).join('');
+      <div class="spellstats"><span><b>${r.apps}</b> apps</span><span><b>${r.goals}</b> G</span><span><b>${r.assists}</b> A</span>${gkSpans(p.pos, r.saves, r.cleanAll)}<span><b>${r.apps ? r.avg.toFixed(2) : '–'}</b></span></div></div>`).join('');
     const clubParts = spells.map(r => {
       const list = Object.entries(r.comps || {}).filter(([, c]) => c.kind !== 'nat').sort((a, b) => ORDER[a[1].kind] - ORDER[b[1].kind]);
       // Two clubs side by side are too narrow for a table: one line per competition instead.
@@ -964,7 +970,7 @@ function viewCareer() {
       <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div><div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${calledUp() ? 'In squad' : 'Not picked'}</b></div>
       <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div><small>Value</small><b>${money(value)}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b></div></div>
       <div class="small muted">${nationNote()} Max OVR is ${MAX_OVR}.</div></section>
-    <section class="card"><h2>This season</h2><div class="bigstat"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div><div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
+    <section class="card"><h2>This season</h2><div class="${statGrid(p.pos)}"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div>${gkCells(p.pos, p.st.saves, p.st.cleanAll)}<div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
       ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Cups: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}
       ${(p.seasonSpells || []).length ? `<div class="small muted">These are your numbers at ${esc(myClub().name)}. Earlier spells this season have their own rows in your career history.</div>` : ''}
       <div class="small muted">Career: ${t.apps + live.apps} apps · ${t.goals + live.goals} goals · ${t.assists + live.assists} assists</div></section>
@@ -1026,17 +1032,27 @@ function nextPopup() {
 }
 
 // Goals and assists: one ball per goal, one boot per assist, and a show that grows with the haul.
+// Keeper and defender icons: a glove per save, a sliding boot per tackle, a shield for a clean sheet.
+const GLOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="Save"><path d="M7 21v-4.5L4.5 13a1.6 1.6 0 0 1 2.6-1.9L8 12.2V5.5a1.5 1.5 0 0 1 3 0V11V4a1.5 1.5 0 0 1 3 0v7V5a1.5 1.5 0 0 1 3 0v6.5V8a1.5 1.5 0 0 1 3 0v8c0 2.5-2 5-5 5z"/><path d="M7 18h10"/></svg>';
+const TACKLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="Tackle"><path d="M6 15h6l1.5-2.5c2.5 0 5 1 6.5 2.7.6.7.8 1.4.8 2.3V18H6z"/><path d="M8 18v2M12 18v2M16 18v2"/><path d="M2 12h4M3 9h4M4 15h1"/></svg>';
+const SHIELD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="Clean sheet"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>';
+
 function showHaul(pop) {
   const lvl = Math.min(pop.goals, 6);
-  const icons = (svg, n, cls) => Array.from({ length: n }, (_, i) => `<span class="${cls}" style="animation-delay:${.15 + i * .12}s">${svg}</span>`).join('');
-  fxLayer.className = `haul ${lvl ? `lvl${lvl}` : 'assist'}`;
+  // Many saves or tackles: show up to 8 icons and the full count beside them.
+  const icons = (svg, n, cls) => Array.from({ length: Math.min(n, 8) }, (_, i) => `<span class="${cls}" style="animation-delay:${.15 + i * .12}s">${svg}</span>`).join('') + (n > 8 ? `<b class="haul-more">×${n}</b>` : '');
+  const defend = !pop.goals && !pop.assists;
+  fxLayer.className = `haul ${lvl ? `lvl${lvl}` : defend ? 'defend' : 'assist'}`;
   fxLayer.innerHTML = `<canvas></canvas><div class="pop" role="dialog" aria-modal="true">
+    ${pop.clean ? `<div class="haul-icons"><span class="hcs" style="animation-delay:.1s">${SHIELD}</span></div>` : ''}
     ${pop.goals ? `<div class="haul-icons">${icons(BALL, pop.goals, 'hb')}</div>` : ''}
     ${pop.assists ? `<div class="haul-icons small-row">${icons(BOOT, pop.assists, 'hs')}</div>` : ''}
+    ${pop.saves ? `<div class="haul-icons small-row">${icons(GLOVE, pop.saves, 'hg')}</div>` : ''}
+    ${pop.tackles ? `<div class="haul-icons small-row">${icons(TACKLE, pop.tackles, 'ht')}</div>` : ''}
     <h3>${esc(pop.title)}</h3><p>${esc(pop.text)}</p>
     <button class="btn primary block" data-act="popNext">Continue</button></div>`;
   fxLayer.hidden = false;
-  startFx(fxLayer.querySelector('canvas'), 'haul', lvl);
+  startFx(fxLayer.querySelector('canvas'), 'haul', defend ? -1 : lvl);
 }
 
 function showPopup(pop) {
@@ -1062,8 +1078,8 @@ function startFx(canvas, kind, lvl = 0) {
   const parts = [], balls = [];
   const haul = kind === 'haul';
   // Hauls: assists sparkle green, goals get gold, and every extra goal makes the show faster and bigger.
-  const colors = haul && !lvl ? ['#4cc38a', '#eef2f7', '#9be7c0'] : haul && lvl < 3 ? ['#ffb547', '#eef2f7', '#ffd38a'] : ['#ffb547', '#4cc38a', '#eef2f7', '#7cc7ff', '#ff9ec7'];
-  const gap = haul ? [1100, 900, 650, 450, 350, 280, 200][lvl] : 650, size = haul ? 30 + lvl * 10 : 46;
+  const colors = haul && lvl < 0 ? ['#7cc7ff', '#eef2f7', '#b8e2ff'] : haul && !lvl ? ['#4cc38a', '#eef2f7', '#9be7c0'] : haul && lvl < 3 ? ['#ffb547', '#eef2f7', '#ffd38a'] : ['#ffb547', '#4cc38a', '#eef2f7', '#7cc7ff', '#ff9ec7'];
+  const gap = haul ? [1100, 900, 650, 450, 350, 280, 200][Math.max(lvl, 0)] : 650, size = haul ? 30 + Math.max(lvl, 0) * 10 : 46;
   let last = 0;
   const burst = () => {
     const x = W * rand(.15, .85), y = H * rand(.12, .45), col = haul && lvl >= 6 ? `hsl(${rand(0, 360)},90%,65%)` : pick(colors);
@@ -1162,10 +1178,10 @@ function matchBlock(m, title, injured) {
   const verdict = mine > theirs || (mine === theirs && won) ? '<span class="good">Win</span>' : mine < theirs || won === false ? '<span class="bad">Defeat</span>' : '<span class="muted">Draw</span>';
   return `<div class="row"><h3>${title}</h3>${verdict}</div>
     <div class="fixture"><div class="team">${crest(m.h)}<b>${esc(teamName(m.h))}</b></div><div class="score num">${m.gh}–${m.ga}</div><div class="team">${crest(m.a)}<b>${esc(teamName(m.a))}</b></div></div>
-    ${m.pens ? `<div class="small muted" style="text-align:center">${esc(teamName(m.pens))} win on penalties</div>` : ''}
+    ${m.pens ? `<div class="small muted" style="text-align:center">${esc(teamName(m.pens))} win ${m.pensScore ? pensText(m) + ' ' : ''}on penalties</div>` : ''}
     ${m.agg ? `<div class="small muted" style="text-align:center">Aggregate ${m.agg[0]}–${m.agg[1]}: <b>${esc(teamName(m.winner))}</b> go through</div>` : ''}
     ${sc ? `<div class="scorers">${sc}</div>` : ''}
-    ${u && u.mins ? `<div class="bigstat"><div><b>${u.rating.toFixed(1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div></div>${u.tackles ? `<div class="small muted" style="text-align:center">${u.tackles} tackle${u.tackles !== 1 ? 's' : ''}</div>` : ''}`
+    ${u && u.mins ? `<div class="${statGrid(S.player.pos)}"><div><b>${u.rating.toFixed(1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div>${S.player.pos === 'GK' ? `<div><b>${u.saves || 0}</b><small>Saves</small></div><div><b>${u.clean ? 'Yes' : 'No'}</b><small>Clean sheet</small></div>` : ''}</div>${u.tackles ? `<div class="small muted" style="text-align:center">${u.tackles} tackle${u.tackles !== 1 ? 's' : ''}</div>` : ''}`
       : `<p class="muted" style="margin:0">${injured ? 'You were out injured.' : u && u.rested ? `Rested: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week.` : 'You stayed on the bench.'}</p>`}`;
 }
 

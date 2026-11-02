@@ -348,10 +348,10 @@ function playStage(t, userFor) {
     k.ties.forEach(([s, w], i) => {
       const first = k.legs[0][i], u = userFor(s, w), r = simTeams(s, w, u, 2);
       const aggS = r.gh + first.ga, aggW = r.ga + first.gh;
-      if (aggS === aggW) r.pens = Math.random() < clamp(.5 + (teamStr(s) - teamStr(w)) / 60, .35, .65) ? s : w;
+      if (aggS === aggW) { r.pens = Math.random() < clamp(.5 + (teamStr(s) - teamStr(w)) / 60, .35, .65) ? s : w; r.pensScore = shootoutScore(r.pens === r.h); }
       r.winner = aggS > aggW ? s : aggS < aggW ? w : r.pens;
       r.agg = [aggS, aggW];
-      res.push({ h: s, a: w, gh: aggS, ga: aggW, pens: r.pens || null, winner: r.winner, legs: [first, r] });
+      res.push({ h: s, a: w, gh: aggS, ga: aggW, pens: r.pens || null, pensScore: r.pensScore || null, winner: r.winner, legs: [first, r] });
       if (u) mine = r;
     });
     k.legs.push(res.map(x => x.legs[1]));
@@ -365,6 +365,7 @@ function playStage(t, userFor) {
         // Penalties: close to a coin toss, the stronger side slightly favoured.
         const ph = clamp(.5 + (teamStr(h) - teamStr(a)) / 60, .35, .65);
         r.pens = Math.random() < ph ? h : a;
+        r.pensScore = shootoutScore(r.pens === h);
       }
       r.winner = r.gh > r.ga ? h : r.gh < r.ga ? a : r.pens;
       res.push(r);
@@ -376,6 +377,16 @@ function playStage(t, userFor) {
   t.stage++;
   return mine;
 }
+
+// A believable shootout score as [home, away]: usually 5–4, 4–3 or 4–2, sometimes 3–1 or 3–0,
+// and about one in five goes to sudden death (6–5, 7–6, 8–7).
+function shootoutScore(homeWins) {
+  let w, l;
+  if (Math.random() < .2) { w = randi(6, 8); l = w - 1; }
+  else { w = pick([3, 4, 4, 5, 5]); l = w === 5 ? randi(3, 4) : w === 4 ? randi(2, 3) : randi(0, 1); }
+  return homeWins ? [w, l] : [l, w];
+}
+const pensText = r => r.pensScore ? `${Math.max(...r.pensScore)}–${Math.min(...r.pensScore)}` : '';
 
 // One match between any two teams. home is the home advantage in rating points.
 function simTeams(h, a, user, home = 2) {
@@ -556,7 +567,7 @@ function playCupRound(t, userMatch) {
   t.ties.forEach(([h, a]) => {
     const u = userMatch && (h === id || a === id) ? Object.assign(userMatch, { team: id }) : null;
     const r = simTeams(h, a, u, 1.5);
-    if (r.gh === r.ga) r.pens = Math.random() < clamp(.5 + (teamStr(h) - teamStr(a)) / 60, .35, .65) ? h : a;
+    if (r.gh === r.ga) { r.pens = Math.random() < clamp(.5 + (teamStr(h) - teamStr(a)) / 60, .35, .65) ? h : a; r.pensScore = shootoutScore(r.pens === h); }
     r.winner = r.gh > r.ga ? h : r.gh < r.ga ? a : r.pens;
     res.push(r);
     if (u) mine = { ...r, comp: t.name };
@@ -675,6 +686,7 @@ function playSummerStage() {
   if (res) {
     report = { stage: st.name, comp: t.name, match: { ...res, user, isHome: res.h === me } };
     if (user.mins) {
+      user.saves = matchSaves(user, teamStr(res.h === me ? res.a : res.h), teamStr(me));
       const rating = summerRating(user, res, me);
       user.rating = rating;
       notifyHaul(user, t.name.replace(/ \d{4}$/, ''));
@@ -691,6 +703,8 @@ function playSummerStage() {
           // Tackles and clean sheets count in every club competition.
           const conceded = res.h === me ? res.ga : res.gh;
           if (row.tackles != null) row.tackles += matchTackles(user);
+          // saves were counted before the rating
+          row.saves = (row.saves || 0) + user.saves;
           if (row.cleanAll != null && conceded === 0 && ['GK', 'DEF'].includes(POS_GROUP[p.pos]) && user.mins >= 60) row.cleanAll++;
         }
       }
@@ -723,6 +737,7 @@ function summerRating(user, res, me) {
   let r = 6.4 + (calcOVR() - teamStr(me)) / 30 + user.goals * .9 + user.assists * .6 + (gf > gaa ? .3 : gf < gaa ? -.3 : 0);
   if ((g === 'GK' || g === 'DEF') && gaa === 0 && user.mins >= 60) r += .6;
   if (g === 'GK' || g === 'DEF') r -= gaa * .15;
+  if (g === 'GK') r += (user.saves || 0) * .18;
   r -= vetYears() * .06 + rustPenalty();
   r += gauss() * .45;
   if (user.mins < 45) r = 6 + (r - 6) * .6;

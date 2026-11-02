@@ -231,6 +231,8 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .scorers .me { color: var(--flood); font-weight: 700; }
 .scorers .me .ball { color: var(--flood); }
 .bigstat { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
+/* keepers show six stats: two rows of three */
+.bigstat.six { grid-template-columns: repeat(3, 1fr); }
 .bigstat div { background: var(--surface-2); border-radius: 10px; padding: 8px 4px; }
 .bigstat b { display: block; font: 800 26px/1 var(--display); }
 .bigstat small { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
@@ -298,6 +300,12 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .haul-icons svg { width: 100%; height: 100%; }
 .haul-icons .hb { color: var(--chalk); }
 .haul-icons .hs { width: 28px; height: 28px; color: var(--good); opacity: 0; }
+/* keepers and defenders: blue gloves and tackles, a big gold clean-sheet shield */
+.haul-icons .hg, .haul-icons .ht { width: 28px; height: 28px; color: #7cc7ff; opacity: 0; }
+.haul-icons .hcs { width: 56px; height: 56px; color: var(--flood); opacity: 0; filter: drop-shadow(0 0 10px rgba(255, 181, 71, .6)); }
+.haul-more { align-self: center; font: 800 18px var(--display); color: #7cc7ff; }
+#fx.haul.defend { background: radial-gradient(circle at 50% 38%, rgba(124, 199, 255, .2), rgba(5, 10, 18, .9) 70%); }
+#fx.haul.defend .pop { border-color: #7cc7ff; box-shadow: 0 0 40px rgba(124, 199, 255, .25); }
 #fx.haul.lvl3 .hb, #fx.haul.lvl4 .hb, #fx.haul.lvl5 .hb, #fx.haul.lvl6 .hb { color: var(--flood); filter: drop-shadow(0 0 8px rgba(255, 181, 71, .7)); }
 #fx.haul.lvl2 h3 { font-size: 32px; }
 #fx.haul.lvl3 h3 { font-size: 36px; color: var(--flood); }

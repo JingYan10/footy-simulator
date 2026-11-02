@@ -273,7 +273,7 @@ function makeSeason() {
 
 // League numbers, plus a separate line for cup games. missed = league games missed injured.
 // comps splits every game by competition (league, each cup, the national team) for the career history.
-function newStats() { return { apps: 0, starts: 0, goals: 0, assists: 0, rsum: 0, motm: 0, clean: 0, cleanAll: 0, tackles: 0, missed: 0, cup: { apps: 0, goals: 0, assists: 0, rsum: 0 }, comps: {} }; }
+function newStats() { return { apps: 0, starts: 0, goals: 0, assists: 0, rsum: 0, motm: 0, clean: 0, cleanAll: 0, tackles: 0, saves: 0, missed: 0, cup: { apps: 0, goals: 0, assists: 0, rsum: 0 }, comps: {} }; }
 
 // kind: 'league', 'cup', 'euro' or 'nat'.
 function addComp(comps, name, kind, apps, goals, assists, rsum) {
@@ -294,14 +294,14 @@ function closeSpell() {
 
 function careerRow(st, c) {
   const p = S.player;
-  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, league: league(c.league).name, apps: st.apps + st.cup.apps, tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.pos, comps: JSON.parse(JSON.stringify(st.comps || {})) };
+  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, league: league(c.league).name, apps: st.apps + st.cup.apps, tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.pos, comps: JSON.parse(JSON.stringify(st.comps || {})) };
 }
 
 function seasonTotals() {
   const p = S.player, all = [...(p.seasonSpells || []), p.st];
   const t = newStats();
   all.forEach(s => {
-    ['apps', 'starts', 'goals', 'assists', 'rsum', 'motm', 'clean', 'cleanAll', 'tackles', 'missed'].forEach(k => { t[k] += s[k] || 0; });
+    ['apps', 'starts', 'goals', 'assists', 'rsum', 'motm', 'clean', 'cleanAll', 'tackles', 'saves', 'missed'].forEach(k => { t[k] += s[k] || 0; });
     ['apps', 'goals', 'assists', 'rsum'].forEach(k => { t.cup[k] += (s.cup && s.cup[k]) || 0; });
   });
   return t;
@@ -878,12 +878,14 @@ function equipMult() { return EQUIP_TIERS[S.player.equip].mult; }
 // Below 65 a young player levels up quicker; from 30 every point is harder to earn.
 // Saudi and US football is less competitive: the money is big, the development is slow.
 const SLOW_GROWTH = { KSA: .6, USA: .6 };
+const GK_GROWTH = 1.25;
 const leagueGrowth = (c = myClub()) => SLOW_GROWTH[league(c.league).nat] || 1;
 function growthFactor(lowBoost = true) {
   const age = ageOf(S.player.by), ovr = calcOVR();
   const ageF = age <= 21 ? 1.2 : age <= 25 ? 1 : age <= 29 ? .75 : age <= VET_AGE ? .6 : Math.max(.05, .3 - (age - VET_AGE - 1) * .06);
   const low = !lowBoost ? 1 : ovr < 60 ? 2.2 : ovr < 65 ? 1.8 : 1;
-  return ageF * low * leagueGrowth() * clamp(Math.pow(Math.max(0, MAX_OVR - ovr) / 20, 1.3), .06, 1);
+  // Keeper ratings are spread differently, so goalkeepers level up about 25% faster.
+  return ageF * low * leagueGrowth() * clamp(Math.pow(Math.max(0, MAX_OVR - ovr) / 20, 1.3), .06, 1) * (S.player.pos === 'GK' ? GK_GROWTH : 1);
 }
 
 // High attributes get harder to raise, but a session always gives something until 91.
@@ -1146,10 +1148,12 @@ const physOf = () => S.player.attrs.PHY || 50;
 const youngBody = () => ageOf(S.player.by) <= 19;
 // Everyone also gets about 30% fewer injuries, and 30% fewer serious ones, than the base rates.
 const INJURY_EASE = .7;
-const injuryMult = () => clamp(1.15 - (physOf() - 50) * .015, .5, 1.45) * (youngBody() ? .55 : 1) * INJURY_EASE;
+// Goalkeepers take far fewer knocks: about 60% fewer injuries and half as many serious ones.
+const GK_INJURY = .4, GK_SERIOUS = .5;
+const injuryMult = () => clamp(1.15 - (physOf() - 50) * .015, .5, 1.45) * (youngBody() ? .55 : 1) * INJURY_EASE * (S.player.pos === 'GK' ? GK_INJURY : 1);
 // After one serious injury, a second in the same season is far less likely (40% of the usual odds).
 const seriousChance = () => clamp(.12 - (physOf() - 60) * .0025, .03, .18) * (youngBody() ? .45 : 1) * INJURY_EASE
-  * (S.player.seriousSeason === S.season ? .4 : 1);
+  * (S.player.seriousSeason === S.season ? .4 : 1) * (S.player.pos === 'GK' ? GK_SERIOUS : 1);
 function energyRegen() { const p = S.player; return 30 + HOUSING[p.house].energy + EQUIP_TIERS[p.equip].energy; }
 
 // ---------- matches ----------
@@ -1245,6 +1249,8 @@ function matchRating(user, res) {
   r += gf > gaa ? .3 : gf < gaa ? -.3 : 0;
   if ((g === 'GK' || g === 'DEF') && gaa === 0 && user.mins >= 60) r += .6;
   if (g === 'GK' || g === 'DEF') r -= gaa * .15;
+  // Every save lifts a keeper's rating, so a busy, solid afternoon scores well.
+  if (g === 'GK') r += (user.saves || 0) * .18;
   if (p.energy < 30) r -= .4;
   r -= vetYears() * .06; // a step slower every year past 33
   r -= rustPenalty(); // short of match sharpness after an injury
@@ -1264,22 +1270,38 @@ function matchTackles(user, p = S.player) {
   return Math.max(0, Math.round(base + gauss() * 1.3));
 }
 
+// Saves in one game, for a keeper: the stronger the opponent compared with your team, the busier
+// the afternoon (about 2.5 a game against an equal side, up to 6 against a much better one).
+function matchSaves(user, oppStr, myStr, p = S.player) {
+  if (p.pos !== 'GK' || !user.mins) return 0;
+  return poisson(clamp(2.5 + (oppStr - myStr) / 6, .8, 6) * user.mins / 90);
+}
+
 // A celebration for your goals and assists in a game; the bigger the haul, the bigger the show.
 const HAUL_NAME = ['', 'Goal!', 'Brace!', 'Hat-trick!', 'Haul! Four goals', 'Five-goal haul!', 'Double hat-trick!'];
+// Keepers also celebrate saves and defenders tackles, and both a clean sheet.
 function notifyHaul(user, compName) {
-  const g = user.goals || 0, a = user.assists || 0;
-  if (!g && !a) return;
-  const title = g ? HAUL_NAME[Math.min(g, 6)] : a === 1 ? 'Assist!' : a === 2 ? 'Double assist!' : `${a} assists!`;
-  const parts = [g && `${g} goal${g > 1 ? 's' : ''}`, a && `${a} assist${a > 1 ? 's' : ''}`].filter(Boolean).join(' and ');
+  const g = user.goals || 0, a = user.assists || 0, grp = POS_GROUP[S.player.pos];
+  const sv = grp === 'GK' ? user.saves || 0 : 0, tk = grp === 'DEF' ? user.tackles || 0 : 0;
+  const cs = (grp === 'GK' || grp === 'DEF') && !!user.clean;
+  if (!g && !a && !sv && !tk && !cs) return;
+  const title = g ? HAUL_NAME[Math.min(g, 6)] : a ? (a === 1 ? 'Assist!' : a === 2 ? 'Double assist!' : `${a} assists!`)
+    : cs ? 'Clean sheet!' : sv ? `${sv} save${sv > 1 ? 's' : ''}!` : `${tk} tackle${tk > 1 ? 's' : ''}!`;
+  const parts = [g && `${g} goal${g > 1 ? 's' : ''}`, a && `${a} assist${a > 1 ? 's' : ''}`, sv && `${sv} save${sv > 1 ? 's' : ''}`,
+    tk && `${tk} tackle${tk > 1 ? 's' : ''}`, cs && 'a clean sheet'].filter(Boolean);
+  const text = `${parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts.at(-1) : parts[0]} in the ${compName} game.`;
   // Shown before any other news from the same week, in the order the games were played.
   const at = POPUPS.findIndex(x => x.kind !== 'haul');
-  POPUPS.splice(at < 0 ? POPUPS.length : at, 0, { kind: 'haul', title, text: `${parts} in the ${compName} game.`, goals: g, assists: a });
+  POPUPS.splice(at < 0 ? POPUPS.length : at, 0, { kind: 'haul', title, text: text.charAt(0).toUpperCase() + text.slice(1), goals: g, assists: a, saves: sv, tackles: tk, clean: cs });
 }
 
 function applyUserMatch(user, res, isHome, cup, report, comp = null) {
-  const p = S.player, rating = matchRating(user, res);
+  const p = S.player, opp = isHome ? res.a : res.h;
+  // A keeper's saves are worked out first, because they count towards the match rating.
+  const sv = matchSaves(user, S.clubs[opp] ? teamStrength(club(opp)) : 75, teamStrength(myClub()));
+  user.saves = sv;
+  const rating = matchRating(user, res);
   user.rating = rating;
-  notifyHaul(user, comp ? comp.name : league(myClub().league).name);
   const boots = sponsorDeals().find(d => d.goalBonus);
   if (boots && user.goals) p.money += boots.goalBonus * user.goals;
   const st = p.st, line = cup ? st.cup : st;
@@ -1293,6 +1315,9 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   const tk = matchTackles(user);
   user.tackles = tk;
   st.tackles = (st.tackles || 0) + tk;
+  user.clean = clean;
+  st.saves = (st.saves || 0) + sv;
+  notifyHaul(user, comp ? comp.name : league(myClub().league).name);
   if (rating >= 8.3) { if (!cup) st.motm++; report.events.push(cup ? 'Player of the Match in the cup!' : 'Player of the Match!'); }
   p.form.push(rating); p.form = p.form.slice(-5);
   p.energy -= Math.round(user.mins / 90 * 22);
@@ -1309,7 +1334,7 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
 // One finished game for the Results list: both teams, the score, every goal and your numbers.
 function resultRow(res, isHome, user, comp, kind, stage = '') {
   return {
-    week: S.week, comp, kind, stage, h: res.h, a: res.a, gh: res.gh, gaH: res.ga, pens: res.pens || null, winner: res.winner || null,
+    week: S.week, comp, kind, stage, h: res.h, a: res.a, gh: res.gh, gaH: res.ga, pens: res.pens || null, pensScore: res.pensScore || null, winner: res.winner || null,
     scorers: (res.scorers || []).map(s => ({ ...s })), opp: isHome ? res.a : res.h, isHome,
     gf: isHome ? res.gh : res.ga, ga: isHome ? res.ga : res.gh,
     rating: user.rating || null, goals: user.goals, assists: user.assists, mins: user.mins, start: !!user.start, rested: !!user.rested,
@@ -1946,6 +1971,10 @@ function performanceReview(st, avg, awards) {
   if (st.apps >= 10 && !par) {
     d += avg >= 7.5 ? 1.5 : avg >= 7 ? .8 : avg >= 6.5 ? .2 : avg >= 6 ? -.6 : -1.2;
     notes.push(`${avg.toFixed(2)} average rating`);
+    // Keepers are also judged on clean sheets and saves per game, like outfield players on G/A.
+    const apps = st.apps + (st.cup ? st.cup.apps : 0), cs = (st.cleanAll || 0) / Math.max(1, apps), sv = (st.saves || 0) / Math.max(1, apps);
+    const keep = (cs >= .45 ? 1.8 : cs >= .35 ? 1.2 : cs >= .25 ? .6 : cs >= .15 ? .2 : 0) + (sv >= 3.5 ? .6 : sv >= 2.5 ? .3 : 0);
+    if (keep) { d += keep; notes.push(`${st.cleanAll || 0} clean sheets, ${st.saves || 0} saves`); }
   } else if (st.apps >= 10) {
     // Numbers count for less in the lower leagues.
     const w = L.tier === 1 ? leagueWeight(L) : L.tier === 2 ? .7 : .5;
@@ -1959,7 +1988,7 @@ function performanceReview(st, avg, awards) {
   d = Math.min(d, 5);
   // Gains shrink after 30 and on the way to 91; teenagers are judged gently, older players harder.
   const ageF = age <= 25 ? 1 : age <= VET_AGE ? .9 : Math.max(.1, .5 - (age - VET_AGE - 1) * .1);
-  d = d > 0 ? d * ageF * clamp((MAX_OVR - ovr) / 8, .2, 1) : d * (age <= 20 ? .3 : declineFactor(age));
+  d = d > 0 ? d * ageF * clamp((MAX_OVR - ovr) / 8, .2, 1) * (p.pos === 'GK' ? GK_GROWTH : 1) : d * (age <= 20 ? .3 : declineFactor(age));
   // Injuries: missing a quarter of the league games always costs OVR, more the longer you
   // were out and the older you are. A shorter spell out only hurts if you came back below par.
   const games = (league(myClub().league).clubs.length - 1) * 2, missed = st.missed || 0, share = games ? missed / games : 0;
@@ -2148,7 +2177,7 @@ function endSeason() {
   // This club's row; earlier clubs this season already have theirs.
   if (st.apps + st.cup.apps > 0 || !(p.seasonSpells || []).length) p.career.push(careerRow(st, c));
   const clubs = [...(p.seasonSpells || []).map(s => club(s.club).name), c.name].filter((n, i, a) => a.indexOf(n) === i);
-  S.seasonSummary = { season: S.season, club: c.name, clubs, pos, apps: tot.apps, goals: tot.goals, assists: tot.assists, avg, awards, ovrStart: S.ovrSeasonStart || ovr, ovrEnd: ovr, clean: tot.clean, starts: st.starts, missed: tot.missed, loanNext: false, returning: false, cup: tot.cup, review, honours: acc.honours };
+  S.seasonSummary = { season: S.season, club: c.name, clubs, pos, apps: tot.apps, goals: tot.goals, assists: tot.assists, avg, awards, ovrStart: S.ovrSeasonStart || ovr, ovrEnd: ovr, clean: tot.clean, cleanAll: tot.cleanAll || 0, saves: tot.saves || 0, starts: st.starts, missed: tot.missed, loanNext: false, returning: false, cup: tot.cup, review, honours: acc.honours };
 
   // Ageing for the player (applied at the birthday that comes with the new season).
   // Nothing until 33; from the 34th birthday a gradual fade that steepens from 38 (slower in Saudi
