@@ -462,6 +462,11 @@ function marketWage(ovr, c, pos = S.player.pos, age = ageOf(S.player.by)) {
   return lo * Math.pow(hi / lo, Math.pow(x, 1.1)) * fx * youth;
 }
 
+// ---------- reputation ----------
+// Fame takes time to build: every gain counts 85%, while a poor game still costs in full.
+const REP_GAIN = .85;
+function addRep(d) { S.player.rep = clamp(S.player.rep + (d > 0 ? d * REP_GAIN : d), 0, 100); }
+
 // ---------- manager affection ----------
 const effAff = () => clamp(S.player.aff - S.player.affPen, 0, 100);
 // At 25 the manager freezes you out of the team; at 15 he tears up your contract.
@@ -1261,7 +1266,7 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   if (rating >= 8.3) { if (!cup) st.motm++; report.events.push(cup ? 'Player of the Match in the cup!' : 'Player of the Match!'); }
   p.form.push(rating); p.form = p.form.slice(-5);
   p.energy -= Math.round(user.mins / 90 * 22);
-  p.rep = clamp(p.rep + (rating - 6.4) * .5 * (0.6 + clubPrestige(myClub())) * (cup ? 1.3 : 1) + user.goals * .25, 0, 100);
+  addRep((rating - 6.4) * .5 * (0.6 + clubPrestige(myClub())) * (cup ? 1.3 : 1) + user.goals * .25);
   changeAff(rating >= 7.5 ? 2 : rating >= 7 ? 1 : rating < 6 ? -2 : 0);
   nudgeOvr(perfDelta(rating, user));
   // Goals, assists and clean sheets in every competition count towards objectives.
@@ -1469,7 +1474,7 @@ function randomEvent(report) {
   if (Math.random() > .14) return;
   const events = [
     () => { if (p.rep < 15) return; const v = Math.round(p.rep * 600); p.money += v; msg(`A boot brand paid you ${money(v)} for a photoshoot.`, 'good'); },
-    () => { p.rep = clamp(p.rep + 1.5, 0, 100); msg('Your visit to a children\'s hospital went viral. Reputation up.', 'good'); },
+    () => { addRep(1.5); msg('Your visit to a children\'s hospital went viral. Reputation up.', 'good'); },
     () => { const v = Math.round(Math.max(150, p.wage * rand(.3, .8))); p.money -= v; msg(`Your car needed repairs: ${money(v)}.`, 'bad'); },
     () => { p.energy = clamp(p.energy - 15, 0, 100); msg('You slept badly before training. Energy down.', 'bad'); },
     () => { const k = pick(attrKeys(p.pos)); p.attrs[k] = clamp(p.attrs[k] + .8, 1, 99); msg(`A senior teammate gave you extra ${ATTR_NAMES[k].toLowerCase()} tips after training.`, 'good'); },
@@ -1776,7 +1781,7 @@ function acceptOffer(id) {
     if (S.seasonSummary) S.seasonSummary.loanNext = false;
     msg(`Signed for ${club(o.club).name} from ${from}: ${money(o.wage)}/week for ${o.years} years.`, 'good');
     notify('good', 'Welcome to ' + club(o.club).name + '!', `You signed a ${o.years}-year deal worth ${money(o.wage)} a week.`);
-    p.rep = clamp(p.rep + 2, 0, 100);
+    addRep(2);
   } else {
     msg(`Signed a new ${o.years}-year deal at ${money(o.wage)}/week. No more salary talks for about six months.`, 'good');
     notify('good', 'New contract signed!', `${o.years} more years at ${club(o.club).name}, ${money(o.wage)} a week.`);
@@ -2040,8 +2045,8 @@ function endSeason() {
   const avg = tot.apps ? tot.rsum / tot.apps : 0;
   const age = ageOf(p.by);
   const awards = [];
-  const give = (short, full, rep) => { awards.push(short); p.awards.push({ name: full, season: S.season }); p.rep = clamp(p.rep + rep, 0, 100); };
-  if (pos === 1) { awards.push(`${L.name} champion`); p.trophies.push({ name: L.name, club: c.name, season: S.season }); p.rep = clamp(p.rep + 6, 0, 100); }
+  const give = (short, full, rep) => { awards.push(short); p.awards.push({ name: full, season: S.season }); addRep(rep); };
+  if (pos === 1) { awards.push(`${L.name} champion`); p.trophies.push({ name: L.name, club: c.name, season: S.season }); addRep(6); }
   const scorers = topScorers(lid, 1);
   if (scorers[0] && scorers[0].me) give('Golden Boot', `${L.name} Golden Boot`, 4);
   const assisters = topAssists(lid, 1);

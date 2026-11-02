@@ -694,7 +694,7 @@ function playSummerStage() {
           if (row.cleanAll != null && conceded === 0 && ['GK', 'DEF'].includes(POS_GROUP[p.pos]) && user.mins >= 60) row.cleanAll++;
         }
       }
-      p.rep = clamp(p.rep + (rating - 6.4) * .6 + user.goals * .3, 0, 100);
+      addRep((rating - 6.4) * .6 + user.goals * .3);
       nudgeOvr(perfDelta(rating, user) * .5);
     }
   }
@@ -748,7 +748,7 @@ function finishTournament(t) {
   const label = t.name.replace(/ \d{4}$/, '');
   if (mine) {
     p.trophies.push({ name: label, club: teamName(t.winner), season: t.season, nat: isNation(t.winner) });
-    p.rep = clamp(p.rep + (t.rep || (t.key === 'UCL' || t.key === 'WC' ? 8 : 5)), 0, 100);
+    addRep((t.rep || (t.key === 'UCL' || t.key === 'WC' ? 8 : 5)));
     nudgeOvr((t.rep && t.rep < 4 ? .2 : .5) * growthFactor());
     msg(`You won the ${t.name}!`, 'good');
     notify('good', `${label} winners!`, `${teamName(t.winner)} won the ${t.name}, and you were part of it.`);
@@ -766,7 +766,7 @@ function finishTournament(t) {
   else if (t.key !== 'UCL' && ageOf(p.by) <= 21 && my.apps >= 3 && avg >= 7.1) won.push(`${label} Best Young Player`);
   won.forEach(a => {
     p.awards.push({ name: a, season: t.season, nat: !!t.mine && isNation(t.mine) });
-    p.rep = clamp(p.rep + 3, 0, 100);
+    addRep(3);
     note(a);
     msg(`You won the ${a}!`, 'good');
   });
