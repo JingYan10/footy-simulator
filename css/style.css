@@ -269,6 +269,26 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .pop h3 { margin: 0; font: 800 28px/1.05 var(--display); text-transform: uppercase; text-wrap: balance; }
 #fx.bad .pop h3 { color: #b7c2d4; }
 .pop p { margin: 0; color: var(--muted); }
+/* goal and assist celebrations: more goals, bigger show */
+#fx.haul { background: radial-gradient(circle at 50% 38%, rgba(255, 181, 71, .22), rgba(5, 10, 18, .9) 70%); }
+#fx.haul.assist { background: radial-gradient(circle at 50% 38%, rgba(76, 195, 138, .2), rgba(5, 10, 18, .9) 70%); }
+#fx.haul .pop { border-color: var(--flood); box-shadow: 0 0 48px rgba(255, 181, 71, .28); animation: pop-in .4s cubic-bezier(.2, 1.4, .4, 1); }
+#fx.haul.assist .pop { border-color: var(--good); box-shadow: 0 0 40px rgba(76, 195, 138, .25); }
+.haul-icons { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; }
+.haul-icons span { width: 40px; height: 40px; opacity: 0; animation: drop-in .45s cubic-bezier(.2, 1.5, .4, 1) forwards; }
+.haul-icons svg { width: 100%; height: 100%; }
+.haul-icons .hb { color: var(--chalk); }
+.haul-icons .hs { width: 28px; height: 28px; color: var(--good); opacity: 0; }
+#fx.haul.lvl3 .hb, #fx.haul.lvl4 .hb, #fx.haul.lvl5 .hb, #fx.haul.lvl6 .hb { color: var(--flood); filter: drop-shadow(0 0 8px rgba(255, 181, 71, .7)); }
+#fx.haul.lvl2 h3 { font-size: 32px; }
+#fx.haul.lvl3 h3 { font-size: 36px; color: var(--flood); }
+#fx.haul.lvl4 h3, #fx.haul.lvl5 h3 { font-size: 38px; color: var(--flood); animation: glow 1.4s ease-in-out infinite; }
+#fx.haul.lvl6 h3 { font-size: 40px; background: linear-gradient(90deg, #ffb547, #ff9ec7, #7cc7ff, #4cc38a, #ffb547); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 2s linear infinite; }
+#fx.haul.lvl4 .pop, #fx.haul.lvl5 .pop, #fx.haul.lvl6 .pop { animation: pop-in .4s cubic-bezier(.2, 1.4, .4, 1), shake .5s .4s ease-in-out 2; }
+@keyframes drop-in { from { transform: translateY(-24px) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes shake { 20%, 60% { transform: translateX(-6px) rotate(-1deg); } 40%, 80% { transform: translateX(6px) rotate(1deg); } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .haul-icons span { animation: none; opacity: 1; } #fx.haul .pop, #fx.haul h3 { animation: none !important; } }
 @keyframes pop-in { from { transform: scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes sink { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes glow { 50% { filter: drop-shadow(0 0 10px rgba(255, 181, 71, .8)); transform: scale(1.06); } }
@@ -286,6 +306,30 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .savebox { width: 100%; min-height: 120px; font: 12px/1.4 ui-monospace, monospace; background: var(--surface-2); color: var(--chalk); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 .tie.me { box-shadow: inset 3px 0 var(--flood); padding-left: 8px; }
 .tie.me span { color: var(--chalk); }
+/* cups: competition chips, rounds and ties */
+.cuptabs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; }
+.cuptabs::-webkit-scrollbar { display: none; }
+.cuptabs button { flex: none; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 7px 12px; font: 600 13px var(--body); white-space: nowrap; position: relative; }
+.cuptabs button.on { background: var(--flood); border-color: var(--flood); color: var(--flood-ink); }
+.cuptabs button.mine:not(.on)::after { content: ''; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--flood); }
+.cupstatus { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
+.cupstatus.good { color: var(--good); }
+.cupstatus.bad { color: var(--bad); }
+.round { display: grid; gap: 6px; }
+.roundhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; color: var(--flood); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.roundhead .muted { font-size: 12px; }
+.tie2 { display: grid; grid-template-columns: 1fr 56px 1fr; gap: 6px; align-items: center; font-size: 13px; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
+.tie2.me { box-shadow: inset 0 0 0 1px var(--flood); }
+.tside { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--chalk); }
+.tside.r { justify-content: flex-end; text-align: right; }
+.tside.w { font-weight: 700; }
+.tside.l { color: var(--muted); }
+.tside.l .crest { opacity: .55; }
+.tname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tscore { display: grid; justify-items: center; font-weight: 800; font-size: 15px; line-height: 1.1; }
+.tscore small { font-size: 10px; font-weight: 600; color: var(--muted); }
+table.grp th:first-child { width: 100%; }
+table.grp td, table.grp th { padding-left: 4px; padding-right: 4px; }
 
 /* Career history: one block per season, clubs side by side */
 details.season { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }

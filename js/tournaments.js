@@ -488,6 +488,7 @@ function playSummerStage() {
     if (user.mins) {
       const rating = summerRating(user, res, me);
       user.rating = rating;
+      notifyHaul(user, t.name.replace(/ \d{4}$/, ''));
       if (isNation(me)) { p.caps++; p.intlGoals = (p.intlGoals || 0) + user.goals; }
       t.goals += user.goals;
       const my = t.my = t.my || { apps: 0, goals: 0, assists: 0, rsum: 0 };

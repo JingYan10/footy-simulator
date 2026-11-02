@@ -392,8 +392,10 @@ function chooseStart(clubId) {
   save();
 }
 
-function msg(text, kind = 'info') {
-  S.inbox.unshift({ text, kind, week: S.week, season: S.season });
+// A tagged message replaces the one with the same tag from this week, so repeated clicks don't pile up.
+function msg(text, kind = 'info', tag = null) {
+  if (tag) S.inbox = S.inbox.filter(m => !(m.tag === tag && m.week === S.week && m.season === S.season));
+  S.inbox.unshift({ text, kind, week: S.week, season: S.season, ...(tag ? { tag } : {}) });
   S.inbox = S.inbox.slice(0, 30);
 }
 
@@ -430,6 +432,9 @@ function marketWage(ovr, c, pos = S.player.pos, age = ageOf(S.player.by)) {
 
 // ---------- manager affection ----------
 const effAff = () => clamp(S.player.aff - S.player.affPen, 0, 100);
+// At 25 the manager freezes you out of the team; at 15 he tears up your contract.
+const FROZEN_AFF = 25, SACK_AFF = 15;
+const frozenOut = () => !S.player.needsContract && effAff() <= FROZEN_AFF;
 function changeAff(d) { S.player.aff = clamp(S.player.aff + d, 0, 100); }
 function changeBoard(d) { S.player.board = clamp(S.player.board + d, 0, 100); }
 
@@ -456,6 +461,7 @@ function myRank(c = myClub(), ovr = calcOVR(), aff = effAff(), withForm = true) 
 
 function squadStatus(c = myClub(), ovr = calcOVR(), aff = c === myClub() ? effAff() : 50) {
   const rank = myRank(c, ovr, aff, c === myClub()), slots = GROUP_SLOTS[POS_GROUP[S.player.pos]];
+  if (c === myClub() && frozenOut()) return 'Reserve';
   if (rank === 1) return 'Key Player';
   if (rank <= slots) return 'Starter';
   if (rank <= slots + 2) return 'Rotation';
@@ -482,6 +488,8 @@ function startChance() {
     subShare = .5;
   }
   if (p.energy < 25) start *= .4;
+  // Frozen out: you train with the reserves and only get the odd late cameo.
+  if (frozenOut()) { start = 0; subShare = .1; }
   return { start: clamp(start, 0, .97), subShare };
 }
 
@@ -643,16 +651,26 @@ function rivalBetrayal(id) {
   return (p.clubsPlayed || []).filter(x => x !== id && !isBanned(x) && areRivals(x, id));
 }
 
-// Breaking into a top flight takes 80 OVR. Players already at a top-flight club are exempt.
-const TOP_FLIGHT_OVR = 80;
+// Breaking into a top flight takes 85 OVR, or a breakout season (+8 OVR). Players already at a
+// top-flight club are exempt.
+const TOP_FLIGHT_OVR = 85, BREAKOUT_OVR = 8;
 function topFlightOpen(c) {
   const p = S.player, home = club(p.loan ? p.loan.parent : p.club);
-  return clubTier(c) !== 1 || calcOVR() >= TOP_FLIGHT_OVR || (!p.needsContract && home && clubTier(home) === 1);
+  return clubTier(c) !== 1 || calcOVR() >= TOP_FLIGHT_OVR || scoutBuzz().breakout || (!p.needsContract && home && clubTier(home) === 1);
+}
+
+// Clubs you turned down stay away for six months, though an eager one sometimes tries again.
+// A dream club that said no will not bid for a season.
+const DECLINE_WEEKS = 26, EAGER = .12;
+function coolingOff(id) {
+  const p = S.player, w = absWeek();
+  if (((p.wishNo || {})[id] || 0) > w) return true;
+  return ((p.declined || {})[id] || 0) > w && Math.random() > EAGER;
 }
 
 function interestedClub() {
   const ovr = calcOVR(), mine = teamStrength(myClub());
-  const pool = Object.values(S.clubs).filter(c => c.id !== S.player.club && !isBanned(c.id) && topFlightOpen(c) && teamStrength(c) >= mine - 3 && teamStrength(c) <= ovr + 4);
+  const pool = Object.values(S.clubs).filter(c => c.id !== S.player.club && !isBanned(c.id) && topFlightOpen(c) && !coolingOff(c.id) && teamStrength(c) >= mine - 3 && teamStrength(c) <= ovr + 4);
   return pool.length ? pick(pool) : null;
 }
 
@@ -727,8 +745,16 @@ function resolveDecision(choice) {
 // ---------- termination ----------
 function checkTermination() {
   const p = S.player;
-  if (p.needsContract || effAff() > 0) return;
+  if (p.needsContract) return;
   const c = myClub();
+  // Tell the player when they drop out of (or win back) the manager's plans.
+  if (frozenOut() !== !!p.frozen) {
+    p.frozen = frozenOut();
+    if (p.frozen) { msg(`${c.mgr} has frozen you out. You train with the reserves until you win him back (affection above ${FROZEN_AFF}).`, 'bad'); notify('bad', 'Frozen out', `${c.mgr} has dropped you to the reserves. At ${SACK_AFF} affection he will tear up your contract.`); }
+    else msg(`${c.mgr} has brought you back into the first-team picture.`, 'good');
+  }
+  if (effAff() > SACK_AFF) return;
+  p.frozen = false;
   if (p.loan) {
     msg(`${c.mgr} has had enough of you. ${c.name} have sent you back early.`, 'bad');
     notify('bad', 'Loan cut short', `${c.name} ended your loan. You are back at ${club(p.loan.parent).name}.`);
@@ -745,7 +771,7 @@ function checkTermination() {
   p.order = null;
   S.offers = [];
   msg(`${c.mgr} has had enough. ${c.name} have terminated your contract. You are a free agent.`, 'bad');
-  notify('bad', 'Contract terminated', `Manager affection hit zero. ${c.name} have released you. Sign for a new club to keep playing.`);
+  notify('bad', 'Contract terminated', `Manager affection fell to ${SACK_AFF}. ${c.name} have released you. Sign for a new club to keep playing.`);
   generateOffers(randi(2, 4), true);
 }
 
@@ -807,11 +833,11 @@ function rest() {
 const equipCost = i => i <= (S.player.equipOwned || 0) ? 0 : EQUIP_TIERS[i].buy;
 function setEquip(i) {
   const p = S.player, t = EQUIP_TIERS[i], cost = equipCost(i);
-  if (i > 0 && p.money < cost + t.fee) return false;
+  if (i === p.equip || (i > 0 && p.money < cost + t.fee)) return false;
   p.money -= cost;
   p.equipOwned = Math.max(p.equipOwned || 0, i);
   p.equip = i;
-  msg(i ? `${cost ? `Bought ${t.name} training equipment for ${money(cost)}` : `Switched to ${t.name} training equipment`} (${money(t.fee)}/week to run).` : 'Switched back to normal training equipment.', i ? 'good' : 'info');
+  msg(i ? `${cost ? `Bought ${t.name} training equipment for ${money(cost)}` : `Switched to ${t.name} training equipment`} (${money(t.fee)}/week to run).` : 'Switched back to normal training equipment.', i ? 'good' : 'info', 'equip');
   save();
   return true;
 }
@@ -862,7 +888,7 @@ function announceWish(id) {
 // A club far above your level is very unlikely to come, however loudly you ask.
 function wishChance(id = S.player.wish) {
   const p = S.player, c = club(id);
-  if (!c || isBanned(id) || !topFlightOpen(c)) return 0;
+  if (!c || isBanned(id) || !topFlightOpen(c) || ((p.wishNo || {})[id] || 0) > absWeek()) return 0;
   const s = teamStrength(c), reach = calcOVR() + 2 + p.rep / 30;
   const normal = s <= reach ? .3 + p.rep / 300 : Math.max(0, .3 - (s - reach) * .05);
   return clamp(normal * (1.25 + (p.agent || 0) * .04), .01, .75);
@@ -886,16 +912,29 @@ function resolveWish() {
     return;
   }
   const gap = teamStrength(c) - calcOVR();
-  const why = !topFlightOpen(c) ? `top-flight clubs only sign players rated ${TOP_FLIGHT_OVR}+, and you are ${calcOVR()}`
+  const why = ((p.wishNo || {})[p.wish] || 0) > absWeek() ? 'they already turned you down and have not changed their minds'
+    : !topFlightOpen(c) ? `top-flight clubs only sign players rated ${TOP_FLIGHT_OVR}+ (or after a +${BREAKOUT_OVR} OVR breakout season), and you are ${calcOVR()}`
     : gap > 8 ? `they think you are not ready for their level yet (team rating ${Math.round(teamStrength(c))}, you are ${calcOVR()})`
     : gap > 3 ? 'they like you, but went for a more experienced player'
     : pick(['they are happy with the players they have in your position', 'the board would not approve the budget', 'their manager prefers another target']);
   p.wishResult = 'no';
-  agentSay(`${c.name} have decided not to bid: ${why}. You can name a dream club again next season.`, 'bad');
+  p.wishNo = { ...(p.wishNo || {}), [p.wish]: absWeek() + SEASON_WEEKS };
+  agentSay(`${c.name} have decided not to bid: ${why}. They won't come in for you for a season. You can name a dream club again next season.`, 'bad');
   notify('bad', 'No move to your dream club', `${c.name} decided not to make an offer.`);
 }
 
-function setHouse(i) { S.player.house = i; msg(`Moved into a ${HOUSING[i].name.toLowerCase()} (${money(HOUSING[i].rent)}/week).`); save(); }
+// Homes are let on a one-year lease (the shared flat has none): you can't move until it ends.
+const LEASE_WEEKS = SEASON_WEEKS;
+const leaseLeft = () => S.player.house ? Math.max(0, (S.player.leaseEnd || 0) - absWeek()) : 0;
+function setHouse(i) {
+  const p = S.player;
+  if (i === p.house || leaseLeft()) return false;
+  p.house = i;
+  p.leaseEnd = i ? absWeek() + LEASE_WEEKS : 0;
+  msg(`Moved into a ${HOUSING[i].name.toLowerCase()} (${money(HOUSING[i].rent)}/week${i ? ', one-year lease' : ''}).`, 'info', 'house');
+  save();
+  return true;
+}
 
 function sponsorIncome() { const r = S.player.rep; return Math.round(r * r * 4.5); }
 const agentCut = () => Math.round(S.player.wage * agent().cut);
@@ -916,6 +955,8 @@ function nextFixture() {
   if (!f) return null;
   return { home: f[0], away: f[1], isHome: f[0] === p.club, opp: f[0] === p.club ? f[1] : f[0] };
 }
+
+const TWO_GAME_ENERGY = 50;
 
 // The minutes you were on the pitch: from kick-off as a starter, the closing spell as a sub.
 const userMinutes = u => !u || !u.mins ? [1, 90] : u.start ? [1, Math.min(90, u.mins)] : [Math.max(1, 91 - u.mins), 90];
@@ -949,8 +990,8 @@ function playFixture(h, a, user) {
     const mineHome = h === p.club;
     const base = mineHome ? sh : sa;
     const withMe = teamStrength(myClub(), ovr, p.pos);
-    // Following the manager's plan gives the team a small edge; it is no guarantee.
-    const adj = base + (withMe - base) * user.mins / 90 + (user.follow ? 1.5 : 0);
+    // Following the manager's plan gives the team a small edge; playing your own game costs it one.
+    const adj = base + (withMe - base) * user.mins / 90 + (user.follow ? 1.5 : user.own ? -1.5 : 0);
     if (mineHome) sh = adj; else sa = adj;
   }
   const gh = poisson(1.45 * Math.exp((sh - sa + 2) / 13));
@@ -1000,9 +1041,22 @@ function matchRating(user, res) {
 }
 
 // Your stats, form, fitness, reputation, OVR and objectives after a game you played in.
+// A celebration for your goals and assists in a game; the bigger the haul, the bigger the show.
+const HAUL_NAME = ['', 'Goal!', 'Brace!', 'Hat-trick!', 'Haul! Four goals', 'Five-goal haul!', 'Double hat-trick!'];
+function notifyHaul(user, compName) {
+  const g = user.goals || 0, a = user.assists || 0;
+  if (!g && !a) return;
+  const title = g ? HAUL_NAME[Math.min(g, 6)] : a === 1 ? 'Assist!' : a === 2 ? 'Double assist!' : `${a} assists!`;
+  const parts = [g && `${g} goal${g > 1 ? 's' : ''}`, a && `${a} assist${a > 1 ? 's' : ''}`].filter(Boolean).join(' and ');
+  // Shown before any other news from the same week, in the order the games were played.
+  const at = POPUPS.findIndex(x => x.kind !== 'haul');
+  POPUPS.splice(at < 0 ? POPUPS.length : at, 0, { kind: 'haul', title, text: `${parts} in the ${compName} game.`, goals: g, assists: a });
+}
+
 function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   const p = S.player, rating = matchRating(user, res);
   user.rating = rating;
+  notifyHaul(user, comp ? comp.name : league(myClub().league).name);
   const st = p.st, line = cup ? st.cup : st;
   line.apps++; line.goals += user.goals; line.assists += user.assists; line.rsum += rating;
   addComp(st.comps = st.comps || {}, comp ? comp.name : league(myClub().league).name, comp ? comp.kind : 'league', 1, user.goals, user.assists, rating);
@@ -1025,7 +1079,7 @@ function advanceWeek() {
   const p = S.player;
   if (S.phase !== 'season' || p.needsContract) return null;
   const report = { week: S.week, season: S.season, match: null, events: [] };
-  const fx = nextFixture();
+  const fx = nextFixture(), weekEnergy = p.energy;
   let user = null;
 
   if (fx) {
@@ -1054,7 +1108,13 @@ function advanceWeek() {
     if (user.mins) {
       applyUserMatch(user, res, fx.isHome, false, report);
       if (user.follow) { changeAff(2); report.events.push('You followed the manager\x27s plan. Affection +2'); }
-      if (user.own) { changeAff(-6); report.events.push('You ignored the manager\x27s plan. He is furious: affection −6'); }
+      if (user.own) {
+        // He forgives a goal in a win; a goal in a draw or defeat still annoys him a little.
+        const won = fx.isHome ? res.gh > res.ga : res.ga > res.gh;
+        if (user.goals && won) { changeAff(2); report.events.push('You ignored the plan, but your goal won the game. Affection +2'); }
+        else if (user.goals) { changeAff(-2); report.events.push('You ignored the plan. You scored, but the team didn\x27t win: affection −2'); }
+        else { changeAff(-6); report.events.push('You ignored the manager\x27s plan and didn\x27t score. He is furious: affection −6'); }
+      }
     }
     if (p.promise > 0) p.promise--;
     S.results.unshift({ week: S.week, opp: fx.opp, isHome: fx.isHome, gf: fx.isHome ? res.gh : res.ga, ga: fx.isHome ? res.ga : res.gh, rating: user.rating || null, goals: user.goals, assists: user.assists, mins: user.mins });
@@ -1063,7 +1123,10 @@ function advanceWeek() {
 
   // Midweek cup game (European or domestic), picked on how fresh you are after the weekend.
   const efx = midweekFixture();
-  const cupUser = efx ? { ...selection(!efx.euro), goals: 0, assists: 0 } : null;
+  // Two games in a week takes 50+ energy at the start of it; otherwise you play only the league game.
+  const tooTired = efx && user && user.mins && weekEnergy < TWO_GAME_ENERGY;
+  const cupUser = efx ? (tooTired ? { mins: 0, start: false, goals: 0, assists: 0, rested: true } : { ...selection(!efx.euro), goals: 0, assists: 0 }) : null;
+  if (tooTired) report.events.push(`Rested for the ${efx.t.name.replace(/ \d{4}$/, '')} game: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week`);
   const euroRes = euroWeek(efx && efx.euro ? cupUser : null);
   const homeRes = cupWeek(efx && !efx.euro ? cupUser : null);
   const cupRes = euroRes || homeRes;
@@ -1087,6 +1150,7 @@ function advanceWeek() {
   }
   if (p.money < 0 && p.house > 0) {
     p.house = 0;
+    p.leaseEnd = 0;
     msg('You ran out of money and had to move back into a shared flat.', 'bad');
   }
 
@@ -1137,8 +1201,8 @@ function advanceWeek() {
   const card = cardTier(calcOVR());
   if (card !== 'Bronze' && !(p.cards || []).includes(card)) {
     p.cards = [...(p.cards || []), card];
-    msg(card === 'Silver' ? 'You reached a silver rating (65)! Top-flight scouts are taking notice, and second-tier clubs will bid for you.' : 'You reached a gold rating (75)! You are now one of the most wanted players around.', 'good');
-    notify('good', `${card} rating!`, card === 'Silver' ? 'You hit 65 OVR. Top-flight scouts are watching and second-tier clubs will bid for you.' : 'You hit 75 OVR. You are one of the most wanted players around.');
+    msg(card === 'Silver' ? 'You reached a silver rating (65)! Second-tier clubs will start bidding for you. Top-flight clubs want 85, or a +8 OVR breakout season.' : 'You reached a gold rating (75)! You are now one of the most wanted players around.', 'good');
+    notify('good', `${card} rating!`, card === 'Silver' ? 'You hit 65 OVR. Second-tier clubs will bid for you now.' : 'You hit 75 OVR. You are one of the most wanted players around.');
   }
 
   // January transfer window
@@ -1200,11 +1264,17 @@ function checkContractBoost() {
   msg(`${myClub().name} want to reward your progress with an improved contract.`, 'good');
 }
 
-// Renewals pay around market value; rival clubs bid above it to tempt you away.
+// No club pays more than 35% above your market value, and nobody earns more than the
+// best-paid players in the world in their position (Mbappé/Haaland, De Bruyne, Van Dijk, Courtois).
+const MAX_OVER_MARKET = .35;
+const WAGE_MAX = { FWD: 600000, MID: 470000, DEF: 410000, GK: 300000 };
+const wageCeiling = (c, room = MAX_OVER_MARKET) => Math.min(marketWage(calcOVR(), c) * (1 + Math.min(room, MAX_OVER_MARKET)), WAGE_MAX[POS_GROUP[S.player.pos]]);
+
+// Renewals pay around market value; rival clubs bid a little above it to tempt you away.
 function makeOffer(c, type) {
   const ovr = calcOVR();
-  const range = type === 'renew' ? [.85, 1] : [1.05, 1.35];
-  const wage = Math.round(marketWage(ovr, c) * rand(...range) * (1 + agent().wage) / 10) * 10;
+  const range = type === 'renew' ? [.85, 1] : [1, 1.2];
+  const wage = Math.round(Math.min(marketWage(ovr, c) * rand(...range) * (1 + agent().wage * .5), wageCeiling(c)) / 10) * 10;
   const age = ageOf(S.player.by);
   const years = age >= 32 ? randi(1, 2) : randi(2, 5);
   let status = squadStatus(c, ovr), promised = false;
@@ -1221,10 +1291,10 @@ function makeOffer(c, type) {
 const maxRounds = o => o.maxRounds || 2;
 const negLocked = () => (S.player.negLock || 0) > absWeek();
 
-// Scouting signals: a 5+ OVR jump this season, and a silver (65+) rating.
+// Scouting signals: an 8+ OVR jump this season, and a silver (65+) rating.
 function scoutBuzz() {
   const ovr = calcOVR();
-  return { breakout: ovr - (S.ovrSeasonStart || ovr) >= 5, silver: ovr >= 65 };
+  return { breakout: ovr - (S.ovrSeasonStart || ovr) >= BREAKOUT_OVR, silver: ovr >= 65 };
 }
 
 function generateOffers(count, guarantee = false) {
@@ -1233,7 +1303,7 @@ function generateOffers(count, guarantee = false) {
   if (!guarantee && offerLocked()) return;
   const reach = ovr + 2 + p.rep / 30;
   const home = p.loan ? p.loan.parent : p.club;
-  const free = c => c.id !== p.club && c.id !== home && !isBanned(c.id) && topFlightOpen(c) && !S.offers.some(o => o.club === c.id);
+  const free = c => c.id !== p.club && c.id !== home && !isBanned(c.id) && topFlightOpen(c) && !S.offers.some(o => o.club === c.id) && !coolingOff(c.id);
   const pool = Object.values(S.clubs).filter(c => {
     if (!free(c)) return false;
     const s = teamStrength(c), top = clubTier(c) === 1;
@@ -1245,7 +1315,11 @@ function generateOffers(count, guarantee = false) {
   const base = (.25 + p.rep / 200) * (p.listed ? 1.8 : 1) * agent().offers;
   let added = 0;
   const names = [];
-  const add = c => { S.offers.push(makeOffer(c, 'transfer')); added++; names.push(c.name); msg(`${c.name} (${league(c.league).name}) have made you an offer.`, 'good'); };
+  const add = c => {
+    S.offers.push(makeOffer(c, 'transfer')); added++; names.push(c.name);
+    const again = ((p.declined || {})[c.id] || 0) > absWeek();
+    msg(again ? `${c.name} won't take no for an answer: they are back with another offer.` : `${c.name} (${league(c.league).name}) have made you an offer.`, 'good');
+  };
   for (const c of pool.slice(0, 24)) {
     if (added >= count) break;
     // Silver: second-tier clubs are much keener, top-flight clubs a little.
@@ -1293,10 +1367,12 @@ function refreshOffers() {
   return added;
 }
 
-// How far above market value a deal can go depends on your objective hit rate at this club.
+// How far above market value a deal can go: buying clubs stretch to 25%, your own club only as
+// far as your objectives record earns. A good agent adds a little. Never more than 35% over.
+const BAND_ROOM = { elite: .3, great: .2, good: .1, ok: 0, poor: 0, new: 0 };
 function wageCap(o) {
-  const mkt = marketWage(calcOVR(), club(o.club)), cap = BANDS[objBand()].cap;
-  return (o.type === 'renew' ? mkt * cap : mkt * (cap + .3)) * (1 + agent().wage);
+  const room = (o.type === 'renew' ? BAND_ROOM[objBand()] : .25) + agent().wage * .4;
+  return wageCeiling(club(o.club), room);
 }
 
 function negotiateChance(o, ask) {
@@ -1307,7 +1383,8 @@ function negotiateChance(o, ask) {
   return clamp(.85 - ask.pct * 1.3 + (aff - 50) / 120 + board + (ovr - teamStrength(c)) / 30 - o.rounds * .15 + (o.type === 'renew' ? BANDS[objBand()].chance : 0) - over + agent().neg, .05, .95);
 }
 
-const canNegotiate = o => o.rounds < maxRounds(o) && !(o.type === 'renew' && negLocked());
+// A renewal talk that fails ends the haggling: sign what is on the table or walk away.
+const canNegotiate = o => o.rounds < maxRounds(o) && !o.talksOver && !(o.type === 'renew' && negLocked());
 
 // Ask for more money. With your own club it costs manager affection whatever the outcome,
 // and a pay rise makes him expect more. A buying club walks away if talks fail, but their
@@ -1327,12 +1404,12 @@ function negotiate(id, i) {
     // Even when he agrees, the manager resents being squeezed: affection drops by a fifth.
     if (renew) changeAff(-p.aff * .2);
   } else if (!renew || Math.random() < ask.pct * 1.2) { S.offers = S.offers.filter(x => x.id !== id); result = 'withdrawn'; }
-  else result = 'rejected';
+  else { result = 'rejected'; o.talksOver = true; }
   if (renew && result !== 'accepted') changeAff(-3);
   if (result === 'withdrawn') notify('bad', 'Offer withdrawn', `${club(o.club).name} ${renew ? 'were offended by your demands' : 'would not meet your demands'} and walked away.`);
   checkTermination();
   const name = club(o.club).name;
-  msg(result === 'accepted' ? `${name} agreed to ${money(o.wage)}/week.` : result === 'withdrawn' ? `${name} were offended and withdrew their offer.` : `${name} refused to raise their offer.`, result === 'accepted' ? 'good' : 'bad');
+  msg(result === 'accepted' ? `${name} agreed to ${money(o.wage)}/week.` : result === 'withdrawn' ? `${name} were offended and withdrew their offer.` : `${name} refused to raise their offer. Talks are over: sign it as it is or decline.`, result === 'accepted' ? 'good' : 'bad');
   save();
   return result;
 }
@@ -1360,6 +1437,7 @@ function acceptOffer(id) {
     p.joinedSeason = S.season;
     p.aff = o.promised ? 60 : 50;
     p.affPen = 0;
+    p.frozen = false;
     p.board = 50;
     p.listed = false;
     p.objHist = [];
@@ -1395,6 +1473,7 @@ function declineOffer(id) {
   if (o && o.type === 'renew') { changeAff(-4); changeBoard(-4); }
   // Turning down other clubs shows loyalty, especially rivals.
   if (o && o.type === 'transfer' && !S.player.needsContract) changeAff(isRival(club(o.club)) ? 5 : 2);
+  if (o && o.type === 'transfer') S.player.declined = { ...(S.player.declined || {}), [o.club]: absWeek() + DECLINE_WEEKS };
   S.offers = S.offers.filter(x => x.id !== id);
   save();
 }
@@ -1470,24 +1549,34 @@ const AWARD_OVR = [
 ];
 const awardValue = a => (AWARD_OVR.find(([re]) => re.test(a)) || [0, 0])[1];
 
-// End-of-season OVR review: ratings, goals, awards and injuries move your OVR like they would in real life.
+// Goals + assists a season needs before the review lifts your OVR. Attackers need 10;
+// deeper roles need fewer. Keepers are judged on their ratings instead.
+const GA_PAR = { ST: 10, LW: 10, RW: 10, CAM: 10, LM: 8, RM: 8, CM: 6, CDM: 4, LB: 4, RB: 4, CB: 2 };
+
+// End-of-season OVR review. For outfield players goals and assists decide it: under half of par
+// costs OVR, under par holds it, and every G/A over par lifts it more. Ratings, awards and
+// injuries adjust it.
 function performanceReview(st, avg, awards) {
-  const p = S.player, age = ageOf(p.by), notes = [];
+  const p = S.player, age = ageOf(p.by), notes = [], ovr = calcOVR(), L = league(myClub().league);
+  const ga = st.goals + st.assists + (st.cup ? st.cup.goals + st.cup.assists : 0), par = GA_PAR[p.pos];
   let d = 0;
-  if (st.apps >= 10) {
-    const r = avg >= 7.5 ? 1.5 : avg >= 7 ? .8 : avg >= 6.5 ? .2 : avg >= 6 ? -.6 : -1.2;
-    d += r;
+  if (st.apps >= 10 && !par) {
+    d += avg >= 7.5 ? 1.5 : avg >= 7 ? .8 : avg >= 6.5 ? .2 : avg >= 6 ? -.6 : -1.2;
     notes.push(`${avg.toFixed(2)} average rating`);
+  } else if (st.apps >= 10) {
+    // Numbers count for less in the lower leagues.
+    const w = L.tier === 1 ? leagueWeight(L) : L.tier === 2 ? .7 : .5;
+    const gd = ga >= par ? Math.min(4.5, .3 + (ga - par) * .15) * w : ga >= par / 2 ? 0 : -.8;
+    d += gd;
+    notes.push(`${ga} goals + assists (par ${par})`);
+    const r = avg >= 7.5 ? .4 : avg >= 7 ? .2 : avg < 6.2 ? -.4 : 0;
+    if (r) { d += r; notes.push(`${avg.toFixed(2)} average rating`); }
   } else if (age >= 22 && !st.missed) { d -= .6; notes.push('too few games'); }
-  const g = POS_GROUP[p.pos];
-  const ga = st.goals + st.assists + (st.cup ? st.cup.goals + st.cup.assists : 0);
-  const gaPar = { FWD: 18, MID: 12, DEF: 4, GK: 0 }[g];
-  if (gaPar && ga >= gaPar) { d += .7; notes.push(`${ga} goals + assists`); }
   awards.forEach(a => { const v = awardValue(a); if (v) { d += v; notes.push(a); } });
-  // A great season is worth up to about 3 OVR before age and level scale it.
-  d = Math.min(d, 3);
-  // Teenagers are judged gently; a poor season costs more as you get older.
-  d = d > 0 ? d * growthFactor(false) / .9 : d * (age <= 20 ? .3 : declineFactor(age));
+  d = Math.min(d, 5);
+  // Gains shrink after 30 and on the way to 91; teenagers are judged gently, older players harder.
+  const ageF = age <= 25 ? 1 : age <= 30 ? .9 : age <= 33 ? .6 : .3;
+  d = d > 0 ? d * ageF * clamp((MAX_OVR - ovr) / 8, .2, 1) : d * (age <= 20 ? .3 : declineFactor(age));
   // Injuries: missing a quarter of the league games always costs OVR, more the longer you
   // were out and the older you are. A shorter spell out only hurts if you came back below par.
   const games = (league(myClub().league).clubs.length - 1) * 2, missed = st.missed || 0, share = games ? missed / games : 0;
@@ -1498,15 +1587,7 @@ function performanceReview(st, avg, awards) {
     d -= (avg < 6.5 ? .6 : .3) * declineFactor(age);
     notes.push(`below par after ${missed} games out injured`);
   } else if (missed >= 5) notes.push(`bounced back from ${missed} games out injured`);
-  // Standout numbers in a top flight prove you belong at a higher level, whatever your age.
-  // Each G/A over par is worth .2 OVR (up to 3.5), weighted by the league and slowing near 91.
-  const L = league(myClub().league);
-  if (L.tier === 1 && gaPar && st.apps >= 15 && ga > gaPar) {
-    const ovr = calcOVR(), ageF = age <= 30 ? 1 : age <= 33 ? .6 : .3;
-    const star = Math.min(Math.min(3.5, (ga - gaPar) * .2) * leagueWeight(L) * ageF * clamp((MAX_OVR - ovr) / 8, .2, 1), Math.max(0, MAX_OVR - ovr - d));
-    if (star >= .1) { d += star; notes.push(`standout top-flight season (+${star.toFixed(1)})`); }
-  }
-  if (d > 0 && calcOVR() >= MAX_OVR) d = 0;
+  if (d > 0) d = Math.min(d, Math.max(0, MAX_OVR - ovr));
   nudgeOvr(d);
   return { change: Math.round(d * 10) / 10, notes };
 }
@@ -1723,6 +1804,7 @@ function endLoan() {
   p.club = l.parent;
   p.aff = clamp(l.parentAff + ((l.result || 6.5) - 6.5) * 12, 0, 100);
   p.affPen = 0;
+  p.frozen = false;
   p.objHist = [];
   p.loan = null;
   msg(`Your loan at ${loanClub} is over. You are back at ${myClub().name}.`);
@@ -1745,6 +1827,7 @@ function startLoan() {
   p.club = dest.id;
   p.aff = 55;
   p.affPen = 0;
+  p.frozen = false;
   p.objHist = [];
   notify('good', 'Loan move', `You join ${dest.name} (${league(dest.league).name}) on loan for the season.`);
   msg(`You have joined ${dest.name} (${league(dest.league).name}) on a season-long loan from ${parent.name}. ${parent.name} keep paying your wages.`, 'good');

@@ -164,6 +164,8 @@ function render() {
   const scrollY = window.scrollY;
   const views = { home: viewHome, train: viewTrain, contract: viewContract, shop: viewShop, agent: viewAgent, club: viewClub, career: viewCareer };
   app.innerHTML = topbar() + `<main class="wrap">${views[tab]()}</main>` + nav();
+  const chip = app.querySelector('.cuptabs .on');
+  if (chip) chip.parentElement.scrollLeft = chip.offsetLeft - chip.parentElement.offsetLeft - 24;
   window.scrollTo(0, scrollY);
   nextPopup();
 }
@@ -214,6 +216,7 @@ function offersHtml() {
     const c = club(o.club), left = maxRounds(o) - o.rounds;
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
+      : o.talksOver ? '<div class="small bad">Talks broke down. You can still sign this offer or decline it, but not negotiate.</div>'
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
@@ -260,7 +263,11 @@ const BAND_NOTE = {
 
 function managerCard() {
   const p = S.player, c = myClub(), eff = Math.round(effAff()), band = objBand(), rate = objRate();
-  const mood = eff >= 75 ? 'Loves you' : eff >= 60 ? 'Trusts you' : eff >= 45 ? 'Neutral' : eff >= 30 ? 'Unconvinced' : eff >= 15 ? 'Frozen out' : 'On the brink';
+  const mood = eff >= 75 ? 'Loves you' : eff >= 60 ? 'Trusts you' : eff >= 45 ? 'Neutral' : eff > FROZEN_AFF ? 'Unconvinced' : eff > SACK_AFF + 3 ? 'Frozen out' : 'On the brink';
+  // The objectives record only speaks for him while he still likes you.
+  const note = eff <= FROZEN_AFF ? `You are frozen out: he won't pick you until affection is above ${FROZEN_AFF}.`
+    : eff < 45 && ['elite', 'great', 'good'].includes(band) ? 'You hit your targets, but he has gone cold on you. Win him back before asking for money.'
+    : BAND_NOTE[band];
   const cls = eff >= 60 ? '' : eff >= 40 ? 'mid' : 'low';
   const objs = (p.objectives || []).map(o => {
     const pct = Math.min(100, Math.round(o.progress / o.target * 100));
@@ -272,10 +279,10 @@ function managerCard() {
   return `<section class="card"><div class="row"><h2>Manager</h2><span class="small">${c.mgr}</span></div>
     <div class="energy" style="margin:0"><span>${mood}</span><div class="bar"><i class="${cls}" style="width:${eff}%"></i></div><b class="num">${eff}</b></div>
     ${p.affPen >= 1 ? `<div class="small bad">−${Math.round(p.affPen)} from contract talks, fading each week</div>` : ''}
-    ${eff < 15 ? '<div class="small bad"><b>Warning:</b> if affection reaches 0 your contract will be terminated.</div>' : ''}
+    ${eff <= FROZEN_AFF + 5 ? `<div class="small bad"><b>Warning:</b> at ${FROZEN_AFF} he freezes you out, and at ${SACK_AFF} he tears up your contract.</div>` : ''}
     <div class="energy" style="margin:0"><span>Board</span><div class="bar"><i class="${p.board >= 60 ? '' : p.board >= 40 ? 'mid' : 'low'}" style="width:${p.board}%"></i></div><b class="num">${Math.round(p.board)}</b></div>
     <div class="row small"><span class="muted">Objectives hit</span><b>${rate === null ? '–' : Math.round(rate * 100) + '%'} <span class="muted">(${(p.objHist || []).length} so far)</span></b></div>
-    <div class="small ${band === 'poor' ? 'bad' : band === 'elite' || band === 'great' ? 'good' : 'muted'}">${BAND_NOTE[band]}</div>
+    <div class="small ${band === 'poor' || note !== BAND_NOTE[band] ? 'bad' : band === 'elite' || band === 'great' ? 'good' : 'muted'}">${note}</div>
     ${p.objHard ? `<div class="small muted">Targets are ${Math.round(p.objHard * 100)}% harder since your pay rise.</div>` : ''}
     ${p.promise > 0 ? `<div class="small good">Promised starting place: ${p.promise} more league games${effAff() < 30 ? ' (on hold while affection is under 30)' : ''}.</div>` : ''}
     ${objs}</section>`;
@@ -286,7 +293,7 @@ function orderBox() {
   if (!o) return '';
   return `<div class="order"><div class="small flood"><b>Manager's instructions</b></div><div>“${esc(o.text)}”</div>
     <div class="btns"><button class="btn sm ${o.choice === 'follow' ? 'good' : ''}" data-act="order" data-v="follow">Follow the plan</button><button class="btn sm ${o.choice === 'own' ? 'danger' : ''}" data-act="order" data-v="own">Play my own game</button></div>
-    <div class="small muted">Following gives the team a small edge and pleases him. Your own game boosts your goal chances but he will hate it.</div></div>`;
+    <div class="small muted">Following gives the team a small edge and pleases him. Your own game boosts your scoring chances but hurts the team: score in a win and he forgives you, score without winning and he is a little annoyed, don't score and he is furious.</div></div>`;
 }
 
 function freeAgentView() {
@@ -387,7 +394,7 @@ function euroLine() {
   if (!e) return '';
   return `<div class="order"><div class="small flood"><b>Midweek · ${esc(e.t.name)}</b> · ${e.stage}</div>
     <div class="clubcell">${crest(e.opp, 'small')}<span>${e.isHome ? 'vs' : 'at'} <b>${club(e.opp).name}</b> <span class="muted small">${Math.round(teamStrength(club(e.opp)))} rated</span></span></div>
-    <div class="small muted">Two games this week, so watch your energy: under 25 and you will probably be benched.</div></div>`;
+    <div class="small ${S.player.energy < TWO_GAME_ENERGY ? 'bad' : 'muted'}">Two games this week: you need ${TWO_GAME_ENERGY}+ energy to play both${S.player.energy < TWO_GAME_ENERGY ? `. You have ${Math.round(S.player.energy)}, so if you play the league game you will be rested for this one` : ''}.</div></div>`;
 }
 
 function viewOffseason() {
@@ -532,9 +539,12 @@ function viewShop() {
     return `<button class="house tier-${t.name.toLowerCase()} ${p.equip === i ? 'on' : ''}" data-act="equip" data-v="${i}" ${i && p.equip !== i && p.money < cost + t.fee ? 'disabled' : ''}>
       <span><b class="tiername">${t.name}</b> · ×${t.mult} training XP${t.energy ? ` · +${t.energy} energy` : ''}<br><span class="small muted">${t.desc}</span></span><span class="num small r">${!i ? 'Free' : `${owned ? 'Owned' : money(cost)}<br><span class="muted">${money(t.fee)}/wk</span>`}</span></button>`;
   }).join('');
-  const houses = HOUSING.map((h, i) => `<button class="house ${p.house === i ? 'on' : ''}" data-act="house" data-v="${i}">
-      <span><b>${h.name}</b><br><span class="small muted">${h.energy ? `+${h.energy} energy/week` : 'No energy bonus'}</span></span><span class="num small">${money(h.rent)}/wk</span></button>`).join('');
-  return fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing</h2><div class="inbox">${houses}</div></section>`;
+  const left = leaseLeft();
+  const houses = HOUSING.map((h, i) => `<button class="house ${p.house === i ? 'on' : ''}" data-act="house" data-v="${i}" ${p.house !== i && left ? 'disabled' : ''}>
+      <span><b>${h.name}</b><br><span class="small muted">${h.energy ? `+${h.energy} energy/week` : 'No energy bonus'}${i ? ' · 1-year lease' : ' · No lease'}</span></span><span class="num small">${money(h.rent)}/wk</span></button>`).join('');
+  const lease = left ? `<p class="small flood" style="margin:0">You are tied into your lease for ${left} more week${left !== 1 ? 's' : ''}. You can move once it ends.</p>`
+    : `<p class="small muted" style="margin:0">Homes are let on a one-year lease: once you move in, you can't move again until it ends.</p>`;
+  return fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing</h2>${lease}<div class="inbox">${houses}</div></section>`;
 }
 
 // ---------- agent ----------
@@ -615,54 +625,87 @@ function viewClub() {
   return head + seg + lgSel + body;
 }
 
-// European competitions this season, then summer tournaments and past winners.
-function tournamentHtml(t, open) {
-  const groups = t.groups.map((g, gi) => `<div class="tablewrap"><table><thead><tr><th>Group ${'ABCDEFGH'[gi]}</th><th class="r">P</th><th class="r">GD</th><th class="r">Pts</th></tr></thead><tbody>
-    ${groupTable(t, gi).map((r, i) => `<tr class="${myTeams().includes(r.id) ? 'me' : ''} ${i < 2 ? 'zone-cl' : ''}"><td class="clubname"><span class="clubcell">${crest(r.id, 'mini')}${esc(teamName(r.id))}</span></td><td class="r">${r.p}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r"><b>${r.pts}</b></td></tr>`).join('')}
-    </tbody></table></div>`).join('');
-  const ko = t.ko.map(k => `<div><div class="small flood"><b>${k.name}</b></div>${k.res.map(r => `<div class="tie"><span class="${r.winner === r.h ? 'w' : ''}">${r.winner === r.h ? '<b class="w">' + esc(teamName(r.h)) + '</b>' : esc(teamName(r.h))}</span><b class="num">${r.gh}–${r.ga}${r.pens ? ' p' : ''}</b><span class="r">${r.winner === r.a ? '<b class="w">' + esc(teamName(r.a)) + '</b>' : esc(teamName(r.a))}</span></div>`).join('')}</div>`).join('');
-  const st = t.stages[t.stage];
-  const status = t.winner ? `<div class="award">Winner: ${esc(teamName(t.winner))}</div>` : `<div class="small muted">Next: ${st ? st.name : ''}${t.key in { UCL: 1, UEL: 1, UECL: 1 } ? ` (week ${EURO_WEEKS[t.stage]})` : ''}</div>`;
-  return `<details class="card" ${open ? 'open' : ''}><summary><b>${esc(t.name)}</b></summary>${status}${ko}<div class="cupgrid">${groups}</div></details>`;
+// ---------- cups ----------
+// One competition at a time, picked from a row of chips. Ties show both crests, the winner in
+// bold and the loser faded; your own ties are highlighted. Newest round first.
+let cupTab = null, cupPart = null;
+
+function tieRow(h, a, r) {
+  const mine = myTeams().includes(h) || myTeams().includes(a);
+  const side = (x, right) => {
+    const cls = !r || !r.winner ? '' : r.winner === x ? 'w' : 'l';
+    return `<span class="tside ${right ? 'r' : ''} ${cls}">${right ? '' : crest(x, 'mini')}<span class="tname">${esc(teamName(x))}</span>${right ? crest(x, 'mini') : ''}</span>`;
+  };
+  return `<div class="tie2 ${mine ? 'me' : ''}">${side(h)}<span class="tscore num">${r ? `${r.gh}–${r.ga}` : 'v'}${r && r.pens ? '<small>pens</small>' : ''}</span>${side(a, true)}</div>`;
+}
+const roundBlock = (name, meta, ties) => `<div class="round"><div class="roundhead"><b>${name}</b>${meta ? `<span class="muted">${meta}</span>` : ''}</div>${ties}</div>`;
+
+// Where your team stands in a competition, in one line.
+function cupStatus(t, inIt, out) {
+  if (t.winner) return `<div class="cupstatus ${myTeams().includes(t.winner) ? 'good' : ''}">${crest(t.winner, 'mini')}<span>Winner: <b>${esc(teamName(t.winner))}</b></span></div>`;
+  if (!inIt) return '<div class="cupstatus muted">You are not in this competition.</div>';
+  return out ? '<div class="cupstatus bad">You are out.</div>' : '<div class="cupstatus good">You are still in.</div>';
 }
 
-// A domestic knockout cup: every round played so far, then the next draw.
-function domesticCupHtml(t, open) {
+// Group-and-knockout competitions: European cups and summer tournaments.
+function tournamentHtml(t) {
+  const mineIn = t.groups.flat().some(id => myTeams().includes(id));
+  const st = t.stages[t.stage];
+  const lastKo = t.ko[t.ko.length - 1];
+  const alive = mineIn && (!t.ko.length ? true : lastKo.res.some(r => myTeams().includes(r.winner)));
+  const part = cupPart === 'groups' || cupPart === 'ko' ? cupPart : t.ko.length ? 'ko' : 'groups';
+  const next = !t.winner && st ? `<div class="small muted">Next: <b>${st.name}</b>${t.key in { UCL: 1, UEL: 1, UECL: 1 } ? ` · week ${EURO_WEEKS[t.stage]}` : ''}</div>` : '';
+  const seg = `<div class="seg">${[['ko', 'Knockouts'], ['groups', 'Groups']].map(([k, l]) => `<button class="${part === k ? 'on' : ''}" data-act="cupPart" data-v="${k}">${l}</button>`).join('')}</div>`;
+  let body;
+  if (part === 'ko') {
+    body = t.ko.length ? t.ko.slice().reverse().map(k => roundBlock(k.name, `${k.res.length} tie${k.res.length > 1 ? 's' : ''}`, k.res.map(r => tieRow(r.h, r.a, r)).join(''))).join('')
+      : '<p class="small muted" style="margin:0">The knockouts start after the group stage. The top two in each group go through.</p>';
+  } else {
+    // Your group first.
+    const order = t.groups.map((g, gi) => gi).sort((a, b) => (t.groups[b].some(id => myTeams().includes(id)) ? 1 : 0) - (t.groups[a].some(id => myTeams().includes(id)) ? 1 : 0));
+    body = `<div class="cupgrid">${order.map(gi => `<div class="tablewrap"><table class="grp"><thead><tr><th>Group ${'ABCDEFGH'[gi]}</th><th class="r">P</th><th class="r">W</th><th class="r">D</th><th class="r">L</th><th class="r">GD</th><th class="r">Pts</th></tr></thead><tbody>
+      ${groupTable(t, gi).map((r, i) => `<tr class="${myTeams().includes(r.id) ? 'me' : ''} ${i < 2 ? 'zone-cl' : ''}"><td class="clubname"><span class="clubcell">${crest(r.id, 'mini')}${esc(teamName(r.id))}</span></td><td class="r">${r.p}</td><td class="r">${r.w}</td><td class="r">${r.d}</td><td class="r">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r"><b>${r.pts}</b></td></tr>`).join('')}
+      </tbody></table></div>`).join('')}</div><p class="small muted" style="margin:0">Top two in each group (green line) reach the knockouts.</p>`;
+  }
+  return `<section class="card"><div class="row"><h2>${esc(t.name)}</h2></div>${cupStatus(t, mineIn, !alive)}${next}${seg}${body}</section>`;
+}
+
+// A domestic knockout cup: the next draw first, then every round played, newest first.
+function domesticCupHtml(t) {
   const id = S.player.club;
-  const tie = (h, a, r) => {
-    const name = x => r && r.winner === x ? `<b class="w">${esc(teamName(x))}</b>` : esc(teamName(x));
-    return `<div class="tie ${h === id || a === id ? 'me' : ''}"><span>${name(h)}</span><b class="num">${r ? `${r.gh}–${r.ga}${r.pens ? ' p' : ''}` : 'vs'}</b><span class="r">${name(a)}</span></div>`;
-  };
-  // Early rounds of a big cup have dozens of ties: show the ones with your club, plus later rounds in full.
+  // Early rounds of a big cup have dozens of ties: show yours, plus later rounds in full.
   const show = (list, getHA) => list.filter(x => list.length <= 8 || getHA(x).includes(id));
-  const rounds = t.rounds.map(rd => {
-    const list = show(rd.res, r => [r.h, r.a]);
-    return list.length ? `<div><div class="small flood"><b>${rd.name}</b>${list.length < rd.res.length ? ` <span class="muted">(${rd.res.length} ties)</span>` : ''}</div>${list.map(r => tie(r.h, r.a, r)).join('')}</div>` : '';
-  }).join('');
   const next = t.winner ? '' : (() => {
     const list = show(t.ties, x => x);
-    return `<div><div class="small flood"><b>Next: ${cupStage(t)}</b> <span class="muted">(week ${t.weeks[t.r]}${t.r === 0 && t.byes.length ? `, ${t.byes.length} clubs have a bye` : ''})</span></div>${list.map(([h, a]) => tie(h, a, null)).join('')}</div>`;
+    const meta = `week ${t.weeks[t.r]}${t.r === 0 && t.byes.length ? ` · ${t.byes.length} byes` : ''}${list.length < t.ties.length ? ` · ${t.ties.length} ties` : ''}`;
+    return roundBlock(`Next: ${cupStage(t)}`, meta, list.map(([h, a]) => tieRow(h, a, null)).join('') || '<p class="small muted" style="margin:0">Your club is not in this round.</p>');
   })();
-  const out = !t.winner && !t.ties.some(x => x.includes(id)) && !(t.r === 0 && t.byes.includes(id)) && t.teams.includes(id) ? '<div class="small muted">You are out.</div>' : '';
-  const status = t.winner ? `<div class="award">Winner: ${esc(teamName(t.winner))}</div>` : '';
-  return `<details class="card" ${open ? 'open' : ''}><summary><b>${esc(t.name)}</b></summary>${status}${out}${rounds}${next}</details>`;
+  const rounds = t.rounds.slice().reverse().map(rd => {
+    const list = show(rd.res, r => [r.h, r.a]);
+    return list.length ? roundBlock(rd.name, list.length < rd.res.length ? `${rd.res.length} ties` : '', list.map(r => tieRow(r.h, r.a, r)).join('')) : '';
+  }).join('');
+  const inIt = t.teams.includes(id);
+  const out = !t.winner && !t.ties.some(x => x.includes(id)) && !(t.r === 0 && t.byes.includes(id));
+  return `<section class="card"><div class="row"><h2>${esc(t.name)}</h2></div>${cupStatus(t, inIt, out)}${next}${rounds}</section>`;
 }
 
 function cupsView() {
-  const comps = Object.values(S.euro || {});
-  const mine = euroComp(), myNat = league(myClub().league).nat;
-  const euro = comps.length ? comps.map(t => tournamentHtml(t, t === mine)).join('') : '';
-  const home = Object.values(S.cups || {}).filter(t => t.nat === myNat).map(t => domesticCupHtml(t, t.teams.includes(S.player.club) && !t.winner)).join('');
-  const summer = (S.summer || []).map(t => tournamentHtml(t, false)).join('');
+  const myNat = league(myClub().league).nat;
   // Other countries' domestic cups would crowd the list out.
   const foreignCups = new Set(Object.entries(DOMESTIC).filter(([n]) => n !== myNat).flatMap(([, defs]) => defs.map(d => d.key)));
+  const comps = [
+    ...Object.values(S.cups || {}).filter(t => t.nat === myNat).map(t => ({ key: 'd:' + t.key, name: t.name, html: () => domesticCupHtml(t), mine: t.teams.includes(S.player.club) })),
+    ...Object.values(S.euro || {}).map(t => ({ key: 'e:' + t.key, name: t.name, html: () => tournamentHtml(t), mine: t === euroComp() })),
+    ...(S.summer || []).map(t => ({ key: 's:' + t.key, name: t.name, html: () => tournamentHtml(t), mine: t.groups.flat().some(id => myTeams().includes(id)) })),
+  ];
   const past = (S.history || []).slice().reverse().filter(h => !foreignCups.has(h.key)).slice(0, 20);
-  const hist = past.length ? `<section class="card"><h2>Recent winners</h2><div class="tablewrap"><table><tbody>${past.map(h => `<tr><td class="muted">${seasonLabel(h.season)}</td><td>${esc(h.name)}</td><td class="r"><b>${esc(teamName(h.winner))}</b></td></tr>`).join('')}</tbody></table></div></section>` : '';
+  comps.push({ key: 'winners', name: 'Past winners', html: () => past.length ? `<section class="card"><h2>Recent winners</h2><div class="tablewrap"><table><tbody>${past.map(h => `<tr><td class="muted">${seasonLabel(h.season)}</td><td>${esc(h.name)}</td><td class="r"><span class="clubcell" style="justify-content:flex-end">${crest(h.winner, 'mini')}<b>${esc(teamName(h.winner))}</b></span></td></tr>`).join('')}</tbody></table></div></section>` : '<section class="card"><p class="small muted" style="margin:0">No winners yet: the first season is still going.</p></section>' });
+  // Default to a competition you are in.
+  const cur = comps.find(c => c.key === cupTab) || comps.find(c => c.mine) || comps[0];
+  const chips = `<div class="cuptabs">${comps.map(c => `<button class="${c === cur ? 'on' : ''} ${c.mine ? 'mine' : ''}" data-act="cupTab" data-v="${c.key}">${esc(c.name.replace(/ \d{4}$/, ''))}</button>`).join('')}</div>`;
   const year = START_YEAR + S.season + 1;
-  const next = SUMMER_EVENTS.map(ev => { const y = nextEventYear(ev, year); return [y, `${ev.name} ${y}`]; }).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(' · ');
-  const cupNames = (DOMESTIC[myNat] || []).map(d => d.name).join(', ');
-  return `<section class="card"><p class="small muted" style="margin:0">${cupNames ? `Domestic cups: ${esc(cupNames)}. ` : ''}European top-flight clubs qualify for the Champions League, Europa League and Conference League from their league finish. Cup games are midweek. Summer tournaments: ${next}.</p></section>`
-    + home + euro + summer + hist;
+  const nextSummer = SUMMER_EVENTS.map(ev => { const y = nextEventYear(ev, year); return [y, `${ev.name} ${y}`]; }).sort((a, b) => a[0] - b[0]).map(x => x[1]).slice(0, 3).join(' · ');
+  return chips + cur.html() + `<p class="small muted" style="margin:0 4px">Cup games are midweek. European places come from the league table. Next summer tournaments: ${nextSummer}.</p>`;
 }
 
 // ---------- career ----------
@@ -814,7 +857,22 @@ function nextPopup() {
   else if (S.decision) showDecision();
 }
 
+// Goals and assists: one ball per goal, one boot per assist, and a show that grows with the haul.
+function showHaul(pop) {
+  const lvl = Math.min(pop.goals, 6);
+  const icons = (svg, n, cls) => Array.from({ length: n }, (_, i) => `<span class="${cls}" style="animation-delay:${.15 + i * .12}s">${svg}</span>`).join('');
+  fxLayer.className = `haul ${lvl ? `lvl${lvl}` : 'assist'}`;
+  fxLayer.innerHTML = `<canvas></canvas><div class="pop" role="dialog" aria-modal="true">
+    ${pop.goals ? `<div class="haul-icons">${icons(BALL, pop.goals, 'hb')}</div>` : ''}
+    ${pop.assists ? `<div class="haul-icons small-row">${icons(BOOT, pop.assists, 'hs')}</div>` : ''}
+    <h3>${esc(pop.title)}</h3><p>${esc(pop.text)}</p>
+    <button class="btn primary block" data-act="popNext">Continue</button></div>`;
+  fxLayer.hidden = false;
+  startFx(fxLayer.querySelector('canvas'), 'haul', lvl);
+}
+
 function showPopup(pop) {
+  if (pop.kind === 'haul') { showHaul(pop); return; }
   fxLayer.className = pop.kind;
   fxLayer.innerHTML = `<canvas></canvas><div class="pop" role="dialog" aria-modal="true">
     <div class="pop-icon">${POP_ICON[pop.kind]}</div><h3>${esc(pop.title)}</h3><p>${esc(pop.text)}</p>
@@ -830,24 +888,39 @@ function closePopup() {
   nextPopup();
 }
 
-function startFx(canvas, kind) {
+function startFx(canvas, kind, lvl = 0) {
   const dpr = window.devicePixelRatio || 1, ctx = canvas.getContext('2d');
   const W = canvas.width = innerWidth * dpr, H = canvas.height = innerHeight * dpr;
-  const parts = [];
-  const colors = ['#ffb547', '#4cc38a', '#eef2f7', '#7cc7ff', '#ff9ec7'];
+  const parts = [], balls = [];
+  const haul = kind === 'haul';
+  // Hauls: assists sparkle green, goals get gold, and every extra goal makes the show faster and bigger.
+  const colors = haul && !lvl ? ['#4cc38a', '#eef2f7', '#9be7c0'] : haul && lvl < 3 ? ['#ffb547', '#eef2f7', '#ffd38a'] : ['#ffb547', '#4cc38a', '#eef2f7', '#7cc7ff', '#ff9ec7'];
+  const gap = haul ? [1100, 900, 650, 450, 350, 280, 200][lvl] : 650, size = haul ? 30 + lvl * 10 : 46;
   let last = 0;
   const burst = () => {
-    const x = W * rand(.15, .85), y = H * rand(.12, .45), col = pick(colors);
-    for (let i = 0; i < 46; i++) {
-      const a = Math.PI * 2 * i / 46, s = rand(1.5, 4.2) * dpr;
+    const x = W * rand(.15, .85), y = H * rand(.12, .45), col = haul && lvl >= 6 ? `hsl(${rand(0, 360)},90%,65%)` : pick(colors);
+    for (let i = 0; i < size; i++) {
+      const a = Math.PI * 2 * i / size, s = rand(1.5, 4.2) * dpr * (haul ? 1 + lvl * .08 : 1);
       parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, col, r: rand(1.5, 2.6) * dpr });
     }
   };
   const drops = kind === 'bad' ? Array.from({ length: 90 }, () => ({ x: rand(0, W), y: rand(0, H), v: rand(4, 9) * dpr, l: rand(10, 26) * dpr })) : [];
   const frame = t => {
     ctx.clearRect(0, 0, W, H);
-    if (kind === 'good') {
-      if (t - last > 650) { burst(); last = t; }
+    if (kind === 'good' || haul) {
+      if (t - last > gap) { burst(); last = t; }
+      // Hat-trick and up: footballs rain down.
+      if (haul && lvl >= 3 && Math.random() < .05 * (lvl - 2)) balls.push({ x: rand(0, W), y: -20 * dpr, v: rand(2, 4.5) * dpr, r: rand(7, 12) * dpr, spin: rand(0, 6) });
+      for (let i = balls.length - 1; i >= 0; i--) {
+        const b = balls[i];
+        b.y += b.v; b.spin += .05;
+        if (b.y > H + b.r) { balls.splice(i, 1); continue; }
+        ctx.globalAlpha = .9;
+        ctx.fillStyle = '#eef2f7'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
+        ctx.fillStyle = '#0c1524'; ctx.beginPath();
+        for (let k = 0; k < 5; k++) { const a = b.spin + k * 1.2566; ctx.lineTo(b.x + Math.cos(a) * b.r * .42, b.y + Math.sin(a) * b.r * .42); }
+        ctx.fill();
+      }
       for (let i = parts.length - 1; i >= 0; i--) {
         const q = parts[i];
         q.x += q.vx; q.y += q.vy; q.vy += .045 * dpr; q.vx *= .985; q.life -= .011;
@@ -869,6 +942,7 @@ function startFx(canvas, kind) {
     if (!reduceMotion) fxFrame = requestAnimationFrame(frame);
   };
   if (kind === 'good') { burst(); burst(); }
+  if (haul) for (let i = 0; i < 1 + Math.ceil(lvl / 2); i++) burst();
   fxFrame = requestAnimationFrame(frame);
 }
 
@@ -887,8 +961,8 @@ function showOrderSheet() {
   const o = S.player.order;
   openModal(`<h3>Manager's plan</h3><p style="margin:0">Before the game, ${myClub().mgr} pulls you aside: “${esc(o.text)}”</p>
     <div class="inbox">
-      <button class="house" data-act="orderGo" data-v="follow"><span><b>Follow the plan</b><br><span class="small muted">Small boost to the team's chances. Affection +2 if you play.</span></span></button>
-      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score or assist. Affection −6 if you play.</span></span></button>
+      <button class="house" data-act="orderGo" data-v="follow"><span><b>Follow the plan</b><br><span class="small muted">Slightly better chance of winning, same scoring chance. Affection +2 if you play.</span></span></button>
+      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning. Score in a win: +2. Score without winning: −2. No goal: −6.</span></span></button>
     </div>`);
 }
 
@@ -923,7 +997,7 @@ function matchBlock(m, title, injured) {
     ${m.pens ? `<div class="small muted" style="text-align:center">${esc(teamName(m.pens))} win on penalties</div>` : ''}
     ${sc ? `<div class="scorers">${sc}</div>` : ''}
     ${u && u.mins ? `<div class="bigstat"><div><b>${u.rating.toFixed(1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div></div>`
-      : `<p class="muted" style="margin:0">${injured ? 'You were out injured.' : 'You stayed on the bench.'}</p>`}`;
+      : `<p class="muted" style="margin:0">${injured ? 'You were out injured.' : u && u.rested ? `Rested: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week.` : 'You stayed on the bench.'}</p>`}`;
 }
 
 function showMatchReport(rep) {
@@ -958,6 +1032,8 @@ document.addEventListener('click', e => {
     case 'pos': draft.pos = v; renderCreate(); return;
     case 'tab': tab = v; window.scrollTo(0, 0); render(); return;
     case 'clubView': clubView = v; render(); return;
+    case 'cupTab': cupTab = v; cupPart = null; render(); return;
+    case 'cupPart': cupPart = v; render(); return;
     case 'train': { const g = train(v); if (g != null) toast(g ? `${ATTR_NAMES[v]} +${g.toFixed(2)}` : `${ATTR_NAMES[v]} session done`); render(); return; }
     case 'rest': rest(); toast('Rested: +8 energy'); render(); return;
     case 'advance': if (S.player.order && !S.player.order.choice) showOrderSheet(); else doAdvance(); return;
@@ -993,7 +1069,7 @@ document.addEventListener('click', e => {
     case "listAsk": confirmSheet("Request a transfer?", "The manager (−15) and the board (−20) will be unhappy. Clubs will bid for you in the transfer windows.", "list", "Hand in request"); return;
     case "list": requestTransfer(); closeModal(); render(); return;
     case "unlist": withdrawTransferRequest(); render(); return;
-    case 'house': setHouse(+v); render(); return;
+    case 'house': if (setHouse(+v)) toast(HOUSING[+v].name); render(); return;
     case 'choose': chooseStart(v); tab = 'home'; render(); window.scrollTo(0, 0); return;
     case 'accept': {
       const o = S.offers.find(x => x.id === v), burned = o && o.type === 'transfer' ? rivalBetrayal(o.club) : [];
