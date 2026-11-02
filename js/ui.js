@@ -254,11 +254,12 @@ function showNegotiate(id) {
     <button class="btn block" data-act="close">Cancel</button>`);
 }
 
+// About your objectives record only; how he feels about you is the affection bar above it.
 const BAND_NOTE = {
-  elite: 'He loves you. Salary talks can go well above market value.',
-  great: 'He rates you highly. A little room above market value in salary talks.',
-  good: 'He is happy with you. Only a slim chance above market value.',
-  ok: 'He is satisfied, but salary talks will not go above market value.',
+  elite: 'Outstanding record. Salary talks can go well above market value.',
+  great: 'Strong record. A little room above market value in salary talks.',
+  good: 'Decent record. Only a slim chance above market value.',
+  ok: 'Fair record, but salary talks will not go above market value.',
   poor: 'You miss too many targets. His patience is wearing thin.',
   new: 'Hit his targets to build trust. It decides how far salary talks can go.',
 };
