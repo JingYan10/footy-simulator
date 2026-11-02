@@ -494,8 +494,11 @@ function myRank(c = myClub(), ovr = calcOVR(), aff = effAff(), withForm = true) 
 }
 
 function squadStatus(c = myClub(), ovr = calcOVR(), aff = c === myClub() ? effAff() : 50) {
-  const rank = myRank(c, ovr, aff, c === myClub()), slots = GROUP_SLOTS[POS_GROUP[S.player.pos]];
-  if (c === myClub() && frozenOut()) return 'Reserve';
+  const mine = c === myClub(), slots = GROUP_SLOTS[POS_GROUP[S.player.pos]];
+  if (mine && frozenOut()) return 'Reserve';
+  // A promised starting place holds while the manager keeps faith (affection 30+), like in selection.
+  const promised = mine && S.player.promise > 0 && effAff() >= 30;
+  const rank = promised ? Math.min(myRank(c, ovr, aff, true), slots) : myRank(c, ovr, aff, mine);
   if (rank === 1) return 'Key Player';
   if (rank <= slots) return 'Starter';
   if (rank <= slots + 2) return 'Rotation';
