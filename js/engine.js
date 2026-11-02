@@ -1618,11 +1618,15 @@ function makeOffer(c, type, fixedWage = 0) {
   const wage = fixedWage || market;
   const age = ageOf(S.player.by);
   // Veterans get shorter deals: up to 3 years at 34, 2 at 35, then one year at a time. Big
-  // top-flight clubs only ever offer 1 or 2 years at 34 and 35. Your own top-flight club renews
-  // for one year, or two if the manager adores you (98+ affection).
-  const vy = vetYears(age);
-  let years = !vy ? randi(2, 5) : vy === 1 && !bigTopFlight(c) ? randi(1, 3) : vy <= 2 ? randi(1, 2) : 1;
+  // top-flight clubs start shortening earlier: at most 4 years at 30–31, 3 at 32–33, then 1 or 2
+  // years at 34 and 35. Your own top-flight club renews for one year, or two if the manager
+  // adores you (98+ affection).
+  const vy = vetYears(age), bigMax = !bigTopFlight(c) ? 5 : age >= 32 ? 3 : age >= 30 ? 4 : 5;
+  let years = !vy ? randi(Math.min(2, bigMax), bigMax) : vy === 1 && !bigTopFlight(c) ? randi(1, 3) : vy <= 2 ? randi(1, 2) : 1;
   if (vy && type === 'renew' && clubTier(c) === 1) years = effAff() >= 98 ? 2 : 1;
+  // Saudi and MLS clubs keep offering veterans longer deals, renewals included: up to 3 years at
+  // 34–35, 2 at 36–37, then one year at a time.
+  if (richLeague(c) && vy) years = randi(1, age <= 35 ? 3 : age <= 37 ? 2 : 1);
   if (age >= OLD_RENEW_AGE) years = 1;
   let status = squadStatus(c, ovr), promised = false;
   // Buying clubs sometimes promise a starting place, more often when you are close to their level.
