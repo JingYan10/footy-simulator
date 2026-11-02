@@ -142,7 +142,7 @@ function topbar() {
       <span class="chip">Age <b>${ageOf(p.by)}</b></span>
       <span class="chip flood"><b class="num">${money(p.money)}</b></span>
       <span class="chip">${seasonLabel()} · <b>${S.phase === 'season' ? `Wk ${S.week}` : S.phase === 'offseason' ? 'Summer' : 'End'}</b></span>
-      ${p.injured ? `<span class="chip bad">Injured ${p.injured}w</span>` : ''}
+      ${p.injured ? `<span class="chip bad">Injured ${p.injured}w</span>` : p.rust > 0 ? `<span class="chip flood">Rusty ${p.rust}w</span>` : ''}
     </div>
     ${S.phase === 'season' ? `<div class="energy"><span>Energy</span><div class="bar"><i class="${eClass}" style="width:${e}%"></i></div><b class="num">${e}</b></div>` : ''}
   </header>`;

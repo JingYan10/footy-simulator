@@ -399,7 +399,7 @@ function simTeams(h, a, user, home = 2) {
     for (let i = 0; i < goals; i++) {
       let goal = null;
       if (mine && user.mins) {
-        const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / str, 3) * user.mins / 90 * vetForm(), 0, .7);
+        const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / str, 3) * user.mins / 90 * matchForm(), 0, .7);
         if (Math.random() < pGoal) {
           user.goals++;
           goal = { n: p.name, me: true, home: id === h, min: randi(...onPitch) };
@@ -407,7 +407,7 @@ function simTeams(h, a, user, home = 2) {
           scorers.push(goal);
           continue;
         }
-        const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / str, 2) * user.mins / 90 * 1.3 * vetForm(), 0, .7);
+        const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / str, 2) * user.mins / 90 * 1.3 * matchForm(), 0, .7);
         if (Math.random() < pAst) { user.assists++; goal = { n: scorerName(id), home: id === h, min: randi(...onPitch), ast: p.name, astMe: true }; }
       }
       if (!goal) {
@@ -723,7 +723,7 @@ function summerRating(user, res, me) {
   let r = 6.4 + (calcOVR() - teamStr(me)) / 30 + user.goals * .9 + user.assists * .6 + (gf > gaa ? .3 : gf < gaa ? -.3 : 0);
   if ((g === 'GK' || g === 'DEF') && gaa === 0 && user.mins >= 60) r += .6;
   if (g === 'GK' || g === 'DEF') r -= gaa * .15;
-  r -= vetYears() * .06;
+  r -= vetYears() * .06 + rustPenalty();
   r += gauss() * .45;
   if (user.mins < 45) r = 6 + (r - 6) * .6;
   return Math.round(clamp(r, 3, 10) * 10) / 10;

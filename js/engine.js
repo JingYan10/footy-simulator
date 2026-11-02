@@ -350,6 +350,12 @@ const VET_AGE = 33;
 const vetYears = (age = ageOf(S.player.by)) => Math.max(0, age - VET_AGE);
 // Scoring and assist chances: 8% lower for each year past 33, down to half.
 const vetForm = (age = ageOf(S.player.by)) => Math.max(.5, 1 - vetYears(age) * .08);
+// Back from injury but short of match sharpness ("rust", in weeks): ratings drop and chances
+// dry up, most in the first week back and fading as the rust wears off.
+const rustLevel = () => Math.min(S.player.rust || 0, 5) / 5;
+const rustPenalty = () => (S.player.rust > 0 ? .3 + rustLevel() * .5 : 0);
+const rustForm = () => (S.player.rust > 0 ? .8 - rustLevel() * .2 : 1);
+const matchForm = () => vetForm() * rustForm();
 function declineFactor(age = ageOf(S.player.by)) { return age > VET_AGE ? 1.2 + (age - VET_AGE - 1) * .15 : 1; }
 // Saudi and MLS football is gentler on an old body: veterans decline about 30% slower there.
 const vetLeagueEase = () => S.player.club && richLeague(myClub()) ? .7 : 1;
@@ -534,6 +540,8 @@ function startChance() {
   if (p.energy < 25) start *= .4;
   // Frozen out: you train with the reserves and only get the odd late cameo.
   if (frozenOut()) { start = 0; subShare = .1; }
+  // Just back from injury: the manager eases you in.
+  if (p.rust > 0) start *= .75;
   return { start: clamp(start, 0, .97), subShare };
 }
 
@@ -1199,10 +1207,10 @@ function playFixture(h, a, user) {
       let s = null, myAssist = false, goal = null;
       if (mine && user.mins) {
         const teamStr = teamStrength(c);
-        const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / teamStr, 3) * user.mins / 90 * (user.own ? 1.3 : 1) * vetForm(), 0, .7);
+        const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / teamStr, 3) * user.mins / 90 * (user.own ? 1.3 : 1) * matchForm(), 0, .7);
         if (Math.random() < pGoal) { user.goals++; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch) }; }
         else {
-          const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * 1.3 * (user.own ? 1.3 : 1) * vetForm(), 0, .7);
+          const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * 1.3 * (user.own ? 1.3 : 1) * matchForm(), 0, .7);
           if (Math.random() < pAst) { user.assists++; myAssist = true; }
           s = aiScorer(c);
         }
@@ -1232,6 +1240,7 @@ function matchRating(user, res) {
   if (g === 'GK' || g === 'DEF') r -= gaa * .15;
   if (p.energy < 30) r -= .4;
   r -= vetYears() * .06; // a step slower every year past 33
+  r -= rustPenalty(); // short of match sharpness after an injury
   r += gauss() * .45;
   if (user.mins < 45) r = 6 + (r - 6) * .6;
   return Math.round(clamp(r, 3, 10) * 10) / 10;
@@ -1389,11 +1398,15 @@ function advanceWeek() {
 
   // Injury. Every week out costs a little sharpness, more as you get older; the big
   // judgement comes in the end-of-season review, based on how many games you missed.
+  let justRecovered = false;
   if (p.injured) {
     p.injured--;
     nudgeOvr(-.03 * declineFactor());
     if (!p.injured) {
-      msg('You are fit again and back in training.', 'good');
+      // Match sharpness takes a while to return: about a week of rust for every three weeks out (1 to 5).
+      p.rust = clamp(Math.round((p.injLen || 3) / 3), 1, 5);
+      justRecovered = true;
+      msg(`You are fit again and back in training, but short of match sharpness for about ${p.rust} week${p.rust > 1 ? 's' : ''}.`, 'good');
       setObjectives(OBJ_ORDER.filter(s => s !== 'season' || !p.objectives.some(o => o.span === 'season')));
     }
   } else {
@@ -1404,6 +1417,8 @@ function advanceWeek() {
       const serious = Math.random() < seriousChance();
       if (serious) p.seriousSeason = S.season;
       p.injured = serious ? randi(8, 20) : randi(1, 6);
+      p.injLen = p.injured;
+      p.rust = 0;
       const kind = serious ? pick(['torn knee ligament', 'broken foot', 'torn hamstring', 'ruptured achilles', 'fractured ankle']) : pick(['hamstring strain', 'ankle sprain', 'calf tightness', 'knee knock', 'groin strain', 'thigh bruise']);
       msg(`Injury: ${kind}. Out for ${p.injured} week${p.injured > 1 ? 's' : ''}.`, 'bad');
       notify('bad', serious ? 'Serious injury' : 'Injured', `You picked up a ${kind} and will be out for ${p.injured} week${p.injured > 1 ? 's' : ''}.${serious ? ' Missing a big part of the season will cost you OVR.' : ''}`);
@@ -1416,6 +1431,8 @@ function advanceWeek() {
     }
   }
 
+  // Each week back in action knocks off some of the rust.
+  if (!p.injured && p.rust > 0 && !justRecovered) p.rust--;
   p.energy = clamp(p.energy + energyRegen(), 0, 100);
   p.slots = TRAIN_SLOTS;
   p.trainedThisWeek = 0;
@@ -1986,9 +2003,16 @@ function myCandidate(tot, avg) {
   const team = won.reduce((s, t) => s + ((BIG_TROPHY.find(([re]) => re.test(t.name)) || [0, 0])[1]), 0);
   const clean = ['GK', 'DEF'].includes(POS_GROUP[p.pos]) ? tot.clean * .3 : 0;
   const w = leagueWeight(league(myClub().league));
-  const base = (ovr - 84) * 2.2 + (tot.goals * .8 + tot.cup.goals * .4 + tot.assists * .45 + tot.cup.assists * .25 + (tot.apps >= 15 ? (avg - 7) * 4 : -10) + clean) * w + team - 4;
+  let base = (ovr - 84) * 2.2 + (tot.goals * .8 + tot.cup.goals * .4 + tot.assists * .45 + tot.cup.assists * .25 + (tot.apps >= 15 ? (avg - 7) * 4 : -10) + clean) * w + team - 4;
+  // Voters want a player who was there all season: a few weeks out dents the case a little
+  // (a quarter of the season or more rules you out altogether, see longInjury).
+  const games = (league(myClub().league).clubs.length - 1) * 2, share = games ? (tot.missed || 0) / games : 0;
+  if (share > .1) base = (base > 0 ? base * clamp(1 - share, .5, 1) : base) - share * 10;
   return { n: p.name, club: p.club, pos: p.pos, age: ageOf(p.by), base, r: ovr, me: true, euro: !!GOLDEN_SHOE_COEF[league(myClub().league).nat] };
 }
+
+// Out injured for a quarter of the league season or more.
+const longInjury = tot => { const g = (league(myClub().league).clubs.length - 1) * 2; return g > 0 && (tot.missed || 0) / g >= .25; };
 
 // Rank everyone for one award; each award gets its own bit of luck.
 function rankFor(list, noise = 4) { return list.map(c => ({ ...c, s: c.base + gauss() * noise })).sort((a, b) => b.s - a.s); }
@@ -2002,11 +2026,13 @@ function accolades(tot, avg) {
     honours.push({ name, winner: w.n, club: w.club, me: !!w.me, note: extra });
     if (w.me) mine.push(name);
   };
-  const ballon = rankFor([...all, me]);
+  // A long lay-off rules you out of the Ballon d'Or, The Best and the World 11 entirely.
+  const out = longInjury(tot), field = out ? all : [...all, me];
+  const ballon = rankFor(field);
   const myRank = ballon.findIndex(c => c.me) + 1;
-  award("Ballon d'Or", ballon, myRank > 1 && myRank <= 30 ? `You finished ${myRank}${ordinal(myRank)}` : '');
-  award('The Best FIFA Men\'s Player', rankFor([...all, me]));
-  if (rankFor([...all, me], 3).findIndex(c => c.me) < 11 && me.base > -5) mine.push('FIFPRO World 11');
+  award("Ballon d'Or", ballon, myRank > 1 && myRank <= 30 ? `You finished ${myRank}${ordinal(myRank)}` : out ? 'You were out of the running after a long injury' : '');
+  award('The Best FIFA Men\'s Player', rankFor(field));
+  if (!out && rankFor([...all, me], 3).findIndex(c => c.me) < 11 && me.base > -5) mine.push('FIFPRO World 11');
   const young = c => c.age <= 21;
   award('Kopa Trophy', rankFor([...all.filter(young), ...(young(me) ? [me] : [])]));
   award('Golden Boy', rankFor([...all.filter(c => young(c) && c.euro), ...(young(me) && me.euro ? [me] : [])]));
@@ -2075,9 +2101,13 @@ function endSeason() {
   if (assisters[0] && assisters[0].me) give('Top Assists', `${L.name} Top Assists`, 3);
   // England's awards are the PFA's; elsewhere the league names its own.
   const pfa = L.nat === 'ENG' && L.tier === 1;
-  if (tot.apps >= 20 && avg >= 7.8) give(pfa ? 'PFA Player of the Year' : 'Player of the Season', pfa ? 'PFA Player of the Year' : `${L.name} Player of the Season`, 4);
+  // Out for a quarter of the league season or more: no Player or Team of the Season, no Ballon d'Or,
+  // The Best or FIFPRO World 11, however good the games you did play were.
+  const longOut = longInjury(tot);
+  if (longOut) awards.push(`Missed ${tot.missed} league games: out of the running for the big individual awards`);
+  if (!longOut && tot.apps >= 20 && avg >= 7.8) give(pfa ? 'PFA Player of the Year' : 'Player of the Season', pfa ? 'PFA Player of the Year' : `${L.name} Player of the Season`, 4);
   else if (age <= 21 && tot.apps >= 15 && avg >= 7.1) give(pfa ? 'PFA Young Player of the Year' : 'Young Player of the Season', pfa ? 'PFA Young Player of the Year' : `${L.name} Young Player`, 3);
-  if (tot.apps >= 18 && avg >= 7.3) give('Team of the Season', `${L.name} Team of the Season`, 1);
+  if (!longOut && tot.apps >= 18 && avg >= 7.3) give('Team of the Season', `${L.name} Team of the Season`, 1);
   // World awards, decided against the best players in the world.
   const acc = accolades(tot, avg);
   const ACC_REP = { "Ballon d'Or": 8, "The Best FIFA Men's Player": 6, 'European Golden Shoe': 5, 'Kopa Trophy': 4, 'Golden Boy': 4, 'Yashin Trophy': 5, 'Gerd Müller Trophy': 4, 'FIFPRO World 11': 2 };
