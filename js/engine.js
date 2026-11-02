@@ -359,9 +359,12 @@ function nudgeOvr(d) {
 
 // OVR change from one game: good ratings, goals and assists build it, poor games cost a little.
 // Gains slow down with age and near 91; bad games hurt more as you get older.
+// Performance gains, from games and the season review, count 80%: a great season still shows, but
+// more slowly.
+const PERF_GAIN = .8;
 function perfDelta(rating, user) {
   const d = ((rating - 6.7) * .03 + user.goals * .015 + user.assists * .01) * user.mins / 90;
-  return d > 0 ? d * growthFactor() : d * declineFactor() * vetLeagueEase();
+  return d > 0 ? d * growthFactor() * PERF_GAIN : d * declineFactor() * vetLeagueEase();
 }
 
 // How much harder drops hit with age: from 34 an OVR loss is 1.2× bigger, growing a little each year.
@@ -2133,7 +2136,7 @@ function performanceReview(st, avg, awards) {
   d = Math.min(d, 5);
   // Gains shrink after 30 and on the way to 91; teenagers are judged gently, older players harder.
   const ageF = age <= 25 ? 1 : age <= VET_AGE ? .9 : Math.max(.1, .5 - (age - VET_AGE - 1) * .1);
-  d = d > 0 ? d * ageF * clamp((MAX_OVR - ovr) / 8, .2, 1) * (p.pos === 'GK' ? GK_GROWTH : 1) : d * (age <= 20 ? .3 : declineFactor(age));
+  d = d > 0 ? d * ageF * clamp((MAX_OVR - ovr) / 8, .2, 1) * (p.pos === 'GK' ? GK_GROWTH : 1) * PERF_GAIN : d * (age <= 20 ? .3 : declineFactor(age));
   // Injuries: missing a quarter of the league games always costs OVR, more the longer you
   // were out and the older you are. A shorter spell out only hurts if you came back below par.
   const games = (league(myClub().league).clubs.length - 1) * 2, missed = st.missed || 0, share = games ? missed / games : 0;
