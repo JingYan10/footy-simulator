@@ -216,7 +216,8 @@ function offersHtml() {
     const c = club(o.club), left = maxRounds(o) - o.rounds;
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
-      : o.clause ? `<div class="small flood"><b>Loyalty clause: ${o.clause} seasons.</b> 25% above your current wage, but no club can bid for you and no salary talks until the end of ${seasonLabel(clauseEnd(o.clause))}. Take it or leave it.</div>`
+      : o.clause ? `<div class="loyal"><p>"We really love you as a player. We want to spend the next ${o.clause} seasons developing you into our star, and we've put ${raisePct(o)}% more than you earn now on the table to show we mean it. We'll also make sure nothing distracts you along the way. Other clubs, phone calls... you know what we mean. Just focus on your football."</p><span>— ${esc(c.mgr)}, ${esc(c.name)}</span></div>
+        <div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}. Take it or leave it.</div>`
       : o.talksOver ? '<div class="small bad">Talks broke down. You can still sign this offer or decline it, but not negotiate.</div>'
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
@@ -382,6 +383,7 @@ function viewHome() {
     const sel = p.injured ? '<span class="bad">Injured, you will miss this match</span>' : `Role: <b>${squadStatus()}</b> · Start chance <b>${Math.round(startChance().start * 100)}%</b>`;
     matchCard = `<section class="card hero">
       <div class="row"><h2>Matchday ${S.week}</h2><span class="small muted">${league(myClub().league).name}</span></div>
+      ${derbyName(fx.home, fx.away) ? `<div class="derby">${derbyName(fx.home, fx.away)}</div>` : ''}
       <div class="fixture">
         <div class="team">${crest(fx.home)}<b>${club(fx.home).name}</b><span>${Math.round(teamStrength(club(fx.home)))} rated</span></div>
         <div class="vs">VS</div>
@@ -647,6 +649,7 @@ function sponsorsView() {
   const terms = d => `${money(d.weekly)}/wk${d.goalBonus ? ` + ${money(d.goalBonus)}/goal` : ''}`;
   const head = `<section class="card hero"><div class="row"><h2>Sponsors</h2><span class="chip">${deals.length}/${slots} slots</span></div>
     <div class="kv"><div><small>From deals</small><b class="num">${money(deals.reduce((s, d) => s + d.weekly, 0))}/wk</b></div><div><small>Image rights</small><b class="num">${money(imageRights())}/wk</b></div><div><small>Level</small><b>${SPONSOR_LEVELS[sponsorLevel()].name}</b></div></div>
+    ${sponsorGross() > SPONSOR_CAP ? `<div class="small flood">Sponsor income is capped at ${money(SPONSOR_CAP)} a week: you get ${money(SPONSOR_CAP)} of your ${money(sponsorGross())}.</div>` : `<div class="small muted">Sponsors and image rights pay at most ${money(SPONSOR_CAP)} a week in total.</div>`}
     <div class="small muted">Reputation ${Math.round(p.rep)} decides which brands will talk to you${sponsorLevel() < SPONSOR_LEVELS.length - 1 ? ` (${SPONSOR_LEVELS[sponsorLevel() + 1].name} brands from ${SPONSOR_LEVELS[sponsorLevel() + 1].minRep})` : ''}. ${p.agent ? `Your ${agent().name.toLowerCase()} gets you ${Math.round((sponsorAgentMult() - 1) * 100)}% bigger fees${p.agent >= 3 ? ', an extra slot' : ''} and brands calling from reputation ${sponsorReqRep()}.` : `An agent gets bigger fees, more slots and brands calling sooner. Brands start calling you at reputation ${sponsorReqRep()}.`}</div></section>`;
   const mine = `<section class="card"><h2>Your deals</h2>${deals.length ? `<div class="commits">${deals.map(d => `<div class="commit"><div><b>${esc(d.brand)}</b> <span class="chip">${cat(d.cat)}</span><div class="small muted">${d.level} · ${d.weeks} week${d.weeks !== 1 ? 's' : ''} left</div></div><b class="num good">${terms(d)}</b></div>`).join('')}</div>` : '<p class="small muted" style="margin:0">No sponsors yet. Sign one below.</p>'}</section>`;
   const reqHtml = reqs.length ? `<section class="card"><h2>Requests</h2><p class="small muted" style="margin:0">Brands that came to you pay a quarter more. They wait 4 weeks for an answer.</p>${reqs.map(r => `<div class="offer"><div class="row"><div><b>${esc(r.brand)}</b> <span class="chip flood">${cat(r.cat)}</span><div class="small muted">${r.level} · ${r.weeks / SEASON_WEEKS} season${r.weeks > SEASON_WEEKS ? 's' : ''} · answer within ${r.expires} week${r.expires !== 1 ? 's' : ''}</div></div><b class="num good">${terms(r)}</b></div>
@@ -781,7 +784,7 @@ function resultsView() {
     const me = r.mins ? `${r.mins}' · ${r.start ? 'Started' : 'Sub'} · ${r.goals} G · ${r.assists} A · <b>${r.rating ? r.rating.toFixed(1) : '–'}</b>` : r.rested ? 'Rested' : 'Did not play';
     const goals = r.scorers && r.scorers.length ? `<div class="scorers">${goalTimeline(r.scorers)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
     return `<details class="result ${r.comp === 'Champions League' ? 'ucl' : ''}"><summary>
-        <span class="rmeta"><span class="small muted">Wk ${Math.min(r.week, SEASON_WEEKS)}</span><span class="rcomp ${r.kind || 'league'}">${esc(r.comp || 'League')}</span></span>
+        <span class="rmeta"><span class="small muted">Wk ${Math.min(r.week, SEASON_WEEKS)}</span><span class="rcomp ${r.kind || 'league'}">${esc(r.comp || 'League')}</span>${r.derby ? `<span class="rderby">${esc(r.derby)}</span>` : ''}</span>
         <span class="rline">${tieRow(h, a, { gh, ga, pens: r.pens, pensScore: r.pensScore, winner: r.winner || (gh > ga ? h : ga > gh ? a : null) })}</span>
         <span class="rbadge ${res[1]}">${res[0]}</span></summary>
       <div class="rbody">${r.stage ? `<div class="small muted">${esc(r.stage)}</div>` : ''}${goals}<div class="small muted">You: ${me}</div></div></details>`;
@@ -1179,6 +1182,7 @@ function matchBlock(m, title, injured) {
   const won = m.winner ? m.winner === (m.isHome ? m.h : m.a) : null;
   const verdict = mine > theirs || (mine === theirs && won) ? '<span class="good">Win</span>' : mine < theirs || won === false ? '<span class="bad">Defeat</span>' : '<span class="muted">Draw</span>';
   return `<div class="row"><h3>${title}</h3>${verdict}</div>
+    ${derbyName(m.h, m.a) ? `<div class="derby">${derbyName(m.h, m.a)}</div>` : ''}
     <div class="fixture"><div class="team">${crest(m.h)}<b>${esc(teamName(m.h))}</b></div><div class="score num">${m.gh}–${m.ga}</div><div class="team">${crest(m.a)}<b>${esc(teamName(m.a))}</b></div></div>
     ${m.pens ? `<div class="small muted" style="text-align:center">${esc(teamName(m.pens))} win ${m.pensScore ? pensText(m) + ' ' : ''}on penalties</div>` : ''}
     ${m.agg ? `<div class="small muted" style="text-align:center">Aggregate ${m.agg[0]}–${m.agg[1]}: <b>${esc(teamName(m.winner))}</b> go through</div>` : ''}

@@ -126,6 +126,25 @@ const RIVALRIES = [
 ];
 const areRivals = (a, b) => { const x = club(a).name, y = club(b).name; return RIVALRIES.some(([p, q]) => (p === x && q === y) || (p === y && q === x)); };
 
+// What a rivalry's games are called. Rivalries without a famous name are just "derby".
+const DERBY_NAMES = {
+  'Real Madrid|Barcelona': 'El Clásico', 'Real Madrid|Atlético Madrid': 'Madrid derby', 'Barcelona|Espanyol': 'Barcelona derby', 'Sevilla|Real Betis': 'Seville derby', 'Athletic Club|Real Sociedad': 'Basque derby', 'Valencia|Levante': 'Valencian derby',
+  'Manchester United|Manchester City': 'Manchester derby', 'Manchester United|Liverpool': 'North West derby', 'Liverpool|Everton': 'Merseyside derby', 'Arsenal|Tottenham Hotspur': 'North London derby', 'Chelsea|Tottenham Hotspur': 'London derby', 'Arsenal|Chelsea': 'London derby',
+  'Newcastle United|Sunderland': 'Tyne–Wear derby', 'Aston Villa|Birmingham City': 'Second City derby', 'Sheffield United|Sheffield Wednesday': 'Steel City derby', 'Nottingham Forest|Derby County': 'East Midlands derby', 'Leeds United|Manchester United': 'Roses rivalry', 'West Ham United|Millwall': 'Dockers derby',
+  'Inter|AC Milan': 'Derby della Madonnina', 'Inter|Juventus': "Derby d'Italia", 'Roma|Lazio': 'Derby della Capitale', 'Juventus|Torino': 'Derby della Mole', 'Genoa|Sampdoria': 'Derby della Lanterna',
+  'Bayern Munich|Borussia Dortmund': 'Der Klassiker', 'Borussia Dortmund|Schalke 04': 'Revierderby', 'Hamburger SV|Werder Bremen': 'Nordderby', '1. FC Köln|Borussia Mönchengladbach': 'Rhine derby', 'Hamburger SV|FC St. Pauli': 'Hamburg derby',
+  'Paris Saint-Germain|Marseille': 'Le Classique', 'Lyon|Saint-Étienne': 'Derby du Rhône', 'Lens|Lille': 'Derby du Nord', 'Nice|Monaco': "Derby de la Côte d'Azur",
+  'Benfica|Sporting CP': 'Lisbon derby', 'Benfica|Porto': 'O Clássico', 'Porto|Sporting CP': 'O Clássico', 'Braga|Vitória SC': 'Minho derby',
+  'Ajax|Feyenoord': 'De Klassieker', 'Ajax|PSV': 'De Topper', 'PSV|Feyenoord': 'Dutch derby',
+  'Al Hilal|Al Nassr': 'Riyadh derby', 'Al Ittihad|Al Ahli': 'Jeddah derby', 'Al Hilal|Al Ittihad': 'Saudi Clásico', 'Al Nassr|Al Shabab': 'Riyadh derby',
+  'LA Galaxy|LAFC': 'El Tráfico', 'Seattle Sounders|Portland Timbers': 'Cascadia derby', 'New York City FC|New York Red Bulls': 'Hudson River derby', 'Inter Miami|Orlando City': 'Florida derby', 'Columbus Crew|FC Cincinnati': 'Hell is Real',
+};
+function derbyName(a, b) {
+  if (!S.clubs[a] || !S.clubs[b] || !areRivals(a, b)) return null;
+  const x = club(a).name, y = club(b).name;
+  return DERBY_NAMES[`${x}|${y}`] || DERBY_NAMES[`${y}|${x}`] || 'Derby';
+}
+
 let S = null;
 
 // ---------- helpers ----------
@@ -384,7 +403,7 @@ function prepareGame({ name, nat, pos }) {
     slots: TRAIN_SLOTS, equip: 0, house: 0,
     form: [], career: [], trophies: [], awards: [], ovrAtSign: ovr, joinedSeason: 0, caps: 0,
     aff: 50, affPen: 0, board: 50, objectives: [], objHist: [], order: null, loan: null, listed: false,
-    clubsPlayed: [], banned: [], offerLock: 0, seasonSpells: [],
+    clubsPlayed: [], banned: [], offerLock: 0, seasonSpells: [], sponsorV2: true,
   };
   S.inbox = [];
   S.offers = [];
@@ -411,7 +430,7 @@ function refreshStartChoices() {
   return true;
 }
 
-function startWage(clubId) { return Math.max(100, Math.round(marketWage(calcOVR(), club(clubId)) * .9 / 10) * 10); }
+function startWage(clubId) { return Math.max(minWage(club(clubId)), Math.round(marketWage(calcOVR(), club(clubId)) * .9 / 10) * 10); }
 
 // Step 2: sign for the chosen club and start the first season.
 function chooseStart(clubId) {
@@ -466,8 +485,11 @@ function marketWage(ovr, c, pos = S.player.pos, age = ageOf(S.player.by)) {
   const t = clamp((ovr - a) / (b - a), 0, 1);
   const x = clamp(t * .8 + tierPrestige(c) * .2, 0, 1);
   const youth = age <= 17 ? .45 : age === 18 ? .65 : age === 19 ? .85 : 1;
-  return lo * Math.pow(hi / lo, Math.pow(x, 1.1)) * fx * youth;
+  return Math.max(minWage(c), lo * Math.pow(hi / lo, Math.pow(x, 1.1)) * fx * youth);
 }
+// No club pays less than a little above the cheapest place to live in its country (20% over a
+// shared flat's rent), so even a 16-year-old in the third tier can cover a roof.
+const minWage = c => Math.ceil(houseRent(league(c.league).nat, 0) * 1.2 / 10) * 10;
 
 // ---------- reputation ----------
 // Fame takes time to build: every gain counts 85%, while a poor game still costs in full.
@@ -994,11 +1016,13 @@ const SPONSOR_CATS = [
   { key: 'gaming', label: 'Gaming', brands: ['Pixelforge', 'Nova Play', 'Respawn Arena'] },
 ];
 const SPONSOR_LEVELS = [
-  { name: 'Local', minRep: 0, base: 150 },
-  { name: 'National', minRep: 30, base: 1500 },
-  { name: 'Global', minRep: 60, base: 12000 },
-  { name: 'Icon', minRep: 85, base: 60000 },
+  { name: 'Local', minRep: 0, base: 60, old: 150 },
+  { name: 'National', minRep: 30, base: 400, old: 1500 },
+  { name: 'Global', minRep: 60, base: 1500, old: 12000 },
+  { name: 'Icon', minRep: 85, base: 3500, old: 60000 },
 ];
+// However famous you get, sponsors and image rights together pay at most €20k a week.
+const SPONSOR_CAP = 20000;
 const sponsorAgentMult = () => 1 + (S.player.agent || 0) * .08;
 const sponsorSlots = () => Math.min(6, 2 + Math.floor(S.player.rep / 35) + ((S.player.agent || 0) >= 3 ? 1 : 0));
 const sponsorReqRep = () => 25 - (S.player.agent || 0) * 2;
@@ -1170,8 +1194,9 @@ function syncHousing() {
 }
 
 // Signed deals plus a little from appearances and image rights.
-const imageRights = () => Math.round(S.player.rep * S.player.rep);
-function sponsorIncome() { return sponsorDeals().reduce((s, d) => s + d.weekly, 0) + imageRights(); }
+const imageRights = () => Math.round(S.player.rep * 15);
+const sponsorGross = () => sponsorDeals().reduce((s, d) => s + d.weekly, 0) + imageRights();
+function sponsorIncome() { return Math.min(SPONSOR_CAP, sponsorGross()); }
 const agentCut = () => Math.round(S.player.wage * agent().cut);
 function weeklyCosts() { const p = S.player; return rentNow() + EQUIP_TIERS[p.equip].fee + agentCut(); }
 function weeklyNet() { return S.player.wage + sponsorIncome() - weeklyCosts(); }
@@ -1358,6 +1383,7 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   addRep((rating - 6.4) * .5 * (0.6 + clubPrestige(myClub())) * (cup ? 1.3 : 1) + user.goals * .25);
   changeAff(rating >= 7.5 ? 2 : rating >= 7 ? 1 : rating < 6 ? -2 : 0);
   nudgeOvr(perfDelta(rating, user));
+  derbyStakes(user, res, isHome, report);
   // Goals, assists, tackles and clean sheets in every competition count towards objectives.
   (p.objectives || []).forEach(o => {
     o.progress += o.kind === 'goals' ? user.goals : o.kind === 'assists' ? user.assists : o.kind === 'tackles' ? user.tackles || 0
@@ -1365,10 +1391,23 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   });
 }
 
+// Derbies matter more: beating your rivals lifts the manager (+4), the board (+3) and your name,
+// and every goal against them counts extra. Losing one costs affection (−4) and board trust (−3).
+function derbyStakes(user, res, isHome, report) {
+  const name = derbyName(res.h, res.a);
+  if (!name) return;
+  const mine = isHome ? res.gh : res.ga, theirs = isHome ? res.ga : res.gh;
+  const won = mine > theirs || (mine === theirs && res.winner === (isHome ? res.h : res.a));
+  const lost = mine < theirs || (mine === theirs && res.winner && !won);
+  if (user.goals) { addRep(user.goals * .6); report.events.push(`${user.goals > 1 ? `${user.goals} goals` : 'A goal'} in the ${name}: the fans will not forget it`); }
+  if (won) { changeAff(4); changeBoard(3); addRep(1.5); report.events.push(`${name} won! Manager +4, board +3, reputation up`); }
+  else if (lost) { changeAff(-4); changeBoard(-3); report.events.push(`${name} lost. Manager −4, board −3`); }
+}
+
 // One finished game for the Results list: both teams, the score, every goal and your numbers.
 function resultRow(res, isHome, user, comp, kind, stage = '') {
   return {
-    week: S.week, comp, kind, stage, h: res.h, a: res.a, gh: res.gh, gaH: res.ga, pens: res.pens || null, pensScore: res.pensScore || null, winner: res.winner || null,
+    week: S.week, comp, kind, stage, derby: derbyName(res.h, res.a), h: res.h, a: res.a, gh: res.gh, gaH: res.ga, pens: res.pens || null, pensScore: res.pensScore || null, winner: res.winner || null,
     scorers: (res.scorers || []).map(s => ({ ...s })), opp: isHome ? res.a : res.h, isHome,
     gf: isHome ? res.gh : res.ga, ga: isHome ? res.ga : res.gh,
     rating: user.rating || null, goals: user.goals, assists: user.assists, mins: user.mins, start: !!user.start, rested: !!user.rested,
@@ -1577,14 +1616,14 @@ function randomEvent(report) {
   const p = S.player;
   if (Math.random() > .14) return;
   const events = [
-    () => { if (p.rep < 15) return; const v = Math.round(p.rep * 600); p.money += v; msg(`A boot brand paid you ${money(v)} for a photoshoot.`, 'good'); },
+    () => { if (p.rep < 15) return; const v = Math.round(p.rep * 150); p.money += v; msg(`A boot brand paid you ${money(v)} for a photoshoot.`, 'good'); },
     () => { addRep(1.5); msg('Your visit to a children\'s hospital went viral. Reputation up.', 'good'); },
     () => { const v = Math.round(Math.max(150, p.wage * rand(.3, .8))); p.money -= v; msg(`Your car needed repairs: ${money(v)}.`, 'bad'); },
     () => { p.energy = clamp(p.energy - 15, 0, 100); msg('You slept badly before training. Energy down.', 'bad'); },
     () => { const k = pick(attrKeys(p.pos)); p.attrs[k] = clamp(p.attrs[k] + .8, 1, 99); msg(`A senior teammate gave you extra ${ATTR_NAMES[k].toLowerCase()} tips after training.`, 'good'); },
     () => { changeAff(-3); msg('You were late to a team meeting. Manager affection −3.', 'bad'); },
     () => { changeAff(3); msg('The manager praised your attitude in front of the squad. Affection +3.', 'good'); },
-    () => { if (p.rep < 30) return; const v = Math.round(p.rep * 1500); p.money += v; msg(`You signed a social media deal worth ${money(v)}.`, 'good'); },
+    () => { if (p.rep < 30) return; const v = Math.round(p.rep * 300); p.money += v; msg(`You signed a social media deal worth ${money(v)}.`, 'good'); },
   ];
   pick(events)();
 }
@@ -1596,7 +1635,7 @@ function checkContractBoost() {
   if (p.wage > marketWage(ovr, myClub()) * .8 || ageOf(p.by) >= OLD_RENEW_AGE) return;
   const o = makeOffer(myClub(), 'renew', 0, true);
   S.offers.push(o);
-  msg(o.clause ? `${myClub().name} want to reward your progress with a loyalty deal: 25% more, but you stay for ${o.clause} seasons.` : `${myClub().name} want to reward your progress with an improved contract.`, 'good');
+  msg(o.clause ? `"We really love you as a player," say ${myClub().name}. They want ${o.clause} seasons to make you their star, on ${raisePct(o)}% more a week, and promise to keep every distraction away from you.` : `${myClub().name} want to reward your progress with an improved contract.`, 'good');
 }
 
 // A manager who rates you highly (affection 80+) may come to you with a loyalty deal when you are
@@ -1609,8 +1648,8 @@ function loyaltyOffer() {
   if (Math.random() >= .5) return;
   const o = makeOffer(myClub(), 'renew', 0, true);
   S.offers.push(o);
-  msg(`${myClub().mgr} wants to build the team around you and has offered a loyalty deal.`, 'good');
-  notify('good', 'Loyalty deal offered', `${myClub().mgr} offers 25% more a week if you commit for ${o.clause} seasons. Check the Contract tab.`);
+  msg(`${myClub().mgr} pulled you aside: "You're the one we want to build this team around." He has offered you a loyalty deal.`, 'good');
+  notify('good', 'We want you here', `"We really love you as a player," says ${myClub().mgr}. ${o.clause} seasons to make you our star, ${raisePct(o)}% more a week, and no distractions from other clubs. Check the Contract tab.`);
 }
 
 // No club pays more than 35% above your market value, and nobody earns more than the
@@ -1667,7 +1706,7 @@ function makeOffer(c, type, fixedWage = 0, loyalty = false) {
   // free agent, though.
   const vetRich = !fixedWage && vetYears() > 0 && richLeague(c) && !freeAgent();
   if (vetRich) fixedWage = vetRichWage(type);
-  const wage = fixedWage || market;
+  const wage = Math.max(minWage(c), fixedWage || market);
   const age = ageOf(S.player.by);
   // Veterans get shorter deals: up to 3 years at 34, 2 at 35, then one year at a time. Big
   // top-flight clubs start shortening earlier: at most 4 years at 30–31, 3 at 32–33, then 1 or 2
@@ -1681,11 +1720,12 @@ function makeOffer(c, type, fixedWage = 0, loyalty = false) {
   if (richLeague(c) && vy) years = randi(1, age <= 35 ? 3 : age <= 37 ? 2 : 1);
   if (age >= OLD_RENEW_AGE) years = 1;
   // A loyalty deal (only when the club or manager comes to you, aged 20 to 28): 25% above your
-  // current wage, with a clause of 2–3 seasons with no bids from other clubs and no salary talks.
+  // current wage or your market value, whichever is higher, with a clause of 2–3 seasons with no bids from other clubs and no salary talks.
   // The deal is take it or leave it.
   const clause = loyalty && type === 'renew' && age >= CLAUSE_AGES[0] && age <= CLAUSE_AGES[1] && S.player.wage > 0 && !fixedWage ? randi(2, 3) : 0;
   if (clause) years = Math.min(5, Math.max(years, clause + (S.phase === 'season' ? 1 : 0)));
-  const clauseWage = clause ? Math.round(Math.min(S.player.wage * (1 + CLAUSE_RAISE), richLeague(c) ? Infinity : Math.max(S.player.wage, WAGE_MAX[POS_GROUP[S.player.pos]])) / 10) * 10 : 0;
+  const clauseBase = Math.max(S.player.wage, marketWage(ovr, c));
+  const clauseWage = clause ? Math.round(Math.min(clauseBase * (1 + CLAUSE_RAISE), richLeague(c) ? Infinity : Math.max(clauseBase, WAGE_MAX[POS_GROUP[S.player.pos]])) / 10) * 10 : 0;
   let status = squadStatus(c, ovr), promised = false;
   // Buying clubs sometimes promise a starting place, more often when you are close to their level.
   if (type === 'transfer' && (status === 'Rotation' || status === 'Reserve') && Math.random() < clamp(.45 - (teamStrength(c) - ovr) * .04, .1, .6)) {
@@ -1703,6 +1743,8 @@ const CLAUSE_AGES = [20, 28], CLAUSE_RAISE = .25;
 // the X after this one.
 const clauseEnd = x => S.season + x;
 const clauseActive = () => (S.player.clauseUntil || 0) > absWeek();
+// How much more than your current wage an offer pays, in %.
+const raisePct = o => Math.round((o.wage / Math.max(1, S.player.wage) - 1) * 100);
 const negLocked = () => (S.player.negLock || 0) > absWeek();
 
 // Scouting signals: an 8+ OVR jump this season (breakout), a 6+ jump (rising), and a silver (65+) rating.
@@ -1928,7 +1970,7 @@ function acceptOffer(id) {
       p.negLock = Math.max(p.negLock, p.clauseUntil);
       p.offerLock = Math.max(p.offerLock || 0, p.clauseUntil);
       p.listed = false;
-      msg(`Loyalty clause: until the end of ${seasonLabel(end)} no club can bid for you and there are no salary talks.`);
+      msg(`"You won't regret this. We'll take care of everything else." Your loyalty clause runs until the end of ${seasonLabel(end)}: no bids from other clubs and no salary talks until then.`);
     }
     if (o.negotiated) {
       p.objHard = Math.min(.3, (p.objHard || 0) + .1);
@@ -2435,6 +2477,16 @@ function migrate() {
   }
   // Equipment used to be rented only: what you already use counts as bought.
   if (p.equipOwned == null) p.equipOwned = p.equip || 0;
+  // Wages below the new minimum (a little above the cheapest rent in the country) are raised to it.
+  if (p.club && !p.needsContract && !p.loan && p.wage < minWage(myClub())) p.wage = minWage(myClub());
+  // Sponsor fees were cut hard: rescale deals and requests signed at the old rates.
+  if (!p.sponsorV2) {
+    const fix = d => { const lv = SPONSOR_LEVELS.find(l => l.name === d.level); if (!lv) return; d.weekly = Math.round(d.weekly * lv.base / lv.old / 10) * 10; if (d.goalBonus) d.goalBonus = Math.round(d.weekly * .1 / 10) * 10; };
+    (p.sponsors || []).forEach(fix);
+    (p.sponsorReqs || []).forEach(fix);
+    delete p.sponsorMarket;
+    p.sponsorV2 = true;
+  }
   addNewLeagues();
   // Wide midfielders arrived later: give every squad one on each side.
   Object.values(S.clubs).forEach(c => ['LM', 'RM'].forEach(pos => {
