@@ -439,7 +439,7 @@ function viewHome() {
   let matchCard;
   if (fx) {
     const opp = club(fx.opp);
-    const sel = p.injured ? '<span class="bad">Injured, you will miss this match</span>' : `Role: <b>${squadStatus()}</b> · Start chance <b>${Math.round(startChance().start * 100)}%</b>`;
+    const sel = p.injured ? '<span class="bad">Injured, you will miss this match</span>' : `Role: <b>${squadStatus()}</b> · Start chance <b>${Math.round(Math.max(startChance().start, rotationStart(false, fx.opp)) * 100)}%</b>${rotationStart(false, fx.opp) > startChance().start ? ' <span class="good">(weak opponent: the manager rotates)</span>' : ''}`;
     matchCard = `<section class="card hero">
       <div class="row"><h2>Matchday ${S.week}</h2><span class="small muted">${league(myClub().league).name}</span></div>
       ${derbyName(fx.home, fx.away) ? `<div class="derby">${derbyName(fx.home, fx.away)}</div>` : ''}

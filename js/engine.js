@@ -1234,18 +1234,24 @@ const TWO_GAME_ENERGY = 50;
 // The minutes you were on the pitch: from kick-off as a starter, the closing spell as a sub.
 const userMinutes = u => !u || !u.mins ? [1, 90] : u.start ? [1, Math.min(90, u.mins)] : [Math.max(1, 91 - u.mins), 90];
 
-// Domestic cup ties against a side at least 3 rating points weaker: the manager rotates, and
-// reserve and rotation players usually start. Europe is picked like the league.
-function cupRotation(opp) {
-  const c = myClub(), status = squadStatus();
-  return !!opp && (status === 'Reserve' || status === 'Rotation') && !frozenOut() && teamStrength(club(opp)) <= teamStrength(c) - 3;
+// The manager rotates reserve and rotation players in: they start most domestic cup games (75%,
+// or 90% against a side at least 3 rating points weaker), and most games of any kind against a side
+// 15+ points weaker (80%, 92% in a domestic cup). Europe is otherwise picked like the league.
+const BENCH_ROLES = ['Reserve', 'Rotation'];
+function rotationStart(domesticCup, opp) {
+  const p = S.player;
+  if (p.energy < 25 || frozenOut() || !BENCH_ROLES.includes(squadStatus())) return 0;
+  const gap = opp && S.clubs[opp] ? teamStrength(myClub()) - teamStrength(club(opp)) : 0;
+  if (gap >= 15) return domesticCup ? .92 : .8;
+  if (domesticCup) return gap >= 3 ? .9 : .75;
+  return 0;
 }
 
 function selection(domesticCup = false, opp = null) {
   const p = S.player;
   if (p.injured) return { mins: 0, start: false };
   let { start, subShare } = startChance();
-  if (domesticCup && p.energy >= 25 && cupRotation(opp)) start = Math.max(start, .82);
+  start = Math.max(start, rotationStart(domesticCup, opp));
   const r = Math.random();
   if (r < start) return { mins: randi(75, 90), start: true };
   if (r < start + (1 - start) * subShare) return { mins: randi(12, 35), start: false };
@@ -1434,7 +1440,7 @@ function advanceWeek() {
     // Manager's fitness brief: count the matchdays you turn up fresh for.
     if (!p.injured) (p.objectives || []).forEach(o => { if (o.kind === 'energy' && p.energy >= o.min) o.progress++; });
     else p.st.missed = (p.st.missed || 0) + 1;
-    user = { ...selection(), goals: 0, assists: 0 };
+    user = { ...selection(false, fx.opp), goals: 0, assists: 0 };
     // The manager's plan only matters if you actually play.
     if (p.order && user.mins) { user.follow = p.order.choice !== 'own'; user.own = p.order.choice === 'own'; }
   }
