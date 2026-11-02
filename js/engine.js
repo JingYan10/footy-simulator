@@ -641,6 +641,7 @@ function makeDrill() {
   return { span: 'drill', kind: 'energy', min: 60, target: games - 1, progress: 0, endWeek: to, games };
 }
 
+const objVetEase = (age = ageOf(S.player.by)) => Math.max(.6, 1 - Math.max(0, age - 34) * .08);
 function makeObjective(span) {
   if (span === 'drill') return makeDrill();
   const p = S.player, to = Math.min(SEASON_WEEKS, span === 'season' ? SEASON_WEEKS : S.week + OBJ_SPAN[span].weeks - 1);
@@ -674,7 +675,8 @@ function makeObjective(span) {
   const expected = games * play * perGame * TIER_DEMAND[clubTier(c)] * (1 + (p.objHard || 0)) * star;
   if (span !== 'season' && expected < 1.1) return null;
   // Tackles come steadily every game, so that target sits much closer to what you should manage.
-  const target = Math.max(1, Math.floor(expected * (kind === 'tackles' ? .85 : .7) + .3));
+  // After 34 the manager slowly eases off: 8% lower targets for every year past 34, down to 60%.
+  const target = Math.max(1, Math.floor(expected * (kind === 'tackles' ? .85 : .7) * objVetEase() + .3));
   return { span, kind, target, progress: 0, endWeek: to, games };
 }
 
