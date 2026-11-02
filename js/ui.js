@@ -608,7 +608,7 @@ function viewShop() {
     <div class="row small"><span class="muted">Bank</span><b class="num">${money(p.money)}</b></div></section>`;
   const tiers = EQUIP_TIERS.map((t, i) => {
     const cost = equipCost(i), owned = i && !cost;
-    return `<button class="house tier-${t.name.toLowerCase()} ${p.equip === i ? 'on' : ''}" data-act="equip" data-v="${i}" ${i && p.equip !== i && p.money < cost + t.fee ? 'disabled' : ''}>
+    return `<button class="house tier-${t.name.toLowerCase()} ${p.equip === i ? 'on' : ''}" data-act="equip" data-v="${i}" ${i && p.equip !== i && p.money < cost ? 'disabled' : ''}>
       <span><b class="tiername">${t.name}</b> · ×${t.mult} training XP${t.energy ? ` · +${t.energy} energy` : ''}<br><span class="small muted">${t.desc}</span></span><span class="num small r">${!i ? 'Free' : `${owned ? 'Owned' : money(cost)}<br><span class="muted">${money(t.fee)}/wk</span>`}</span></button>`;
   }).join('');
   const left = leaseLeft();

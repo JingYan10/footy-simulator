@@ -547,7 +547,7 @@ function notify(kind, title, text) {
 
 // ---------- manager objectives ----------
 // Targets for this month, the next 3 months and the season. Forwards get goals, midfielders
-// goals + assists, defenders and keepers clean sheets. Higher leagues demand more.
+// assists, defenders tackles and keepers clean sheets. Higher leagues demand more.
 const OBJ_SPAN = {
   month: { weeks: 4, label: 'This month', win: 4, lose: 2, weight: 1 },
   quarter: { weeks: 12, label: 'Next 3 months', win: 7, lose: 4, weight: 2 },
@@ -557,8 +557,10 @@ const OBJ_SPAN = {
 };
 const OBJ_ORDER = ['month', 'quarter', 'season', 'drill'];
 const OBJ_RATE = { ST: .4, LW: .3, RW: .3, CAM: .35, CM: .2, CDM: .12 };
+// Assists a midfielder can expect per game before OVR and team strength.
+const OBJ_AST_RATE = { CAM: .3, LM: .25, RM: .25, CM: .18, CDM: .08 };
 const TIER_DEMAND = { 1: 1.15, 2: 1, 3: .9 };
-const OBJ_WORDS = { goals: ['goal', 'goals'], ga: ['goal or assist', 'goals + assists'], clean: ['clean sheet', 'clean sheets'] };
+const OBJ_WORDS = { goals: ['goal', 'goals'], assists: ['assist', 'assists'], tackles: ['tackle', 'tackles'], ga: ['goal or assist', 'goals + assists'], clean: ['clean sheet', 'clean sheets'] };
 const objWord = (kind, n) => OBJ_WORDS[kind][n === 1 ? 0 : 1];
 function objText(o) {
   if (o.kind === 'train') return `Train ${ATTR_NAMES[o.attr]} ${o.target} times`;
@@ -577,7 +579,7 @@ const BANDS = {
   new: { label: 'No track record yet', cap: 1, chance: 0, bonus: 0 },
 };
 
-const objKind = (pos = S.player.pos) => ({ FWD: 'goals', MID: 'ga' }[POS_GROUP[pos]] || 'clean');
+const objKind = (pos = S.player.pos) => ({ FWD: 'goals', MID: 'assists', DEF: 'tackles' }[POS_GROUP[pos]] || 'clean');
 
 function gamesBetween(from, to) {
   const lid = myClub().league, id = S.player.club;
@@ -615,6 +617,11 @@ function makeObjective(span) {
     // Clean sheets depend on how strong your team is compared with the rest of the league.
     const ids = league(c.league).clubs, avg = ids.reduce((s, id) => s + teamStrength(club(id)), 0) / ids.length;
     perGame = clamp(.25 + (str - avg) / 35, .1, .55);
+  } else if (kind === 'tackles') {
+    // What your Defending stat gives over 90 minutes (see matchTackles).
+    perGame = Math.max(1, 2 + ((p.attrs.DEF || 40) - 50) * .2) * (TACKLE_ROLE[p.pos] || 1);
+  } else if (kind === 'assists') {
+    perGame = (OBJ_AST_RATE[p.pos] || .15) * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
   } else {
     perGame = OBJ_RATE[p.pos] * clamp(Math.pow(calcOVR() / str, 3), .5, 1.6);
   }
@@ -626,7 +633,8 @@ function makeObjective(span) {
   const star = span === 'season' && clubTier(c) === 1 ? (status === 'Key Player' ? 1.3 : status === 'Starter' ? 1.15 : 1) : 1;
   const expected = games * play * perGame * TIER_DEMAND[clubTier(c)] * (1 + (p.objHard || 0)) * star;
   if (span !== 'season' && expected < 1.1) return null;
-  const target = Math.max(1, Math.floor(expected * .7 + .3));
+  // Tackles come steadily every game, so that target sits much closer to what you should manage.
+  const target = Math.max(1, Math.floor(expected * (kind === 'tackles' ? .85 : .7) + .3));
   return { span, kind, target, progress: 0, endWeek: to, games };
 }
 
@@ -899,7 +907,7 @@ function rest() {
 const equipCost = i => i <= (S.player.equipOwned || 0) ? 0 : EQUIP_TIERS[i].buy;
 function setEquip(i) {
   const p = S.player, t = EQUIP_TIERS[i], cost = equipCost(i);
-  if (i === p.equip || (i > 0 && p.money < cost + t.fee)) return false;
+  if (i === p.equip || (i > 0 && p.money < cost)) return false;
   p.money -= cost;
   p.equipOwned = Math.max(p.equipOwned || 0, i);
   p.equip = i;
@@ -1271,8 +1279,11 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   addRep((rating - 6.4) * .5 * (0.6 + clubPrestige(myClub())) * (cup ? 1.3 : 1) + user.goals * .25);
   changeAff(rating >= 7.5 ? 2 : rating >= 7 ? 1 : rating < 6 ? -2 : 0);
   nudgeOvr(perfDelta(rating, user));
-  // Goals, assists and clean sheets in every competition count towards objectives.
-  (p.objectives || []).forEach(o => { o.progress += o.kind === 'goals' ? user.goals : o.kind === 'ga' ? user.goals + user.assists : o.kind === 'clean' && clean ? 1 : 0; });
+  // Goals, assists, tackles and clean sheets in every competition count towards objectives.
+  (p.objectives || []).forEach(o => {
+    o.progress += o.kind === 'goals' ? user.goals : o.kind === 'assists' ? user.assists : o.kind === 'tackles' ? user.tackles || 0
+      : o.kind === 'ga' ? user.goals + user.assists : o.kind === 'clean' && clean ? 1 : 0;
+  });
 }
 
 // One finished game for the Results list: both teams, the score, every goal and your numbers.
