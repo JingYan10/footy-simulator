@@ -1934,8 +1934,12 @@ function performanceReview(st, avg, awards) {
   // Injuries: missing a quarter of the league games always costs OVR, more the longer you
   // were out and the older you are. A shorter spell out only hurts if you came back below par.
   const games = (league(myClub().league).clubs.length - 1) * 2, missed = st.missed || 0, share = games ? missed / games : 0;
+  // A long lay-off also takes the shine off a good season: the gain shrinks with the share of
+  // games missed (a third of the season out roughly halves it).
+  if (d > 0 && share >= .1) d *= clamp(1 - share * 1.6, .3, 1);
   if (share >= .25) {
-    d -= (1 + (share - .25) * 6) * declineFactor(age) * (age <= 21 ? .6 : 1);
+    // On top of a still-positive season the lay-off costs half as much; otherwise in full.
+    d -= (1 + (share - .25) * 6) * declineFactor(age) * (age <= 21 ? .6 : 1) * (d > 0 ? .5 : 1);
     notes.push(`missed ${missed} games injured`);
   } else if (missed >= 3 && st.apps >= 5 && avg < 6.9) {
     d -= (avg < 6.5 ? .6 : .3) * declineFactor(age);
