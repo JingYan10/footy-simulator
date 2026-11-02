@@ -1127,12 +1127,14 @@ function weeklyNet() { return S.player.wage + sponsorIncome() - weeklyCosts(); }
 // Physicality protects you: a strong body gets injured less often, and less badly.
 // 50 PHY is about normal risk; 90 is roughly half the injuries and a third of the serious ones.
 const physOf = () => S.player.attrs.PHY || 50;
-// Teenagers (16 to 19) bounce back: about 30% fewer injuries and 40% fewer serious ones.
+// Teenagers (16 to 19) bounce back: about 45% fewer injuries and 55% fewer serious ones.
 const youngBody = () => ageOf(S.player.by) <= 19;
-// Everyone also gets about 15% fewer injuries, and 15% fewer serious ones, than the base rates.
-const INJURY_EASE = .85;
-const injuryMult = () => clamp(1.15 - (physOf() - 50) * .015, .5, 1.45) * (youngBody() ? .7 : 1) * INJURY_EASE;
-const seriousChance = () => clamp(.12 - (physOf() - 60) * .0025, .03, .18) * (youngBody() ? .6 : 1) * INJURY_EASE;
+// Everyone also gets about 30% fewer injuries, and 30% fewer serious ones, than the base rates.
+const INJURY_EASE = .7;
+const injuryMult = () => clamp(1.15 - (physOf() - 50) * .015, .5, 1.45) * (youngBody() ? .55 : 1) * INJURY_EASE;
+// After one serious injury, a second in the same season is far less likely (40% of the usual odds).
+const seriousChance = () => clamp(.12 - (physOf() - 60) * .0025, .03, .18) * (youngBody() ? .45 : 1) * INJURY_EASE
+  * (S.player.seriousSeason === S.season ? .4 : 1);
 function energyRegen() { const p = S.player; return 30 + HOUSING[p.house].energy + EQUIP_TIERS[p.equip].energy; }
 
 // ---------- matches ----------
@@ -1400,6 +1402,7 @@ function advanceWeek() {
     if (Math.random() < chance) {
       // Most knocks are short; a strong body makes a serious one rarer.
       const serious = Math.random() < seriousChance();
+      if (serious) p.seriousSeason = S.season;
       p.injured = serious ? randi(8, 20) : randi(1, 6);
       const kind = serious ? pick(['torn knee ligament', 'broken foot', 'torn hamstring', 'ruptured achilles', 'fractured ankle']) : pick(['hamstring strain', 'ankle sprain', 'calf tightness', 'knee knock', 'groin strain', 'thigh bruise']);
       msg(`Injury: ${kind}. Out for ${p.injured} week${p.injured > 1 ? 's' : ''}.`, 'bad');
