@@ -303,7 +303,7 @@ function offersHtml() {
       <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b></div><div><small>Role</small><b class="${o.promised ? 'good' : ''}">${o.status}${o.promised ? ' (promised)' : ''}</b></div></div>
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
-      ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again.</div>` : ''}
+      ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again. You could never be a legend at either club.</div>` : ''}
       ${o.type === 'transfer' && leagueGrowth(c) < 1 ? '<div class="small flood">Big money, weaker league: your OVR will grow more slowly here.</div>' : ''}
       ${o.block ? `<div class="small flood"><b>Release clause:</b> for ${o.block} year${o.block > 1 ? 's' : ''} after you sign, ${esc(c.name)} block any move and salary talks. Breaking it costs ${money(o.blockFee)}.</div>` : ''}
       <div class="loyal ${o.type === 'transfer' ? 'away' : ''}"><p>"${offerPitch(o, c)}"</p><span>— ${esc(c.mgr)}, ${esc(c.name)}</span></div>
@@ -635,7 +635,7 @@ function legacyCard(rec) {
   const clubs = clubLegacy(rec), legends = clubs.filter(c => c.legend);
   const rows = clubs.slice(0, 4).map(c => {
     const titles = Object.entries(c.titles).map(([n, k]) => `${k}× ${n}`).join(', ');
-    const need = c.legend ? '' : `Legend needs ${LEGEND.seasons + 1}+ seasons, ${c.gk ? `${LEGEND.clean} clean sheets` : `${LEGEND.ga} G/A`} and ${LEGEND.apps + 1}+ apps`;
+    const need = c.legend ? '' : c.rivals.length ? `${c.earned ? 'Would have been a legend, but you' : 'You'} also played for their rivals ${c.rivals.map(esc).join(' and ')}: no legend status here` : `Legend needs ${LEGEND.seasons + 1}+ seasons, ${c.gk ? `${LEGEND.clean} clean sheets` : `${LEGEND.ga} G/A`} and ${LEGEND.apps + 1}+ apps`;
     return `<div class="commit ${c.legend ? 'on' : ''}"><div><b>${esc(c.club)}</b>${c.legend ? ' <span class="tag legend">Club legend</span>' : ''}
       <div class="small muted">${c.seasons} season${c.seasons !== 1 ? 's' : ''} · ${c.apps} apps · ${c.gk ? `${c.clean} clean sheets` : `${c.goals} G · ${c.assists} A`}${titles ? ` · ${titles}` : ''}</div>${need ? `<div class="small muted">${need}</div>` : ''}</div><b class="num">${c.gk ? c.clean : c.ga}</b></div>`;
   }).join('');

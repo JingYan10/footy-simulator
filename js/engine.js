@@ -1783,7 +1783,7 @@ function makeOffer(c, type, fixedWage = 0, loyalty = false, clubOffer = false) {
   // A release clause: 65% of transfers, and every renewal the club offers you itself (other than a
   // loyalty deal) for one year.
   const block = clause ? 0 : type === 'transfer' ? (Math.random() < BLOCK_CHANCE ? blockYears() : 0) : clubOffer ? 1 : 0;
-  return { id: Math.random().toString(36).slice(2, 9), club: c.id, type, wage: clauseWage || wage, years, status, promised, week: S.week, season: S.season, rounds: 0, maxRounds, pen: 0, ...(fixedWage ? { prime: true } : {}), ...(clause ? { clause } : {}), ...(block ? { block, blockFee: breachFee(c) } : {}) };
+  return { id: Math.random().toString(36).slice(2, 9), club: c.id, type, wage: clauseWage || wage, years, status, promised, week: S.week, season: S.season, rounds: 0, maxRounds, pen: 0, ...(fixedWage ? { prime: true } : {}), ...(clause ? { clause } : {}), ...(block ? { block, blockFee: breachFee() } : {}) };
 }
 
 const maxRounds = o => o.clause ? 0 : o.maxRounds || 2;
@@ -1798,14 +1798,16 @@ const negLocked = () => (S.player.negLock || 0) > absWeek();
 
 // ---------- release clauses ----------
 // A release clause blocks any move and salary talks for 1 year (80% of the time) or 2. Other clubs
-// can only reach you through your agent. Breaking it costs a fee set by your club's standing:
-// €1–2M at a top-flight giant, €500–800k mid-table, €100–350k at the bottom (less a division down).
+// can only reach you through your agent. Breaking it costs a fee set by your OVR when you sign.
 const BLOCK_CHANCE = .65;
 const blockYears = () => Math.random() < .8 ? 1 : 2;
-function breachFee(c) {
-  const t = clubTier(c), pr = tierPrestige(c);
-  const [lo, hi] = t === 1 ? (pr >= 2 / 3 ? [1e6, 2e6] : pr >= 1 / 3 ? [5e5, 8e5] : [1e5, 3.5e5]) : t === 2 ? [5e4, 1.5e5] : [2e4, 6e4];
-  return Math.round(rand(lo, hi) / 1e4) * 1e4;
+// Each band runs from its lowest fee at its lowest OVR to its highest at its top OVR:
+// 55–67: €50–250k, 68–77: €750k–5M, 78–84: €10–30M, 85–91: €40–100M (below 55: €20–50k).
+const BREACH_BANDS = [[0, 54, 2e4, 5e4], [55, 67, 5e4, 2.5e5], [68, 77, 7.5e5, 5e6], [78, 84, 1e7, 3e7], [85, MAX_OVR, 4e7, 1e8]];
+function breachFee(ovr = calcOVR()) {
+  const [a, b, lo, hi] = BREACH_BANDS.find(([, top]) => ovr <= top) || BREACH_BANDS.at(-1);
+  const t = clamp((ovr - a) / Math.max(1, b - a), 0, 1);
+  return Math.round(lo * Math.pow(hi / lo, t) * rand(.95, 1.05) / 1e4) * 1e4;
 }
 // Old saves only had loyalty clauses.
 const blockActive = () => clauseActive() && S.player.clauseKind === 'block';
@@ -2121,7 +2123,7 @@ function acceptOffer(id) {
       p.banned = [...(p.banned || []), ...betrayed];
       const names = betrayed.map(id => club(id).name).join(' and ');
       msg(`${names} will never forgive you for joining ${club(o.club).name}. They will not approach you again.`, 'bad');
-      notify('bad', 'Burned bridges', `You joined ${names}'s rivals. ${names} fans and board will hate you: they will never make you an offer again.`);
+      notify('bad', 'Burned bridges', `You joined ${names}'s rivals. ${names} fans and board will hate you: they will never make you an offer again, and neither club will ever call you a legend.`);
     }
     // Your stats so far this season stay with your old club as their own career row.
     closeSpell();
@@ -2756,6 +2758,7 @@ function loadArchive() { try { return JSON.parse(localStorage.getItem(ARCHIVE_KE
 // Per club across a whole career (loans left out): seasons, apps, G/A and league titles. A club
 // names you a legend after more than 5 seasons, 100+ goals and assists and more than 150 games.
 // Keepers need 100 clean sheets (all competitions) there instead of 100 goals and assists.
+// Playing for both sides of a rivalry (say Real Madrid and Barcelona) rules you out as a legend at both.
 const LEGEND = { seasons: 5, ga: 100, clean: 100, apps: 150 };
 function clubLegacy(rec) {
   const byClub = {}, gk = POS_GROUP[rec.pos] === 'GK';
@@ -2765,8 +2768,11 @@ function clubLegacy(rec) {
     // A league title is a trophy named after the league that club played in that season.
     (rec.trophies || []).filter(t => t.season === r.season && t.club === r.club && t.name === r.league).forEach(t => { c.titles[t.name] = (c.titles[t.name] || 0) + 1; });
   });
-  return Object.values(byClub).map(c => ({ ...c, seasons: c.seasons.size, ga: c.goals + c.assists, gk,
-    legend: c.seasons.size > LEGEND.seasons && (gk ? c.clean >= LEGEND.clean : c.goals + c.assists >= LEGEND.ga) && c.apps > LEGEND.apps }))
+  const names = Object.keys(byClub), rivalsOf = n => names.filter(m => m !== n && RIVALRIES.some(([x, y]) => (x === n && y === m) || (x === m && y === n)));
+  return Object.values(byClub).map(c => {
+    const earned = c.seasons.size > LEGEND.seasons && (gk ? c.clean >= LEGEND.clean : c.goals + c.assists >= LEGEND.ga) && c.apps > LEGEND.apps, rivals = rivalsOf(c.club);
+    return { ...c, seasons: c.seasons.size, ga: c.goals + c.assists, gk, rivals, earned, legend: earned && !rivals.length };
+  })
     .sort((a, b) => b.apps - a.apps);
 }
 
