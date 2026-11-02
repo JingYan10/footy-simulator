@@ -554,7 +554,7 @@ function viewTrain() {
   const can = S.phase === 'season' && p.slots > 0 && !p.injured;
   const head = `<section class="card"><div class="row"><h2>Training</h2><span class="small"><b>${p.slots}</b>/${TRAIN_SLOTS} sessions left</span></div>
     <p class="small muted" style="margin:0">Each session uses ${TRAIN_ENERGY} energy. Your ${EQUIP_TIERS[p.equip].name.toLowerCase()} equipment gives ×${EQUIP_TIERS[p.equip].mult} XP; upgrade it in the Shop. Gains slow with age (a lot from 34) and as you get close to the maximum of ${MAX_OVR} OVR. Match ratings, goals, assists and awards also move your OVR up or down. Your OVR is weighted the way EA rates a ${POS_NAMES[p.pos].toLowerCase()}.</p>
-    <p class="small" style="margin:6px 0 0">Physicality ${Math.round(physOf())}: injury risk <b class="${injuryMult() <= 1 ? 'good' : 'bad'}">×${injuryMult().toFixed(2)}</b>, and ${Math.round(seriousChance() * 100)}% of injuries are serious. More Physicality means fewer and milder injuries.</p>
+    <p class="small" style="margin:6px 0 0">Physicality ${Math.round(physOf())}: injury risk <b class="${injuryMult() <= 1 ? 'good' : 'bad'}">×${injuryMult().toFixed(2)}</b>, and ${Math.round(seriousChance() * 100)}% of injuries are serious. More Physicality means fewer and milder injuries.${youngBody() ? ' Includes the teenage bonus (until 19): fewer and milder injuries.' : ''}</p>
     ${calcOVR() >= MAX_OVR ? `<p class="small good" style="margin:0">You are at the maximum ${MAX_OVR} OVR. Training now just keeps you sharp.</p>` : ''}
     ${p.injured ? '<p class="bad small" style="margin:0">You are injured and cannot train.</p>' : ''}
     ${S.phase !== 'season' ? '<p class="small muted" style="margin:0">Training resumes when the season starts.</p>' : ''}

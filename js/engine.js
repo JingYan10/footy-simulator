@@ -1119,8 +1119,10 @@ function weeklyNet() { return S.player.wage + sponsorIncome() - weeklyCosts(); }
 // Physicality protects you: a strong body gets injured less often, and less badly.
 // 50 PHY is about normal risk; 90 is roughly half the injuries and a third of the serious ones.
 const physOf = () => S.player.attrs.PHY || 50;
-const injuryMult = () => clamp(1.15 - (physOf() - 50) * .015, .5, 1.45);
-const seriousChance = () => clamp(.12 - (physOf() - 60) * .0025, .03, .18);
+// Teenagers (16 to 19) bounce back: about 30% fewer injuries and 40% fewer serious ones.
+const youngBody = () => ageOf(S.player.by) <= 19;
+const injuryMult = () => clamp(1.15 - (physOf() - 50) * .015, .5, 1.45) * (youngBody() ? .7 : 1);
+const seriousChance = () => clamp(.12 - (physOf() - 60) * .0025, .03, .18) * (youngBody() ? .6 : 1);
 function energyRegen() { const p = S.player; return 30 + HOUSING[p.house].energy + EQUIP_TIERS[p.equip].energy; }
 
 // ---------- matches ----------
