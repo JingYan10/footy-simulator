@@ -501,7 +501,9 @@ const effAff = () => clamp(S.player.aff - S.player.affPen, 0, 100);
 // At 25 the manager freezes you out of the team; at 15 he tears up your contract.
 const FROZEN_AFF = 25, SACK_AFF = 15;
 const frozenOut = () => !S.player.needsContract && effAff() <= FROZEN_AFF;
-function changeAff(d) { S.player.aff = clamp(S.player.aff + d, 0, 100); }
+// Affection is earned a little slowly: every gain counts 90%, while every setback counts in full.
+const AFF_GAIN = .9;
+function changeAff(d) { S.player.aff = clamp(S.player.aff + (d > 0 ? d * AFF_GAIN : d), 0, 100); }
 function changeBoard(d) { S.player.board = clamp(S.player.board + d, 0, 100); }
 
 function formBonus() {
@@ -1633,19 +1635,36 @@ function checkContractBoost() {
   if (p.loan || p.years < 1 || ovr - p.ovrAtSign < 4 || effAff() < 45 || negLocked()) return;
   if (S.offers.some(o => o.type === 'renew')) return;
   if (p.wage > marketWage(ovr, myClub()) * .8 || ageOf(p.by) >= OLD_RENEW_AGE) return;
-  const o = makeOffer(myClub(), 'renew', 0, true);
+  const o = makeOffer(myClub(), 'renew', 0, loyaltyRoll());
   S.offers.push(o);
   msg(o.clause ? `"We really love you as a player," say ${myClub().name}. They want ${o.clause} seasons to make you their star, on ${raisePct(o)}% more a week, and promise to keep every distraction away from you.` : `${myClub().name} want to reward your progress with an improved contract.`, 'good');
 }
 
-// A manager who rates you highly (affection 80+) may come to you with a loyalty deal when you are
-// 20 to 28 and have two years or less left: once a season, at week 20, half the time.
+// Loyalty deals only go to players the manager adores (93+ affection). Turn one down and the club
+// waits: about every three months it thinks again, and half the time comes back with another.
+const LOYAL_AFF = 93, LOYAL_GAP = 13;
+const loyalAge = () => { const a = ageOf(S.player.by); return a >= CLAUSE_AGES[0] && a <= CLAUSE_AGES[1]; };
+function loyaltyRoll() {
+  const p = S.player;
+  if (!loyalAge() || effAff() < LOYAL_AFF) return false;
+  if (!p.loyalNext) return true;
+  if (absWeek() < p.loyalNext) return false;
+  p.loyalNext = absWeek() + LOYAL_GAP;
+  return Math.random() < .5;
+}
+
+// A manager who adores you (93+ affection) may come to you with a loyalty deal when you are 20 to 28:
+// the first week each season you are at 93+, half the time. After you have said no once, the club
+// only thinks again about every three months, again half the time.
 function loyaltyOffer() {
-  const p = S.player, age = ageOf(p.by);
-  if (S.week !== 20 || p.loan || p.needsContract || p.loyalAsked === S.season || age < CLAUSE_AGES[0] || age > CLAUSE_AGES[1]) return;
-  if (p.years > 2 || effAff() < 80 || negLocked() || S.offers.some(o => o.type === 'renew')) return;
-  p.loyalAsked = S.season;
-  if (Math.random() >= .5) return;
+  const p = S.player;
+  if (p.loan || p.needsContract || !loyalAge() || negLocked() || S.offers.some(o => o.type === 'renew')) return;
+  if (p.loyalNext) { if (!loyaltyRoll()) return; }
+  else {
+    if (p.loyalAsked === S.season || effAff() < LOYAL_AFF) return;
+    p.loyalAsked = S.season;
+    if (Math.random() >= .5) return;
+  }
   const o = makeOffer(myClub(), 'renew', 0, true);
   S.offers.push(o);
   msg(`${myClub().mgr} pulled you aside: "You're the one we want to build this team around." He has offered you a loyalty deal.`, 'good');
@@ -1967,6 +1986,7 @@ function acceptOffer(id) {
     if (o.clause) {
       const end = clauseEnd(o.clause);
       p.clauseUntil = (end + 1) * SEASON_WEEKS + 1;
+      p.loyalNext = 0;
       p.negLock = Math.max(p.negLock, p.clauseUntil);
       p.offerLock = Math.max(p.offerLock || 0, p.clauseUntil);
       p.listed = false;
@@ -1991,6 +2011,12 @@ function acceptOffer(id) {
 function declineOffer(id) {
   const o = S.offers.find(x => x.id === id);
   if (o && o.type === 'renew') { changeAff(-4); changeBoard(-4); }
+  // Saying no to a loyalty deal stings a little, and the club waits three months before thinking about it again.
+  if (o && o.clause) {
+    S.player.loyalNext = absWeek() + LOYAL_GAP;
+    msg(`${myClub().mgr} and the board are a little hurt that you turned down their loyalty deal. Manager −4, board −4.`, 'bad');
+    notify('bad', 'They were hoping for a yes', `"We understand... but we really thought you felt the same way about us." ${myClub().mgr} and the board are slightly disappointed (manager −4, board −4).`);
+  } else if (o && o.type === 'renew') msg(`You turned down ${myClub().name}'s new contract. The manager and board are slightly unhappy (−4 each).`, 'bad');
   // Turning down other clubs shows loyalty, especially rivals.
   if (o && o.type === 'transfer' && !S.player.needsContract) changeAff(isRival(club(o.club)) ? 5 : 2);
   // Turning down an eager club's second try ends it: no more chances for six months.
