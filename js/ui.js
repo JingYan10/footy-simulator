@@ -242,14 +242,24 @@ function showNegotiate(id) {
   const intro = renew
     ? `${c.name} offer ${money(o.wage)}/week. Asking for more annoys ${c.mgr} whatever happens. Even if he agrees, his affection drops by a fifth, his objectives get a little harder and you can't talk salary again for about six months. ${left} attempt${left !== 1 ? 's' : ''} left.`
     : `${c.name} offer ${money(o.wage)}/week. Their manager won't hold it against you; his affection only counts once you join.`;
-  openModal(`<h3>Negotiate</h3>
-    <p class="muted" style="margin:0">${intro}</p>
-    ${renew ? '' : `<p class="bad" style="margin:0"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}. If a negotiation fails, they walk away.</b></p>`}
-    <div class="inbox">${ASKS.map((a, i) => {
+  // Attempts left as dots, and what this club does if an ask fails.
+  const dots = Array.from({ length: maxRounds(o) }, (_, k) => `<i class="${k < left ? 'on' : ''}"></i>`).join('');
+  const failNote = renew ? 'If he says no, the offer usually stays but talks are over. A big ask can make him pull it.' : 'If they say no, they walk away and the offer is gone.';
+  openModal(`<div class="neghead">${crest(c.id, 'small')}<div><h3 style="margin:0">Negotiate</h3><div class="small muted">${esc(c.name)} · ${renew ? 'Renewal' : 'Transfer'}</div></div></div>
+    <div class="kv"><div><small>On the table</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Market value</small><b class="num">${money(marketWage(calcOVR(), c))}/wk</b></div><div><small>Attempts left</small><b><span class="tries">${dots}</span> ${left}</b></div></div>
+    <p class="small muted" style="margin:0">${intro}</p>
+    <p class="small ${renew ? 'flood' : 'bad'}" style="margin:0"><b>${failNote}</b></p>
+    <div class="asks">${ASKS.map((a, i) => {
       // Show what they would really pay; an ask that can't raise the wage at all is switched off.
       const ch = negotiateChance(o, a), pay = negWage(o, a), capped = pay < Math.round(o.wage * (1 + a.pct) / 10) * 10;
-      if (pay <= o.wage) return `<button class="house" disabled><span><b>Ask ${a.label}</b><br><span class="small muted">They can't go any higher than ${money(o.wage)}/wk</span></span></button>`;
-      return `<button class="house" data-act="neg" data-v="${o.id}:${i}"><span><b>Ask ${a.label}</b> · ${money(pay)}/wk${capped ? ' <span class="small flood">(their limit)</span>' : ''}<br><span class="small muted">${chanceLabel(ch)} (${Math.round(ch * 100)}%)${renew ? ` · affection −${a.pen}` : ''}</span></span></button>`;
+      if (pay <= o.wage) return `<button class="askcard" disabled><div class="asktop"><b>Ask ${a.label}</b><span class="odds none">—</span></div><div class="small muted">They can't go any higher than ${money(o.wage)}/wk.</div></button>`;
+      const pct = Math.round(ch * 100), tone = ch >= .7 ? 'good' : ch >= .4 ? 'mid' : 'low';
+      return `<button class="askcard ${tone}" data-act="neg" data-v="${o.id}:${i}">
+        <div class="asktop"><div><b>Ask ${a.label}</b><div class="small">${money(pay)}/wk <span class="good">+${money(pay - o.wage)}</span>${capped ? ' <span class="flood">(their limit)</span>' : ''}</div></div>
+          <div class="oddsbox"><span class="odds">${pct}%</span><small>${chanceLabel(ch)}</small></div></div>
+        <div class="oddsbar"><i style="width:${pct}%"></i></div>
+        ${renew ? `<div class="small muted">Costs ${c.mgr.split(' ').pop()} −${a.pen} affection and the board −2, win or lose.</div>` : ''}
+      </button>`;
     }).join('')}</div>
     <button class="btn block" data-act="close">Cancel</button>`);
 }

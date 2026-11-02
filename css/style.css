@@ -325,6 +325,30 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .savebox { width: 100%; min-height: 120px; font: 12px/1.4 ui-monospace, monospace; background: var(--surface-2); color: var(--chalk); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 .tie.me { box-shadow: inset 3px 0 var(--flood); padding-left: 8px; }
 .tie.me span { color: var(--chalk); }
+/* contract talks: one card per ask with big, colour-coded odds */
+.neghead { display: flex; align-items: center; gap: 10px; }
+.tries { display: inline-flex; gap: 3px; vertical-align: middle; }
+.tries i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.tries i.on { background: var(--flood); }
+.asks { display: grid; gap: 8px; }
+.askcard { display: grid; gap: 6px; text-align: left; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--chalk); font: inherit; cursor: pointer; }
+.askcard:disabled { opacity: .55; cursor: default; }
+.askcard.good { border-color: rgba(76, 195, 138, .55); }
+.askcard.mid { border-color: rgba(242, 201, 76, .55); }
+.askcard.low { border-color: rgba(240, 106, 106, .55); }
+.asktop { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.oddsbox { display: grid; justify-items: end; line-height: 1; }
+.oddsbox small { font-size: 11px; font-weight: 700; margin-top: 3px; }
+.odds { font: 800 30px/1 var(--display); }
+.odds.none { color: var(--muted); }
+.askcard.good .odds, .askcard.good .oddsbox small { color: var(--good); }
+.askcard.mid .odds, .askcard.mid .oddsbox small { color: var(--warn); }
+.askcard.low .odds, .askcard.low .oddsbox small { color: var(--bad); }
+.oddsbar { height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; }
+.oddsbar i { display: block; height: 100%; border-radius: 3px; }
+.askcard.good .oddsbar i { background: var(--good); }
+.askcard.mid .oddsbar i { background: var(--warn); }
+.askcard.low .oddsbar i { background: var(--bad); }
 /* results */
 .results { display: grid; gap: 6px; }
 .result { border-radius: 10px; background: var(--surface-2); }
