@@ -554,8 +554,8 @@ function notify(kind, title, text) {
 }
 
 // ---------- manager objectives ----------
-// Targets for this month, the next 3 months and the season. Forwards get goals, midfielders
-// assists, defenders tackles and keepers clean sheets. Higher leagues demand more.
+// Targets for this month, the next 3 months and the season. Strikers get goals, wingers goals +
+// assists, midfielders assists, defenders tackles and keepers clean sheets. Higher leagues demand more.
 const OBJ_SPAN = {
   month: { weeks: 4, label: 'This month', win: 4, lose: 2, weight: 1 },
   quarter: { weeks: 12, label: 'Next 3 months', win: 7, lose: 4, weight: 2 },
@@ -566,7 +566,7 @@ const OBJ_SPAN = {
 const OBJ_ORDER = ['month', 'quarter', 'season', 'drill'];
 const OBJ_RATE = { ST: .4, LW: .3, RW: .3, CAM: .35, CM: .2, CDM: .12 };
 // Assists a midfielder can expect per game before OVR and team strength.
-const OBJ_AST_RATE = { CAM: .3, LM: .25, RM: .25, CM: .18, CDM: .08 };
+const OBJ_AST_RATE = { CAM: .3, LM: .25, RM: .25, CM: .18, CDM: .08, LW: .18, RW: .18 };
 const TIER_DEMAND = { 1: 1.15, 2: 1, 3: .9 };
 const OBJ_WORDS = { goals: ['goal', 'goals'], assists: ['assist', 'assists'], tackles: ['tackle', 'tackles'], ga: ['goal or assist', 'goals + assists'], clean: ['clean sheet', 'clean sheets'] };
 const objWord = (kind, n) => OBJ_WORDS[kind][n === 1 ? 0 : 1];
@@ -587,7 +587,8 @@ const BANDS = {
   new: { label: 'No track record yet', cap: 1, chance: 0, bonus: 0 },
 };
 
-const objKind = (pos = S.player.pos) => ({ FWD: 'goals', MID: 'assists', DEF: 'tackles' }[POS_GROUP[pos]] || 'clean');
+// Wingers are judged on goals and assists together; other forwards on goals.
+const objKind = (pos = S.player.pos) => ['LW', 'RW'].includes(pos) ? 'ga' : ({ FWD: 'goals', MID: 'assists', DEF: 'tackles' }[POS_GROUP[pos]] || 'clean');
 
 function gamesBetween(from, to) {
   const lid = myClub().league, id = S.player.club;
@@ -628,6 +629,9 @@ function makeObjective(span) {
   } else if (kind === 'tackles') {
     // What your Defending stat gives over 90 minutes (see matchTackles).
     perGame = Math.max(1, 2 + ((p.attrs.DEF || 40) - 50) * .2) * (TACKLE_ROLE[p.pos] || 1);
+  } else if (kind === 'ga') {
+    // A winger's goals plus assists.
+    perGame = OBJ_RATE[p.pos] * clamp(Math.pow(calcOVR() / str, 3), .5, 1.6) + OBJ_AST_RATE[p.pos] * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
   } else if (kind === 'assists') {
     perGame = (OBJ_AST_RATE[p.pos] || .15) * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
   } else {
