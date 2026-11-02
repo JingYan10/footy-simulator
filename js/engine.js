@@ -1236,13 +1236,13 @@ const userMinutes = u => !u || !u.mins ? [1, 90] : u.start ? [1, Math.min(90, u.
 
 // The manager rotates reserve and rotation players in: they start most domestic cup games (75%,
 // or 90% against a side at least 3 rating points weaker), and most games of any kind against a side
-// 15+ points weaker (80%, 92% in a domestic cup). Europe is otherwise picked like the league.
+// 18+ points weaker (80%, 92% in a domestic cup). Europe is otherwise picked like the league.
 const BENCH_ROLES = ['Reserve', 'Rotation'];
 function rotationStart(domesticCup, opp) {
   const p = S.player;
   if (p.energy < 25 || frozenOut() || !BENCH_ROLES.includes(squadStatus())) return 0;
   const gap = opp && S.clubs[opp] ? teamStrength(myClub()) - teamStrength(club(opp)) : 0;
-  if (gap >= 15) return domesticCup ? .92 : .8;
+  if (gap >= 18) return domesticCup ? .92 : .8;
   if (domesticCup) return gap >= 3 ? .9 : .75;
   return 0;
 }
