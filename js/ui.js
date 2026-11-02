@@ -65,7 +65,7 @@ function renderLanding() {
     <button class="btn block" data-act="importAsk">Import a saved career</button>
     ${past.length ? `<section class="card"><h2>Past careers</h2><div class="inbox">${past.map(r => {
       const t = careerTotals(r);
-      return `<div class="pastrow"><button class="house" data-act="viewPast" data-v="${r.id}"><span><b>${esc(r.name)}</b> · ${r.pos} · Peak ${r.peak}<br><span class="small muted">${esc(r.lastClub)} · ${r.career.length} season${r.career.length !== 1 ? 's' : ''} · ${t.goals} goals · ${r.trophies.length} trophies</span></span><span class="small flood">View</span></button><button class="btn danger sm" data-act="pastDelAsk" data-v="${r.id}" aria-label="Delete ${esc(r.name)}">Delete</button></div>`;
+      return `<div class="pastrow"><button class="house" data-act="viewPast" data-v="${r.id}"><span><b>${esc(r.name)}</b> · ${r.pos} · Peak ${r.peak}<br><span class="small muted">${esc(r.lastClub)} · ${r.career.length} season${r.career.length !== 1 ? 's' : ''} · ${t.goals} goals · ${r.trophies.length} trophies</span>${tagHtml(legacyTags(r))}</span><span class="small flood">View</span></button><button class="btn danger sm" data-act="pastDelAsk" data-v="${r.id}" aria-label="Delete ${esc(r.name)}">Delete</button></div>`;
     }).join('')}</div></section>` : ''}
     <p class="small muted">Your career saves automatically on this device. Use Export save in the Career tab to back it up.</p>
   </div>`;
@@ -152,7 +152,7 @@ function nav() {
   const tabs = [['home', 'Home'], ['train', 'Train'], ['contract', 'Contract'], ['shop', 'Shop'], ['agent', 'Agent'], ['club', 'Club'], ['career', 'Career']];
   return `<nav class="tabs"><div class="in">${tabs.map(([k, l]) => `
     <button class="${tab === k ? 'on' : ''}" data-act="tab" data-v="${k}" aria-label="${l}">
-      ${icon(k)}<span>${l}</span>${k === 'contract' && S.offers.length ? '<i class="dot"></i>' : ''}${k === 'train' && S.phase === 'season' && S.player.slots > 0 && !S.player.injured ? '<i class="dot" style="background:var(--flood)"></i>' : ''}
+      ${icon(k)}<span>${l}</span>${k === 'contract' && S.offers.length ? '<i class="dot"></i>' : ''}${k === 'agent' && (S.player.sponsorReqs || []).length ? '<i class="dot"></i>' : ''}${k === 'train' && S.phase === 'season' && S.player.slots > 0 && !S.player.injured ? '<i class="dot" style="background:var(--flood)"></i>' : ''}
     </button>`).join('')}</div></nav>`;
 }
 
@@ -246,8 +246,10 @@ function showNegotiate(id) {
     <p class="muted" style="margin:0">${intro}</p>
     ${renew ? '' : `<p class="bad" style="margin:0"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}. If a negotiation fails, they walk away.</b></p>`}
     <div class="inbox">${ASKS.map((a, i) => {
-      const ch = negotiateChance(o, a);
-      return `<button class="house" data-act="neg" data-v="${o.id}:${i}"><span><b>Ask ${a.label}</b> · ${money(o.wage * (1 + a.pct))}/wk<br><span class="small muted">${chanceLabel(ch)} (${Math.round(ch * 100)}%)${renew ? ` · affection −${a.pen}` : ''}</span></span></button>`;
+      // Show what they would really pay; an ask that can't raise the wage at all is switched off.
+      const ch = negotiateChance(o, a), pay = negWage(o, a), capped = pay < Math.round(o.wage * (1 + a.pct) / 10) * 10;
+      if (pay <= o.wage) return `<button class="house" disabled><span><b>Ask ${a.label}</b><br><span class="small muted">They can't go any higher than ${money(o.wage)}/wk</span></span></button>`;
+      return `<button class="house" data-act="neg" data-v="${o.id}:${i}"><span><b>Ask ${a.label}</b> · ${money(pay)}/wk${capped ? ' <span class="small flood">(their limit)</span>' : ''}<br><span class="small muted">${chanceLabel(ch)} (${Math.round(ch * 100)}%)${renew ? ` · affection −${a.pen}` : ''}</span></span></button>`;
     }).join('')}</div>
     <button class="btn block" data-act="close">Cancel</button>`);
 }
@@ -293,7 +295,7 @@ function orderBox() {
   if (!o) return '';
   return `<div class="order"><div class="small flood"><b>Manager's instructions</b></div><div>“${esc(o.text)}”</div>
     <div class="btns"><button class="btn sm ${o.choice === 'follow' ? 'good' : ''}" data-act="order" data-v="follow">Follow the plan</button><button class="btn sm ${o.choice === 'own' ? 'danger' : ''}" data-act="order" data-v="own">Play my own game</button></div>
-    <div class="small muted">Following gives the team a small edge and pleases him. Your own game boosts your scoring chances but hurts the team: score in a win and he forgives you, score without winning and he is a little annoyed, don't score and he is furious.</div></div>`;
+    <div class="small muted">Following gives the team a small edge and pleases him. Your own game boosts your scoring chances but hurts the team: a goal or assist in a win and he forgives you, a goal or assist without a win and he is a little annoyed, neither and he is furious.</div></div>`;
 }
 
 function freeAgentView() {
@@ -408,7 +410,7 @@ function viewOffseason() {
       ${sum.cup && sum.cup.apps ? `<div class="small muted">Cups: ${sum.cup.apps} apps · ${sum.cup.goals} goals · ${sum.cup.assists} assists</div>` : ''}
       ${sum.missed ? `<div class="small bad">Missed ${sum.missed} league game${sum.missed !== 1 ? 's' : ''} injured</div>` : ''}
       <div class="small">OVR ${sum.ovrStart} → <b>${sum.ovrEnd}</b> <span class="${delta >= 0 ? 'good' : 'bad'}">(${delta >= 0 ? '+' : ''}${delta})</span></div>
-      ${sum.review ? `<div class="small muted">Performance review: <b class="${sum.review.change > 0 ? 'good' : sum.review.change < 0 ? 'bad' : ''}">${sum.review.change > 0 ? '+' : ''}${sum.review.change} OVR</b>${sum.review.notes.length ? ` (${esc(sum.review.notes.join(', '))})` : ''}</div>` : ''}
+      ${ovrBreakdown(sum)}
       ${sum.awards.map(a => `<div class="award">${esc(a)}</div>`).join('')}
     </section>
     ${honoursCard(sum)}
@@ -424,6 +426,19 @@ function viewOffseason() {
       <button class="btn primary block" data-act="nextSeason" ${p.needsContract || summerPending() ? 'disabled' : ''}>Start ${seasonLabel(S.season + 1)}</button>
       <button class="btn danger block" data-act="retireAsk">Retire${age < 30 ? ' early' : ''}</button>
     </section>` + inboxHtml();
+}
+
+// Why OVR moved this season: matches and training, the end-of-season review, and ageing.
+function ovrBreakdown(sum) {
+  const sign = v => `${v > 0 ? '+' : ''}${v}`, cls = v => v > 0 ? 'good' : v < 0 ? 'bad' : '';
+  const rows = [];
+  if (sum.seasonGain != null) rows.push(`Matches and training: <b class="${cls(sum.seasonGain)}">${sign(sum.seasonGain)}</b>`);
+  if (sum.review) rows.push(`Performance review: <b class="${cls(sum.review.change)}">${sign(sum.review.change)}</b>${!sum.review.change && sum.ovrPreAge >= MAX_OVR ? ` <span class="flood">already at the ${MAX_OVR} maximum</span>` : ''}${sum.review.notes.length ? ` (${esc(sum.review.notes.join(', '))})` : ''}`);
+  if (sum.ageLoss > 0) rows.push(`Ageing, turning ${sum.ageTo}: <b class="bad">−${sum.ageLoss}</b>. From 34 your body slows down a little more every birthday.`);
+  // Attributes can sit above the 91 cap, which hides small gains and losses for a while.
+  if (sum.rawEnd > MAX_OVR) rows.push(`Your attributes are still above the ${MAX_OVR} cap (${sum.rawEnd}), so ${sum.ageLoss > 0 ? 'the ageing loss' : 'changes'} won't show in your OVR until they drop below it.`);
+  else if (sum.ovrPreAge >= MAX_OVR && sum.review && sum.review.change > 0) rows.push(`You're at the ${MAX_OVR} maximum, so gains can't take you higher.`);
+  return rows.map(r => `<div class="small muted">${r}</div>`).join('');
 }
 
 // The world's individual awards this season and who won them.
@@ -467,7 +482,37 @@ function retiredHtml(rec, newAct = 'menu') {
     <div class="small muted">${POS_NAMES[rec.pos]} · ${esc(natName(rec.nat))} · Last club ${esc(rec.lastClub)} · Retired at ${rec.retiredAge}</div>
     <div class="bigstat"><div><b>${t.apps}</b><small>Apps</small></div><div><b>${t.goals}</b><small>Goals</small></div><div><b>${t.assists}</b><small>Assists</small></div><div><b>${rec.trophies.length}</b><small>Titles</small></div></div>
     <div class="small muted">Peak OVR ${rec.peak} · ${rec.caps} international caps · Earned ${money(rec.money)} in the bank</div>
-    <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + clubStints(rec) + careerTables(rec);
+    <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + legacyCard(rec) + clubStints(rec) + careerTables(rec);
+}
+
+// Short tags for a finished career: legend status, Ballon d'Ors, and the main clubs' numbers.
+function legacyTags(rec) {
+  const clubs = clubLegacy(rec), tags = [];
+  clubs.filter(c => c.legend).forEach(c => tags.push(['legend', `${c.club} legend`]));
+  ballonDors(rec).forEach(b => tags.push(['gold', `Ballon d'Or ${seasonLabel(b.season)}${b.club ? ` · ${b.club}` : ''}`]));
+  // The legend clubs, or else the club you played most games for.
+  (clubs.some(c => c.legend) ? clubs.filter(c => c.legend) : clubs.slice(0, 1)).forEach(c => {
+    const titles = Object.entries(c.titles).map(([n, k]) => `${k}× ${n} title${k > 1 ? 's' : ''}`).join(', ');
+    tags.push(['club', `${c.club}: ${c.seasons} season${c.seasons !== 1 ? 's' : ''} · ${c.gk ? `${c.clean} clean sheets` : `${c.ga} G/A`}${titles ? ` · ${titles}` : ''}`]);
+  });
+  return tags;
+}
+const tagHtml = tags => tags.length ? `<span class="tags">${tags.map(([k, t]) => `<span class="tag ${k}">${esc(t)}</span>`).join('')}</span>` : '';
+
+function legacyCard(rec) {
+  const clubs = clubLegacy(rec), legends = clubs.filter(c => c.legend);
+  const rows = clubs.slice(0, 4).map(c => {
+    const titles = Object.entries(c.titles).map(([n, k]) => `${k}× ${n}`).join(', ');
+    const need = c.legend ? '' : `Legend needs ${LEGEND.seasons + 1}+ seasons, ${c.gk ? `${LEGEND.clean} clean sheets` : `${LEGEND.ga} G/A`} and ${LEGEND.apps + 1}+ apps`;
+    return `<div class="commit ${c.legend ? 'on' : ''}"><div><b>${esc(c.club)}</b>${c.legend ? ' <span class="tag legend">Club legend</span>' : ''}
+      <div class="small muted">${c.seasons} season${c.seasons !== 1 ? 's' : ''} · ${c.apps} apps · ${c.gk ? `${c.clean} clean sheets` : `${c.goals} G · ${c.assists} A`}${titles ? ` · ${titles}` : ''}</div>${need ? `<div class="small muted">${need}</div>` : ''}</div><b class="num">${c.gk ? c.clean : c.ga}</b></div>`;
+  }).join('');
+  const bd = ballonDors(rec);
+  return `<section class="card"><h2>Legacy</h2>
+    ${legends.length ? `<p style="margin:0">Well known for your <b>${knownFor(rec).join(' and ')}</b>. A ${legends.map(c => esc(c.club)).join(' and ')} legend.</p>` : ''}
+    ${['DEF', 'GK'].includes(POS_GROUP[rec.pos]) ? `<div class="small muted">${POS_GROUP[rec.pos] === 'GK' ? `${careerCleanSheets(rec)} clean sheets in all competitions (goalkeeping needs more than ${KNOWN.clean})` : `${careerTackleAvg(rec).toFixed(1)} tackles per game (defending needs ${KNOWN.tackles}+)`}</div>` : ''}
+    ${bd.length ? `<div class="small flood">Ballon d'Or: ${bd.map(b => `${seasonLabel(b.season)}${b.club ? ` (${esc(b.club)})` : ''}`).join(', ')}</div>` : ''}
+    <div class="commits">${rows}</div></section>`;
 }
 
 // Back-to-back seasons at the same club add up to one stint. Leaving and coming back later
@@ -524,12 +569,35 @@ function viewTrain() {
 }
 
 // ---------- shop ----------
+// Every weekly bill you are tied into: homes in each country (with lease time left), kit and agent.
+function commitmentsView() {
+  const p = S.player, nat = homeNat(), w = absWeek();
+  const homes = [{ nat, house: p.house, end: p.house ? p.leaseEnd || 0 : 0, current: true }, ...oldLeases()];
+  const rows = homes.map(h => {
+    const left = Math.max(0, h.end - w);
+    return `<div class="commit ${h.current ? 'on' : ''}"><div><b>${natName(h.nat)}</b> · ${HOUSING[h.house].name}${h.current ? ' <span class="chip">You live here</span>' : ' <span class="chip bad">Moved away</span>'}
+      <div class="small muted">${h.house ? left ? `Lease: ${left} week${left !== 1 ? 's' : ''} left` : 'Lease done: you can move any time' : 'No lease'}</div></div>
+      <b class="num bad">−${money(houseRent(h.nat, h.house))}/wk</b></div>`;
+  }).join('');
+  const kit = p.equip ? `<div class="commit"><div><b>${EQUIP_TIERS[p.equip].name} training kit</b><div class="small muted">Running costs, until you switch back to Normal</div></div><b class="num bad">−${money(EQUIP_TIERS[p.equip].fee)}/wk</b></div>` : '';
+  const ag = p.agent ? `<div class="commit"><div><b>${agent().name}</b><div class="small muted">${Math.round(agent().cut * 100)}% of your wage</div></div><b class="num bad">−${money(agentCut())}/wk</b></div>` : '';
+  return `<section class="card"><h2>Commitments</h2>
+    <p class="small muted" style="margin:0">Leases follow the country you play in. Move abroad before one ends and you keep paying it until it runs out, on top of your new home.</p>
+    <div class="commits">${rows}${kit}${ag}</div>
+    <div class="row"><span>Total per week</span><b class="num bad">−${money(weeklyCosts())}</b></div></section>`;
+}
+
+let shopView = 'shop';
 function viewShop() {
   const p = S.player;
+  syncHousing();
+  const seg = `<div class="seg">${[['shop', 'Kit & home'], ['commit', 'Commitments']].map(([k, l]) => `<button class="${shopView === k ? 'on' : ''}" data-act="shopView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  if (shopView === 'commit') return seg + commitmentsView();
+  const nat = homeNat(), away = oldLeases();
   const fin = `<section class="card"><h2>Finances</h2>
     <div class="row small"><span class="muted">Wage</span><b class="num">${money(p.wage)}/wk</b></div>
-    <div class="row small"><span class="muted">Sponsors (reputation ${Math.round(p.rep)})</span><b class="num">${money(sponsorIncome())}/wk</b></div>
-    <div class="row small"><span class="muted">Rent</span><b class="num bad">−${money(HOUSING[p.house].rent)}/wk</b></div>
+    <div class="row small"><span class="muted">Sponsors (${sponsorDeals().length} deal${sponsorDeals().length !== 1 ? 's' : ''} + image rights)</span><b class="num">${money(sponsorIncome())}/wk</b></div>
+    <div class="row small"><span class="muted">Rent${away.length ? ` (incl. ${away.length} lease${away.length > 1 ? 's' : ''} abroad)` : ''}</span><b class="num bad">−${money(rentNow())}/wk</b></div>
     <div class="row small"><span class="muted">Equipment</span><b class="num bad">−${money(EQUIP_TIERS[p.equip].fee)}/wk</b></div>
     ${p.agent ? `<div class="row small"><span class="muted">Agent (${Math.round(agent().cut * 100)}% of wage)</span><b class="num bad">−${money(agentCut())}/wk</b></div>` : ''}
     <div class="row"><span>Net per week</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${money(weeklyNet())}</b></div>
@@ -541,14 +609,39 @@ function viewShop() {
   }).join('');
   const left = leaseLeft();
   const houses = HOUSING.map((h, i) => `<button class="house ${p.house === i ? 'on' : ''}" data-act="house" data-v="${i}" ${p.house !== i && left ? 'disabled' : ''}>
-      <span><b>${h.name}</b><br><span class="small muted">${h.energy ? `+${h.energy} energy/week` : 'No energy bonus'}${i ? ' · 1-year lease' : ' · No lease'}</span></span><span class="num small">${money(h.rent)}/wk</span></button>`).join('');
+      <span><b>${h.name}</b><br><span class="small muted">${h.energy ? `+${h.energy} energy/week` : 'No energy bonus'}${i ? ' · 1-year lease' : ' · No lease'}</span></span><span class="num small">${money(houseRent(nat, i))}/wk</span></button>`).join('');
   const lease = left ? `<p class="small flood" style="margin:0">You are tied into your lease for ${left} more week${left !== 1 ? 's' : ''}. You can move once it ends.</p>`
     : `<p class="small muted" style="margin:0">Homes are let on a one-year lease: once you move in, you can't move again until it ends.</p>`;
-  return fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing</h2>${lease}<div class="inbox">${houses}</div></section>`;
+  const awayNote = away.length ? `<p class="small bad" style="margin:0">Still paying for ${away.map(l => `a ${HOUSING[l.house].name.toLowerCase()} in ${natName(l.nat)}`).join(' and ')}. See Commitments.</p>` : '';
+  return seg + fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing in ${natName(nat)}</h2>${lease}${awayNote}<div class="inbox">${houses}</div></section>`;
 }
 
 // ---------- agent ----------
+// Sponsors: your deals, brands asking for you, and brands you can sign with.
+let agentView = 'agent';
+function sponsorsView() {
+  const p = S.player, deals = sponsorDeals(), reqs = p.sponsorReqs || [], slots = sponsorSlots(), full = deals.length >= slots;
+  const cat = k => SPONSOR_CATS.find(c => c.key === k).label;
+  const terms = d => `${money(d.weekly)}/wk${d.goalBonus ? ` + ${money(d.goalBonus)}/goal` : ''}`;
+  const head = `<section class="card hero"><div class="row"><h2>Sponsors</h2><span class="chip">${deals.length}/${slots} slots</span></div>
+    <div class="kv"><div><small>From deals</small><b class="num">${money(deals.reduce((s, d) => s + d.weekly, 0))}/wk</b></div><div><small>Image rights</small><b class="num">${money(imageRights())}/wk</b></div><div><small>Level</small><b>${SPONSOR_LEVELS[sponsorLevel()].name}</b></div></div>
+    <div class="small muted">Reputation ${Math.round(p.rep)} decides which brands will talk to you${sponsorLevel() < SPONSOR_LEVELS.length - 1 ? ` (${SPONSOR_LEVELS[sponsorLevel() + 1].name} brands from ${SPONSOR_LEVELS[sponsorLevel() + 1].minRep})` : ''}. ${p.agent ? `Your ${agent().name.toLowerCase()} gets you ${Math.round((sponsorAgentMult() - 1) * 100)}% bigger fees${p.agent >= 3 ? ', an extra slot' : ''} and brands calling from reputation ${sponsorReqRep()}.` : `An agent gets bigger fees, more slots and brands calling sooner. Brands start calling you at reputation ${sponsorReqRep()}.`}</div></section>`;
+  const mine = `<section class="card"><h2>Your deals</h2>${deals.length ? `<div class="commits">${deals.map(d => `<div class="commit"><div><b>${esc(d.brand)}</b> <span class="chip">${cat(d.cat)}</span><div class="small muted">${d.level} · ${d.weeks} week${d.weeks !== 1 ? 's' : ''} left</div></div><b class="num good">${terms(d)}</b></div>`).join('')}</div>` : '<p class="small muted" style="margin:0">No sponsors yet. Sign one below.</p>'}</section>`;
+  const reqHtml = reqs.length ? `<section class="card"><h2>Requests</h2><p class="small muted" style="margin:0">Brands that came to you pay a quarter more. They wait 4 weeks for an answer.</p>${reqs.map(r => `<div class="offer"><div class="row"><div><b>${esc(r.brand)}</b> <span class="chip flood">${cat(r.cat)}</span><div class="small muted">${r.level} · ${r.weeks / SEASON_WEEKS} season${r.weeks > SEASON_WEEKS ? 's' : ''} · answer within ${r.expires} week${r.expires !== 1 ? 's' : ''}</div></div><b class="num good">${terms(r)}</b></div>
+    <div class="btns"><button class="btn good sm" data-act="sponsorSign" data-v="${r.id}" ${full || deals.some(d => d.cat === r.cat) ? 'disabled' : ''}>Accept</button><button class="btn sm" data-act="sponsorNo" data-v="${r.id}">Decline</button></div></div>`).join('')}</section>` : '';
+  const market = sponsorMarket();
+  const pickHtml = `<section class="card"><h2>Pick a sponsor</h2>${full ? '<p class="small bad" style="margin:0">All your slots are taken. More open up with reputation and a better agent.</p>' : ''}
+    <div class="inbox">${market.map(o => `<button class="house" data-act="sponsorSign" data-v="${o.id}" ${full ? 'disabled' : ''}><span><b>${esc(o.brand)}</b> · ${cat(o.cat)}<br><span class="small muted">${o.level} · ${o.weeks / SEASON_WEEKS} season${o.weeks > SEASON_WEEKS ? 's' : ''}</span></span><span class="num small good">${terms(o)}</span></button>`).join('') || '<p class="small muted" style="margin:0">You have a deal in every category.</p>'}</div>
+    <p class="small muted" style="margin:0">New brands appear each season.</p></section>`;
+  return head + reqHtml + mine + pickHtml;
+}
+
 function viewAgent() {
+  const seg = `<div class="seg">${[['agent', 'Agent'], ['sponsors', `Sponsors${(S.player.sponsorReqs || []).length ? ` (${S.player.sponsorReqs.length})` : ''}`]].map(([k, l]) => `<button class="${agentView === k ? 'on' : ''}" data-act="agentView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  return seg + (agentView === 'sponsors' ? sponsorsView() : agentMain());
+}
+
+function agentMain() {
   const p = S.player, ovr = calcOVR(), cur = p.agent || 0, a = agent();
   const me = `<section class="card hero"><h2>Your agent</h2>
     <div class="kv"><div><small>Agent</small><b>${a.name}</b></div><div><small>Their cut</small><b>${cur ? `${Math.round(a.cut * 100)}%` : '–'}</b></div><div><small>Per week</small><b class="num ${cur ? 'bad' : ''}">${cur ? `−${money(agentCut())}` : '–'}</b></div></div>
@@ -591,7 +684,7 @@ function viewClub() {
   const lid = viewLeague || c.league;
   const head = `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${c.name}</b><div class="small muted">Manager: ${c.mgr} (${NATIONS[c.mgrNat] || c.mgrNat})</div></div>${crest(c.id)}</div>
     <div class="small muted">${league(c.league).name} (${TIER_LABEL[clubTier(c)].toLowerCase()}) · Team rating ${Math.round(teamStrength(c))} · Your role: <b style="color:var(--chalk)">${squadStatus()}</b></div></section>`;
-  const seg = `<div class="seg">${[['table', 'Table'], ['rivals', 'Rivals'], ['squad', 'Squad'], ['scorers', 'Goals'], ['assists', 'Assists'], ['cups', 'Cups']].map(([k, l]) => `<button class="${clubView === k ? 'on' : ''}" data-act="clubView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="seg">${[['table', 'Table'], ['results', 'Results'], ['rivals', 'Rivals'], ['squad', 'Squad'], ['scorers', 'Goals'], ['assists', 'Assists'], ['cups', 'Cups']].map(([k, l]) => `<button class="${clubView === k ? 'on' : ''}" data-act="clubView" data-v="${k}">${l}</button>`).join('')}</div>`;
   const countries = [...new Set(S.leagues.map(l => l.country))];
   const lgSel = ['table', 'scorers', 'assists'].includes(clubView) ?`<select class="btn block" data-act="league" aria-label="League">${countries.map(ct => `<optgroup label="${ct}">${S.leagues.filter(l => l.country === ct).sort((a, b) => a.tier - b.tier).map(l => `<option value="${l.id}" ${l.id === lid ? 'selected' : ''}>${l.name}</option>`).join('')}</optgroup>`).join('')}</select>` : '';
   let body = '';
@@ -614,6 +707,8 @@ function viewClub() {
     body = `<section class="card"><div class="tablewrap"><table><thead><tr><th>Pos</th><th>Player</th><th>Nat</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.n)}</td><td class="muted">${r.nat}</td><td class="r">${r.age}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
       </tbody></table></div></section>`;
+  } else if (clubView === 'results') {
+    body = resultsView();
   } else if (clubView === 'cups') {
     body = cupsView();
   } else {
@@ -623,6 +718,53 @@ function viewClub() {
       </tbody></table></div></section>`;
   }
   return head + seg + lgSel + body;
+}
+
+// The competition chips scroll sideways with the mouse wheel and by dragging, not just by swiping.
+document.addEventListener('wheel', e => {
+  const row = e.target.closest && e.target.closest('.cuptabs');
+  if (!row || row.scrollWidth <= row.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  row.scrollLeft += e.deltaY;
+  e.preventDefault();
+}, { passive: false });
+let chipDrag = null;
+document.addEventListener('pointerdown', e => {
+  const row = e.pointerType === 'mouse' && e.target.closest && e.target.closest('.cuptabs');
+  if (row) chipDrag = { row, x: e.clientX, left: row.scrollLeft, moved: false };
+});
+document.addEventListener('pointermove', e => {
+  if (!chipDrag) return;
+  const dx = e.clientX - chipDrag.x;
+  if (Math.abs(dx) > 4) { chipDrag.moved = true; chipDrag.row.classList.add('drag'); }
+  chipDrag.row.scrollLeft = chipDrag.left - dx;
+});
+document.addEventListener('pointerup', () => { if (chipDrag) { chipDrag.row.classList.remove('drag'); if (chipDrag.moved) chipDrag.row.dataset.dragged = '1'; chipDrag = null; } });
+// A drag that ends on a chip shouldn't also pick it.
+document.addEventListener('click', e => {
+  const row = e.target.closest && e.target.closest('.cuptabs');
+  if (row && row.dataset.dragged) { delete row.dataset.dragged; e.stopPropagation(); e.preventDefault(); }
+}, true);
+
+// ---------- results ----------
+// Every game your club has played this season, newest first. Tap one for the goals and your numbers.
+function resultsView() {
+  const list = S.results || [];
+  if (!list.length) return '<section class="card"><p class="small muted" style="margin:0">No games played yet this season.</p></section>';
+  const rows = list.map(r => {
+    // Rows saved before this update only know the opponent and the score.
+    const h = r.h || (r.isHome ? S.player.club : r.opp), a = r.a || (r.isHome ? r.opp : S.player.club);
+    const gh = r.h ? r.gh : r.isHome ? r.gf : r.ga, ga = r.h ? r.gaH : r.isHome ? r.ga : r.gf;
+    const won = r.winner ? myTeams().includes(r.winner) : null;
+    const res = r.gf > r.ga || (r.gf === r.ga && won) ? ['W', 'good'] : r.gf < r.ga || won === false ? ['L', 'bad'] : ['D', 'draw'];
+    const me = r.mins ? `${r.mins}' · ${r.start ? 'Started' : 'Sub'} · ${r.goals} G · ${r.assists} A · <b>${r.rating ? r.rating.toFixed(1) : '–'}</b>` : r.rested ? 'Rested' : 'Did not play';
+    const goals = r.scorers && r.scorers.length ? `<div class="scorers">${goalTimeline(r.scorers)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
+    return `<details class="result"><summary>
+        <span class="rmeta"><span class="small muted">Wk ${Math.min(r.week, SEASON_WEEKS)}</span><span class="rcomp ${r.kind || 'league'}">${esc(r.comp || 'League')}</span></span>
+        <span class="rline">${tieRow(h, a, { gh, ga, pens: r.pens, winner: r.winner || (gh > ga ? h : ga > gh ? a : null) })}</span>
+        <span class="rbadge ${res[1]}">${res[0]}</span></summary>
+      <div class="rbody">${r.stage ? `<div class="small muted">${esc(r.stage)}</div>` : ''}${goals}<div class="small muted">You: ${me}</div></div></details>`;
+  }).join('');
+  return `<section class="card"><h2>Results</h2><div class="results">${rows}</div></section>`;
 }
 
 // ---------- cups ----------
@@ -650,16 +792,28 @@ function cupStatus(t, inIt, out) {
 // Group-and-knockout competitions: European cups and summer tournaments.
 function tournamentHtml(t) {
   const mineIn = t.groups.flat().some(id => myTeams().includes(id));
-  const st = t.stages[t.stage];
-  const lastKo = t.ko[t.ko.length - 1];
-  const alive = mineIn && (!t.ko.length ? true : lastKo.res.some(r => myTeams().includes(r.winner)));
+  const st = t.stages[t.stage], lp = t.format === 'league';
+  const stillIn = mineIn && myTeams().some(id => alive(t, id));
   const part = cupPart === 'groups' || cupPart === 'ko' ? cupPart : t.ko.length ? 'ko' : 'groups';
-  const next = !t.winner && st ? `<div class="small muted">Next: <b>${st.name}</b>${t.key in { UCL: 1, UEL: 1, UECL: 1 } ? ` · week ${EURO_WEEKS[t.stage]}` : ''}</div>` : '';
-  const seg = `<div class="seg">${[['ko', 'Knockouts'], ['groups', 'Groups']].map(([k, l]) => `<button class="${part === k ? 'on' : ''}" data-act="cupPart" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const next = !t.winner && st ? `<div class="small muted">Next: <b>${st.name}</b>${t.key in { UCL: 1, UEL: 1, UECL: 1 } ? ` · week ${euroWeeks(t)[t.stage]}` : ''}</div>` : '';
+  const seg = `<div class="seg">${[['ko', 'Knockouts'], ['groups', lp ? 'League phase' : 'Groups']].map(([k, l]) => `<button class="${part === k ? 'on' : ''}" data-act="cupPart" data-v="${k}">${l}</button>`).join('')}</div>`;
   let body;
   if (part === 'ko') {
-    body = t.ko.length ? t.ko.slice().reverse().map(k => roundBlock(k.name, `${k.res.length} tie${k.res.length > 1 ? 's' : ''}`, k.res.map(r => tieRow(r.h, r.a, r)).join(''))).join('')
-      : '<p class="small muted" style="margin:0">The knockouts start after the group stage. The top two in each group go through.</p>';
+    // Two-legged ties show the aggregate with both legs underneath; a tie halfway through shows its first leg.
+    // Both legs from the left-hand club's side (away first, then at home), so they add up to the aggregate.
+    const legLine = r => r.legs ? `<div class="legs small muted">1st leg (away) ${r.legs[0].ga}–${r.legs[0].gh} · 2nd leg (home) ${r.legs[1].gh}–${r.legs[1].ga}</div>` : '';
+    const koRound = k => k.res.length
+      ? roundBlock(k.name, `${k.res.length} tie${k.res.length > 1 ? 's' : ''}${k.legs ? ' · two legs' : ''}`, k.res.map(r => tieRow(r.h, r.a, r) + legLine(r)).join(''))
+      : roundBlock(k.name, '1st legs played', k.legs[0].map(r => tieRow(r.h, r.a, { gh: r.gh, ga: r.ga })).join(''));
+    body = t.ko.length ? t.ko.slice().reverse().map(koRound).join('')
+      : `<p class="small muted" style="margin:0">${lp ? 'The knockouts start after the league phase: 9th to 24th play a knockout play-off, then the top 8 join the winners in the round of 16.' : 'The knockouts start after the group stage. The top two in each group go through.'}</p>`;
+  } else if (lp) {
+    // One 36-club table: green = round of 16, amber = knockout play-off, the rest are out.
+    // Last five: newest on the right, grey dots for games not played yet.
+    const last5 = id => { const f = (t.form && t.form[id]) || [], show = f.slice(-5); return `<span class="last5">${show.map(x => `<i class="f${x}">${x === 'W' ? '✓' : x === 'L' ? '✕' : '–'}</i>`).join('')}${'<i></i>'.repeat(5 - show.length)}</span>`; };
+    body = `<div class="tablewrap"><table class="grp lp"><thead><tr><th>#</th><th>Club</th><th class="r">MP</th><th class="r">W</th><th class="r">D</th><th class="r">L</th><th class="r">GF</th><th class="r">GA</th><th class="r">GD</th><th class="r">Pts</th>${t.form ? '<th>Last 5</th>' : ''}</tr></thead><tbody>
+      ${leaguePhaseTable(t).map((r, i) => `<tr class="${myTeams().includes(r.id) ? 'me' : ''} ${i < 8 ? 'zone-cl' : i < 24 ? 'zone-po' : 'zone-out'}"><td class="muted">${i + 1}</td><td class="clubname"><span class="clubcell">${crest(r.id, 'mini')}<span class="tname">${esc(teamName(r.id))}</span></span></td><td class="r">${r.p}</td><td class="r">${r.w}</td><td class="r">${r.d}</td><td class="r">${r.l}</td><td class="r">${r.gf}</td><td class="r">${r.ga}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r"><b>${r.pts}</b></td>${t.form ? `<td>${last5(r.id)}</td>` : ''}</tr>`).join('')}
+      </tbody></table></div><p class="small muted" style="margin:0">Each club plays 8 opponents, two from each pot, four at home and four away, none from its own country. <span class="good">1–8</span> go straight to the round of 16, <span class="flood">9–24</span> play a two-legged knockout play-off (9th–16th seeded against 17th–24th), 25–36 are out.</p>`;
   } else {
     // Your group first.
     const order = t.groups.map((g, gi) => gi).sort((a, b) => (t.groups[b].some(id => myTeams().includes(id)) ? 1 : 0) - (t.groups[a].some(id => myTeams().includes(id)) ? 1 : 0));
@@ -667,7 +821,7 @@ function tournamentHtml(t) {
       ${groupTable(t, gi).map((r, i) => `<tr class="${myTeams().includes(r.id) ? 'me' : ''} ${i < 2 ? 'zone-cl' : ''}"><td class="clubname"><span class="clubcell">${crest(r.id, 'mini')}${esc(teamName(r.id))}</span></td><td class="r">${r.p}</td><td class="r">${r.w}</td><td class="r">${r.d}</td><td class="r">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r"><b>${r.pts}</b></td></tr>`).join('')}
       </tbody></table></div>`).join('')}</div><p class="small muted" style="margin:0">Top two in each group (green line) reach the knockouts.</p>`;
   }
-  return `<section class="card"><div class="row"><h2>${esc(t.name)}</h2></div>${cupStatus(t, mineIn, !alive)}${next}${seg}${body}</section>`;
+  return `<section class="card"><div class="row"><h2>${esc(t.name)}</h2></div>${cupStatus(t, mineIn, !stillIn)}${next}${seg}${body}</section>`;
 }
 
 // A domestic knockout cup: the next draw first, then every round played, newest first.
@@ -962,7 +1116,7 @@ function showOrderSheet() {
   openModal(`<h3>Manager's plan</h3><p style="margin:0">Before the game, ${myClub().mgr} pulls you aside: “${esc(o.text)}”</p>
     <div class="inbox">
       <button class="house" data-act="orderGo" data-v="follow"><span><b>Follow the plan</b><br><span class="small muted">Slightly better chance of winning, same scoring chance. Affection +2 if you play.</span></span></button>
-      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning. Score in a win: +2. Score without winning: −2. No goal: −6.</span></span></button>
+      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning. Goal or assist in a win: +2. Goal or assist without winning: −2. Neither: −6.</span></span></button>
     </div>`);
 }
 
@@ -995,8 +1149,9 @@ function matchBlock(m, title, injured) {
   return `<div class="row"><h3>${title}</h3>${verdict}</div>
     <div class="fixture"><div class="team">${crest(m.h)}<b>${esc(teamName(m.h))}</b></div><div class="score num">${m.gh}–${m.ga}</div><div class="team">${crest(m.a)}<b>${esc(teamName(m.a))}</b></div></div>
     ${m.pens ? `<div class="small muted" style="text-align:center">${esc(teamName(m.pens))} win on penalties</div>` : ''}
+    ${m.agg ? `<div class="small muted" style="text-align:center">Aggregate ${m.agg[0]}–${m.agg[1]}: <b>${esc(teamName(m.winner))}</b> go through</div>` : ''}
     ${sc ? `<div class="scorers">${sc}</div>` : ''}
-    ${u && u.mins ? `<div class="bigstat"><div><b>${u.rating.toFixed(1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div></div>`
+    ${u && u.mins ? `<div class="bigstat"><div><b>${u.rating.toFixed(1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div></div>${u.tackles ? `<div class="small muted" style="text-align:center">${u.tackles} tackle${u.tackles !== 1 ? 's' : ''}</div>` : ''}`
       : `<p class="muted" style="margin:0">${injured ? 'You were out injured.' : u && u.rested ? `Rested: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week.` : 'You stayed on the bench.'}</p>`}`;
 }
 
@@ -1033,6 +1188,10 @@ document.addEventListener('click', e => {
     case 'tab': tab = v; window.scrollTo(0, 0); render(); return;
     case 'clubView': clubView = v; render(); return;
     case 'cupTab': cupTab = v; cupPart = null; render(); return;
+    case 'shopView': shopView = v; render(); return;
+    case 'agentView': agentView = v; render(); return;
+    case 'sponsorSign': if (signSponsor(v)) toast('Sponsor signed'); render(); return;
+    case 'sponsorNo': declineSponsorReq(v); render(); return;
     case 'cupPart': cupPart = v; render(); return;
     case 'train': { const g = train(v); if (g != null) toast(g ? `${ATTR_NAMES[v]} +${g.toFixed(2)}` : `${ATTR_NAMES[v]} session done`); render(); return; }
     case 'rest': rest(); toast('Rested: +8 energy'); render(); return;
@@ -1049,7 +1208,7 @@ document.addEventListener('click', e => {
     case 'honTab': honTab = v; render(); return;
     case "refresh": refreshStartChoices(); render(); window.scrollTo(0, 0); return;
     case "refreshOffers": { const n = refreshOffers(); toast(n ? `${n} more club${n > 1 ? 's' : ''} came in` : 'No new clubs this time'); render(); return; }
-    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The board said no" : r === "soon" ? "Too soon to ask again" : r === "locked" ? "You only just re-signed" : "Not possible right now"); render(); return; }
+    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? "You only just re-signed" : "Not possible right now"); render(); return; }
     case 'summerPlay': { const r = playSummerStage(); render(); showSummerReport(r); return; }
     case 'summerSim': simulateSummer(); render(); return;
     case 'exportSave': showExport(); return;

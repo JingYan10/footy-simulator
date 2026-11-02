@@ -40,14 +40,21 @@ const WORLD_CLUBS = [
   ['Espérance de Tunis', 'TUN', 69], ['Mamelodi Sundowns', 'RSA', 71], ['Wydad AC', 'MAR', 68], ['Auckland City', 'AUS', 58],
 ];
 
-// European club competitions: 16 clubs each, four groups of four (home and away), then
-// quarter-finals, semi-finals and a final, all one-off games. Played midweek.
+// European club competitions, the current UEFA format: 36 clubs in one league table, each playing
+// 8 different opponents drawn from four pots (two from each pot, four at home and four away,
+// nobody from their own country and at most two from any other). The top 8 go straight to the
+// round of 16, 9th to 24th play a two-legged knockout play-off, 25th and below are out. The
+// knockouts are two-legged up to the semi-finals; the final is one game. Played midweek.
 const EURO_COMPS = [
   { key: 'UCL', name: 'Champions League' },
   { key: 'UEL', name: 'Europa League' },
   { key: 'UECL', name: 'Conference League' },
 ];
-const EURO_WEEKS = [5, 8, 11, 14, 17, 20, 30, 36, 44];
+const EURO_TEAMS = 36, LEAGUE_MDS = 8, EURO_DRAW = 2;
+const EURO_WEEKS = [3, 5, 7, 11, 13, 16, 19, 24, 28, 30, 31, 34, 35, 36, 37, 38, 44];
+// The old 16-team group format, for competitions already under way in older saves.
+const OLD_EURO_WEEKS = [5, 8, 11, 14, 17, 20, 30, 36, 44];
+const euroWeeks = t => t.weeks || OLD_EURO_WEEKS;
 const EURO_NATS = ['ENG', 'ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED']; // UEFA ranking order
 
 // Domestic cups, one midweek round at a time. Weeks never clash with Europe or each other:
@@ -124,6 +131,129 @@ function makeTournament(key, name, teams, opts = {}) {
   return { key, name, season: S.season, groups, rr, table, stages, stage: 0, ko: [], winner: null, home: !!opts.double, goals: 0 };
 }
 
+// League phase draw, like UEFA's: four pots of 9 by strength. Each club gets one home and one away
+// game against each pot, never against its own country and at most two clubs from any other.
+// Each part of the draw is a permutation found by backtracking; a dead end restarts the draw.
+function leaguePhaseDraw(teams) {
+  const natOf = {}, str = {};
+  teams.forEach(id => { natOf[id] = league(club(id).league).nat; str[id] = teamStrength(club(id)); });
+  const sorted = teams.slice().sort((a, b) => str[b] - str[a]);
+  const pots = [0, 1, 2, 3].map(i => sorted.slice(i * 9, i * 9 + 9));
+  // Country protection only works if no pot is full of one country: at most 2 per pot. Extra clubs
+  // swap with the closest-rated club of another country in the neighbouring pot.
+  const inPot = (pot, n) => pot.filter(id => natOf[id] === n).length;
+  for (let pass = 0; pass < 60; pass++) {
+    let moved = false;
+    for (let i = 0; i < 4 && !moved; i++) {
+      const crowded = pots[i].find(id => inPot(pots[i], natOf[id]) > 2);
+      if (!crowded) continue;
+      for (const j of [0, 1, 2, 3].filter(j => j !== i).sort((a, b) => Math.abs(a - i) - Math.abs(b - i))) {
+        const swap = pots[j].filter(id => natOf[id] !== natOf[crowded] && inPot(pots[i], natOf[id]) < 2 && inPot(pots[j], natOf[crowded]) < 2)
+          .sort((a, b) => Math.abs(str[a] - str[crowded]) - Math.abs(str[b] - str[crowded]))[0];
+        if (swap) { pots[i][pots[i].indexOf(crowded)] = swap; pots[j][pots[j].indexOf(swap)] = crowded; moved = true; break; }
+      }
+    }
+    if (!moved) break;
+  }
+  // 16 parts: for each pair of pots (i, j), every club in pot i hosts a different club from pot j.
+  // That alone gives everyone 2 opponents per pot, 4 home and 4 away. Start from random parts,
+  // then keep swapping two guests within a part while it doesn't add clashes, until none are left.
+  // A club's clashes: facing itself or the same club twice, its own country, more than 2 from one country.
+  const teamBad = (id, opp) => {
+    let bad = 0;
+    const byNat = {};
+    opp.forEach((o, k) => {
+      if (o === id || opp.indexOf(o) !== k) bad += 10;
+      if (natOf[o] === natOf[id]) bad += 10;
+      byNat[natOf[o]] = (byNat[natOf[o]] || 0) + 1;
+    });
+    for (const n in byNat) if (byNat[n] > 2) bad += byNat[n] - 2;
+    return bad;
+  };
+  const swapIn = (arr, from, to) => { arr[arr.indexOf(from)] = to; };
+  const ITER = 25000;
+  for (let restart = 0; restart < 8; restart++) {
+    const parts = [], opp = {};
+    teams.forEach(id => { opp[id] = []; });
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      const p = { hosts: pots[i], guests: shuffle(pots[j].slice()) };
+      p.hosts.forEach((h, k) => { opp[h].push(p.guests[k]); opp[p.guests[k]].push(h); });
+      parts.push(p);
+    }
+    let score = teams.reduce((s, id) => s + teamBad(id, opp[id]), 0);
+    for (let it = 0; it < ITER && score > 0; it++) {
+      // Annealing: early on a worse swap is sometimes kept, so the search can climb out of dead ends.
+      const temp = 1.5 * (1 - it / ITER) + .05;
+      const p = parts[randi(0, 15)], x = randi(0, 8), y = randi(0, 8);
+      if (x === y) continue;
+      const hx = p.hosts[x], hy = p.hosts[y], gx = p.guests[x], gy = p.guests[y];
+      const who = [...new Set([hx, hy, gx, gy])], before = who.reduce((s, id) => s + teamBad(id, opp[id]), 0);
+      const flip = () => { swapIn(opp[hx], gx, gy); swapIn(opp[hy], gy, gx); swapIn(opp[gx], hx, hy); swapIn(opp[gy], hy, hx); };
+      flip();
+      const after = who.reduce((s, id) => s + teamBad(id, opp[id]), 0);
+      if (after <= before || Math.random() < Math.exp((before - after) / temp)) { p.guests[x] = gy; p.guests[y] = gx; score += after - before; }
+      else { swapIn(opp[hx], gy, gx); swapIn(opp[hy], gx, gy); swapIn(opp[gx], hy, hx); swapIn(opp[gy], hx, hy); }
+    }
+    if (score === 0) return { matches: parts.flatMap(({ hosts, guests }) => hosts.map((h, k) => [h, guests[k]])), pots };
+  }
+  return null;
+}
+
+// Split the 144 games into 8 matchdays where every club plays once.
+function splitMatchdays(matches, teams) {
+  const matching = edges => {
+    const by = {}, used = new Set(), pickd = [];
+    teams.forEach(t => { by[t] = []; });
+    edges.forEach(e => { by[e[0]].push(e); by[e[1]].push(e); });
+    let steps = 0;
+    const go = () => {
+      if (++steps > 20000) return false;
+      let best = null, opts = null;
+      for (const t of teams) {
+        if (used.has(t)) continue;
+        const o = by[t].filter(e => !used.has(e[0]) && !used.has(e[1]));
+        if (!o.length) return false;
+        if (!best || o.length < opts.length) { best = t; opts = o; }
+      }
+      if (!best) return true;
+      for (const e of shuffle(opts)) {
+        used.add(e[0]); used.add(e[1]); pickd.push(e);
+        if (go()) return true;
+        pickd.pop(); used.delete(e[0]); used.delete(e[1]);
+      }
+      return false;
+    };
+    return go() ? pickd.slice() : null;
+  };
+  for (let attempt = 0; attempt < 100; attempt++) {
+    let left = matches.slice();
+    const rounds = [];
+    for (let r = 0; r < LEAGUE_MDS; r++) {
+      const m = matching(left);
+      if (!m) break;
+      rounds.push(m);
+      left = left.filter(x => !m.includes(x));
+    }
+    if (rounds.length === LEAGUE_MDS) return rounds;
+  }
+  return null;
+}
+
+function makeLeaguePhase(key, name, teams) {
+  const drawn = leaguePhaseDraw(teams), mds = drawn && splitMatchdays(drawn.matches, teams);
+  // Should the draw ever fail, fall back to 8 rounds of a round robin.
+  const lp = mds || (() => { const rr = roundRobin(teams); return shuffle(rr.map((_, i) => i)).slice(0, LEAGUE_MDS).sort((a, b) => a - b).map(i => rr[i]); })();
+  const table = {}, form = {};
+  teams.forEach(id => { table[id] = blankRow(); form[id] = []; });
+  const stages = [];
+  for (let k = 0; k < LEAGUE_MDS; k++) stages.push({ type: 'league', md: k, name: `League phase matchday ${k + 1}` });
+  // Two legs for every knockout round but the final.
+  ['Knockout play-off', 'Round of 16', 'Quarter-final', 'Semi-final'].forEach(n => [1, 2].forEach(leg => stages.push({ type: 'ko', round: n, leg, name: `${n} · ${leg === 1 ? '1st' : '2nd'} leg` })));
+  stages.push({ type: 'ko', round: 'Final', name: 'Final' });
+  return { key, name, season: S.season, format: 'league', draw: mds ? EURO_DRAW : 1, pots: drawn ? drawn.pots : null, groups: [teams.slice()], lp, table, form, stages, stage: 0, ko: [], winner: null, home: true, goals: 0, weeks: EURO_WEEKS };
+}
+const leaguePhaseTable = t => groupTable(t, 0);
+
 function groupTable(t, g) {
   return t.groups[g].map(id => ({ id, ...t.table[id] }))
     .sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
@@ -132,6 +262,12 @@ function groupTable(t, g) {
 // Group winners meet runners-up from the neighbouring group: A1-B2, B1-A2, C1-D2, ...
 function firstKnockout(t) {
   const ties = [];
+  // League phase: 9th v 24th, 10th v 23rd... the better-placed club hosts the second leg.
+  if (t.format === 'league') {
+    const tb = leaguePhaseTable(t);
+    for (let i = 8; i < 16; i++) ties.push([tb[i].id, tb[31 - i].id]);
+    return ties;
+  }
   for (let g = 0; g < t.groups.length; g += 2) {
     const A = groupTable(t, g), B = groupTable(t, g + 1);
     ties.push([A[0].id, B[1].id], [B[0].id, A[1].id]);
@@ -143,8 +279,11 @@ function firstKnockout(t) {
 function alive(t, id) {
   const st = t.stages[t.stage];
   if (!st || t.winner) return false;
-  return st.type === 'group' || pendingTies(t).some(x => x.includes(id));
+  // The top 8 of a league phase sit out the play-off but are still in.
+  if (t.format === 'league' && stRound(st) === 'Knockout play-off' && leaguePhaseTable(t).slice(0, 8).some(r => r.id === id)) return true;
+  return st.type === 'group' || st.type === 'league' || pendingTies(t).some(x => x.includes(id));
 }
+const stRound = st => st.round || st.name;
 
 // The fixture a team plays in the next stage, if any.
 function stageFixture(t, id) {
@@ -154,17 +293,25 @@ function stageFixture(t, id) {
     for (const md of t.rr) { const f = md[st.md].find(x => x.includes(id)); if (f) return f; }
     return null;
   }
-  const ties = pendingTies(t);
-  return ties.find(x => x.includes(id)) || null;
+  if (st.type === 'league') return t.lp[st.md].find(x => x.includes(id)) || null;
+  const tie = pendingTies(t).find(x => x.includes(id));
+  // In a first leg the lower-placed club is at home.
+  return !tie ? null : st.leg === 1 ? [tie[1], tie[0]] : tie;
 }
 
 function pendingTies(t) {
   const st = t.stages[t.stage];
   if (!st || st.type !== 'ko') return [];
   const last = t.ko[t.ko.length - 1];
-  if (last && last.name === st.name) return last.ties;
+  if (last && last.name === stRound(st)) return last.ties;
   if (!last) return firstKnockout(t);
   const w = last.res.map(r => r.winner), ties = [];
+  // Round of 16: the top 8 each meet a play-off winner, 1st against the winner of 16th v 17th.
+  if (t.format === 'league' && last.name === 'Knockout play-off') {
+    const top = leaguePhaseTable(t).slice(0, 8).map(r => r.id);
+    top.forEach((id, i) => ties.push([id, w[7 - i]]));
+    return ties;
+  }
   for (let i = 0; i < w.length; i += 2) ties.push([w[i], w[i + 1]]);
   return ties;
 }
@@ -175,15 +322,40 @@ function playStage(t, userFor) {
   const st = t.stages[t.stage];
   if (!st || t.winner) return null;
   let mine = null;
-  if (st.type === 'group') {
-    t.rr.forEach(md => md[st.md].forEach(([h, a]) => {
+  if (st.type === 'group' || st.type === 'league') {
+    (st.type === 'league' ? [t.lp] : t.rr).forEach(md => md[st.md].forEach(([h, a]) => {
       const u = userFor(h, a);
       const r = simTeams(h, a, u, t.home ? 2 : 0);
       const th = t.table[h], ta = t.table[a];
       th.p++; ta.p++; th.gf += r.gh; th.ga += r.ga; ta.gf += r.ga; ta.ga += r.gh;
       if (r.gh > r.ga) { th.w++; ta.l++; th.pts += 3; } else if (r.gh < r.ga) { ta.w++; th.l++; ta.pts += 3; } else { th.d++; ta.d++; th.pts++; ta.pts++; }
+      // Last-five form for the league phase table.
+      if (t.form) { const rh = r.gh > r.ga ? 'W' : r.gh < r.ga ? 'L' : 'D'; t.form[h].push(rh); t.form[a].push(rh === 'W' ? 'L' : rh === 'L' ? 'W' : 'D'); }
       if (u) mine = r;
     }));
+  } else if (st.leg === 1) {
+    // First leg: the lower-placed club at home. The tie is decided next time.
+    const ties = pendingTies(t), legs = [];
+    ties.forEach(([s, w]) => {
+      const u = userFor(w, s), r = simTeams(w, s, u, 2);
+      legs.push(r);
+      if (u) mine = r;
+    });
+    t.ko.push({ name: stRound(st), ties, res: [], legs: [legs] });
+  } else if (st.leg === 2) {
+    // Second leg at the better-placed club; level on aggregate goes to penalties.
+    const k = t.ko[t.ko.length - 1], res = [];
+    k.ties.forEach(([s, w], i) => {
+      const first = k.legs[0][i], u = userFor(s, w), r = simTeams(s, w, u, 2);
+      const aggS = r.gh + first.ga, aggW = r.ga + first.gh;
+      if (aggS === aggW) r.pens = Math.random() < clamp(.5 + (teamStr(s) - teamStr(w)) / 60, .35, .65) ? s : w;
+      r.winner = aggS > aggW ? s : aggS < aggW ? w : r.pens;
+      r.agg = [aggS, aggW];
+      res.push({ h: s, a: w, gh: aggS, ga: aggW, pens: r.pens || null, winner: r.winner, legs: [first, r] });
+      if (u) mine = r;
+    });
+    k.legs.push(res.map(x => x.legs[1]));
+    k.res = res;
   } else {
     const ties = pendingTies(t), res = [];
     ties.forEach(([h, a]) => {
@@ -198,8 +370,8 @@ function playStage(t, userFor) {
       res.push(r);
       if (u) mine = r;
     });
-    t.ko.push({ name: st.name, ties, res });
-    if (st.name === 'Final') t.winner = res[0].winner;
+    t.ko.push({ name: stRound(st), ties, res });
+    if (stRound(st) === 'Final') t.winner = res[0].winner;
   }
   t.stage++;
   return mine;
@@ -227,7 +399,7 @@ function simTeams(h, a, user, home = 2) {
     for (let i = 0; i < goals; i++) {
       let goal = null;
       if (mine && user.mins) {
-        const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / str, 3) * user.mins / 90, 0, .7);
+        const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / str, 3) * user.mins / 90 * vetForm(), 0, .7);
         if (Math.random() < pGoal) {
           user.goals++;
           goal = { n: p.name, me: true, home: id === h, min: randi(...onPitch) };
@@ -235,7 +407,7 @@ function simTeams(h, a, user, home = 2) {
           scorers.push(goal);
           continue;
         }
-        const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / str, 2) * user.mins / 90 * 1.3, 0, .7);
+        const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / str, 2) * user.mins / 90 * 1.3 * vetForm(), 0, .7);
         if (Math.random() < pAst) { user.assists++; goal = { n: scorerName(id), home: id === h, min: randi(...onPitch), ast: p.name, astMe: true }; }
       }
       if (!goal) {
@@ -274,8 +446,8 @@ function buildEuro() {
   for (let pos = 0; pos < 20; pos++) ranked.forEach(r => { if (r[pos]) queue.push(r[pos]); });
   const out = {};
   EURO_COMPS.forEach((c, i) => {
-    const teams = queue.slice(i * 16, i * 16 + 16);
-    if (teams.length === 16) out[c.key] = makeTournament(c.key, c.name, teams, { double: true });
+    const teams = queue.slice(i * EURO_TEAMS, (i + 1) * EURO_TEAMS);
+    if (teams.length === EURO_TEAMS) out[c.key] = makeLeaguePhase(c.key, c.name, teams);
   });
   return out;
 }
@@ -286,10 +458,9 @@ function euroComp(id = S.player.club) {
 
 // Your European game this week, if there is one.
 function euroFixture() {
-  const k = EURO_WEEKS.indexOf(S.week);
-  if (k < 0 || !S.euro) return null;
+  if (!S.euro) return null;
   const t = euroComp();
-  if (!t || t.stage !== k) return null;
+  if (!t || euroWeeks(t).indexOf(S.week) !== t.stage) return null;
   const f = stageFixture(t, S.player.club);
   if (!f) return null;
   const isHome = f[0] === S.player.club;
@@ -298,11 +469,10 @@ function euroFixture() {
 
 // Plays every European game this week. Returns the user's match, if they had one.
 function euroWeek(userMatch) {
-  const k = EURO_WEEKS.indexOf(S.week);
-  if (k < 0 || !S.euro) return null;
+  if (!S.euro) return null;
   let mine = null;
   Object.values(S.euro).forEach(t => {
-    if (t.stage !== k) return;
+    if (euroWeeks(t).indexOf(S.week) !== t.stage) return;
     const id = S.player.club;
     const r = playStage(t, (h, a) => (userMatch && (h === id || a === id)) ? Object.assign(userMatch, { team: id }) : null);
     if (r) mine = { ...r, comp: t.name };
@@ -475,6 +645,25 @@ function buildSummer() {
 
 const summerPending = () => (S.summer || []).find(t => t.mine && !t.winner);
 
+// After a summer transfer you can't keep playing a club tournament for the club you left. If your
+// new club is still in it, you carry on with them; otherwise the rest is played without you.
+function syncSummerClub() {
+  const p = S.player;
+  (S.summer || []).forEach(t => {
+    if (t.winner || !t.mine || !isClub(t.mine) || t.mine === p.club) return;
+    const left = teamName(t.mine);
+    if ((t.teams || t.groups.flat()).includes(p.club) && alive(t, p.club)) {
+      t.mine = p.club;
+      msg(`${t.name}: you will play the rest of it for ${teamName(p.club)}.`);
+      return;
+    }
+    t.mine = null;
+    while (!t.winner) playStage(t, () => null);
+    finishTournament(t);
+    msg(`You left ${left}, so you take no further part in the ${t.name}.`);
+  });
+}
+
 // Play the next round of your summer tournament. Once you are knocked out, the rest is simulated.
 function playSummerStage() {
   const t = summerPending();
@@ -497,7 +686,13 @@ function playSummerStage() {
       const row = p.career.filter(r => r.season === S.season).pop();
       if (row) {
         addComp(row.comps = row.comps || {}, t.name.replace(/ \d{4}$/, ''), isNation(me) ? 'nat' : 'cup', 1, user.goals, user.assists, rating);
-        if (!isNation(me)) { row.apps++; row.goals += user.goals; row.assists += user.assists; }
+        if (!isNation(me)) {
+          row.apps++; row.goals += user.goals; row.assists += user.assists;
+          // Tackles and clean sheets count in every club competition.
+          const conceded = res.h === me ? res.ga : res.gh;
+          if (row.tackles != null) row.tackles += matchTackles(user);
+          if (row.cleanAll != null && conceded === 0 && ['GK', 'DEF'].includes(POS_GROUP[p.pos]) && user.mins >= 60) row.cleanAll++;
+        }
       }
       p.rep = clamp(p.rep + (rating - 6.4) * .6 + user.goals * .3, 0, 100);
       nudgeOvr(perfDelta(rating, user) * .5);
@@ -528,6 +723,7 @@ function summerRating(user, res, me) {
   let r = 6.4 + (calcOVR() - teamStr(me)) / 30 + user.goals * .9 + user.assists * .6 + (gf > gaa ? .3 : gf < gaa ? -.3 : 0);
   if ((g === 'GK' || g === 'DEF') && gaa === 0 && user.mins >= 60) r += .6;
   if (g === 'GK' || g === 'DEF') r -= gaa * .15;
+  r -= vetYears() * .06;
   r += gauss() * .45;
   if (user.mins < 45) r = 6 + (r - 6) * .6;
   return Math.round(clamp(r, 3, 10) * 10) / 10;
