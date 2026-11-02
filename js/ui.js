@@ -195,7 +195,7 @@ document.addEventListener('error', e => {
   const id = img.dataset.club, next = +img.dataset.ext + 1;
   if (next < LOGO_EXTS.length) {
     img.dataset.ext = next;
-    img.src = logoUrl(club(id), LOGO_EXTS[next]);
+    img.src = logoUrl(id.startsWith('db:') ? dbClubCache[id.slice(3)] : club(id), LOGO_EXTS[next]);
   } else {
     if (logoState[id] === undefined) logoState[id] = -1;
     img.parentElement.classList.remove('haslogo');
@@ -1000,11 +1000,33 @@ function careerTables(p = S.player) {
   return careerHistory(p) + honoursCardTabs(p);
 }
 
-// Crest for a career row, only when that club exists in the save on screen.
+// Crest for a career row. A past career may be opened with another save loaded, or none at all,
+// so a club missing from the save on screen is looked up by name in the club database instead.
 function rowCrest(r) {
-  if (!S || !S.clubs) return '';
-  const name = r.club.replace(' (loan)', ''), c = (r.clubId && S.clubs[r.clubId] && S.clubs[r.clubId].name === name) ? S.clubs[r.clubId] : clubByName(name);
-  return c ? crest(c.id, 'mini') : '';
+  const name = r.club.replace(' (loan)', '');
+  if (S && S.clubs) {
+    const c = (r.clubId && S.clubs[r.clubId] && S.clubs[r.clubId].name === name) ? S.clubs[r.clubId] : clubByName(name);
+    if (c) return crest(c.id, 'mini');
+  }
+  return dbCrest(name);
+}
+
+// The same crest, built straight from the club database: logo if there is one, short name if not.
+const dbClubCache = {};
+function dbCrest(name) {
+  if (!(name in dbClubCache)) {
+    let found = null;
+    for (const l of DB.leagues) {
+      const row = l.clubs.find(c => c[0] === name);
+      if (row) { found = { id: `${l.id}-db`, name, short: row[1] }; break; }
+    }
+    dbClubCache[name] = found;
+  }
+  const c = dbClubCache[name];
+  if (!c) return `<div class="crest mini"><span>${esc(name.slice(0, 3).toUpperCase())}</span></div>`;
+  const key = `db:${name}`, st = logoState[key] ?? 0;
+  const img = st >= 0 ? `<img src="${logoUrl(c, LOGO_EXTS[st])}" alt="" data-club="${esc(key)}" data-ext="${st}">` : '';
+  return `<div class="crest ${st >= 0 ? 'haslogo' : ''} mini">${img}<span>${esc(c.short.slice(0, 4))}</span></div>`;
 }
 
 // SofaScore-style history: one block per season, clubs side by side, tap for every competition.
