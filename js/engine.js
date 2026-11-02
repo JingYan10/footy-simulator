@@ -42,7 +42,8 @@ const WINGER = { Dribbling: 16, 'Ball Control': 14, Crossing: 10, Acceleration: 
 const WIDE_MID = { Dribbling: 15, 'Ball Control': 13, 'Short Passing': 11, Crossing: 10, 'Att. Positioning': 8, Vision: 7, Reactions: 7, Acceleration: 7, 'Sprint Speed': 6, Finishing: 6, Stamina: 5, 'Long Passing': 5 };
 const FULLBACK = { Interceptions: 12, 'Standing Tackle': 11, 'Sliding Tackle': 11, Crossing: 9, 'Def. Awareness': 8, Stamina: 8, Reactions: 8, 'Sprint Speed': 7, 'Short Passing': 7, 'Ball Control': 7, Acceleration: 5, 'Heading Accuracy': 4, Dribbling: 3 };
 const SUB_WEIGHTS = {
-  ST: { Finishing: 20, 'Att. Positioning': 12, Dribbling: 11, 'Ball Control': 10, 'Shot Power': 10, Reactions: 8, Composure: 6, 'Sprint Speed': 6, Acceleration: 5, Strength: 5, 'Long Shots': 4, Volleys: 3 },
+  // Strikers lean a little less on shooting (41%) and more on pace (19%) than EA's formula.
+  ST: { Finishing: 17, 'Att. Positioning': 11, Dribbling: 10, 'Sprint Speed': 10, Acceleration: 9, 'Ball Control': 9, 'Shot Power': 8, Reactions: 8, Composure: 5, Strength: 5, Agility: 3, 'Long Shots': 3, Volleys: 2 },
   LW: WINGER, RW: WINGER, LM: WIDE_MID, RM: WIDE_MID,
   CAM: { 'Ball Control': 15, Dribbling: 13, 'Short Passing': 12, Vision: 12, 'Att. Positioning': 9, Reactions: 7, Finishing: 7, 'Long Shots': 5, 'Shot Power': 5, Agility: 4, Acceleration: 4, 'Long Passing': 4, Composure: 3 },
   CM: { 'Short Passing': 15, 'Long Passing': 13, Vision: 12, 'Ball Control': 11, Dribbling: 8, Reactions: 8, Interceptions: 6, 'Standing Tackle': 6, Stamina: 6, 'Long Shots': 5, Composure: 5, 'Att. Positioning': 5 },
@@ -395,7 +396,7 @@ function prepareGame({ name, nat, pos }) {
 function startingClubs() {
   const all = Object.values(S.clubs), used = new Set(), out = [];
   while (out.length < 5) {
-    const r = Math.random(), tier = r < .1 ? 1 : r < .4 ? 2 : 3;
+    const r = Math.random(), tier = r < .05 ? 1 : r < .35 ? 2 : 3;
     const c = pick(all.filter(x => clubTier(x) === tier && !used.has(x.id)));
     used.add(c.id);
     out.push(c.id);
@@ -718,9 +719,11 @@ function rivalBetrayal(id) {
   return (p.clubsPlayed || []).filter(x => x !== id && !isBanned(x) && areRivals(x, id));
 }
 
-// Breaking into a top flight takes 85 OVR, or a breakout season (+8 OVR). A rising season (+6 or +7)
-// opens the bottom half of top-flight leagues. Players already at a top-flight club are exempt.
-const TOP_FLIGHT_OVR = 85, BREAKOUT_OVR = 8, RISING_OVR = 6;
+// Breaking into a top flight takes 85 OVR, or a breakout season (+8 OVR). From 78 every club
+// outside a league's top fifth will look at you. A rising season (+6 or +7) opens the bottom half
+// of top-flight leagues. Players already at a top-flight club are exempt.
+const TOP_FLIGHT_OVR = 85, MID_TOP_FLIGHT_OVR = 78, BREAKOUT_OVR = 8, RISING_OVR = 6;
+const eliteTopFlight = c => clubTier(c) === 1 && tierPrestige(c) >= .8;
 function topFlightOpen(c) {
   const p = S.player, home = club(p.loan ? p.loan.parent : p.club);
   const nat = league(c.league).nat;
@@ -729,7 +732,7 @@ function topFlightOpen(c) {
     if (!vetTopFlight(c)) return false;
   }
   const buzz = scoutBuzz();
-  return clubTier(c) !== 1 || calcOVR() >= TOP_FLIGHT_OVR || buzz.breakout || (buzz.rising && smallTopFlight(c)) || (!p.needsContract && home && clubTier(home) === 1);
+  return clubTier(c) !== 1 || calcOVR() >= TOP_FLIGHT_OVR || (calcOVR() >= MID_TOP_FLIGHT_OVR && !eliteTopFlight(c)) || buzz.breakout || (buzz.rising && smallTopFlight(c)) || (!p.needsContract && home && clubTier(home) === 1);
 }
 
 // Leagues that chase big-name veterans, and the most you have ever been paid.
@@ -854,6 +857,8 @@ function checkTermination() {
   p.free = true;
   p.wage = 0;
   p.listed = false;
+  p.clauseUntil = 0;
+  p.offerLock = 0;
   p.order = null;
   S.offers = [];
   msg(`${c.mgr} has had enough. ${c.name} have terminated your contract. You are a free agent.`, 'bad');
@@ -875,7 +880,7 @@ function findClubs() {
 function equipMult() { return EQUIP_TIERS[S.player.equip].mult; }
 
 // No hidden potential cap: the only ceiling is 91 OVR, and the last points come slowly.
-// Below 65 a young player levels up quicker; from 30 every point is harder to earn.
+// Below 60 a young player levels up quicker; from 30 every point is harder to earn.
 // Saudi and US football is less competitive: the money is big, the development is slow.
 const SLOW_GROWTH = { KSA: .6, USA: .6 };
 const GK_GROWTH = 1.25;
@@ -883,22 +888,50 @@ const leagueGrowth = (c = myClub()) => SLOW_GROWTH[league(c.league).nat] || 1;
 function growthFactor(lowBoost = true) {
   const age = ageOf(S.player.by), ovr = calcOVR();
   const ageF = age <= 21 ? 1.2 : age <= 25 ? 1 : age <= 29 ? .75 : age <= VET_AGE ? .6 : Math.max(.05, .3 - (age - VET_AGE - 1) * .06);
-  const low = !lowBoost ? 1 : ovr < 60 ? 2.2 : ovr < 65 ? 1.8 : 1;
+  const low = !lowBoost ? 1 : ovr < 60 ? 2.2 : 1;
   // Keeper ratings are spread differently, so goalkeepers level up about 25% faster.
   return ageF * low * leagueGrowth() * clamp(Math.pow(Math.max(0, MAX_OVR - ovr) / 20, 1.3), .06, 1) * (S.player.pos === 'GK' ? GK_GROWTH : 1);
 }
 
 // High attributes get harder to raise, but a session always gives something until 91.
-function trainGain(attr) {
+// A third of what training equipment adds is only banked on the pitch: the session gives the
+// rest, and the held-back part waits for that week's games (see pitchXp).
+const EQUIP_PITCH = 1 / 3;
+function trainGain(attr, part = 'train') {
   if (calcOVR() >= MAX_OVR) return 0;
-  const v = S.player.attrs[attr], ceiling = 1 - Math.max(0, v - 80) / 25;
-  return Math.max(.01, .06 * equipMult() * growthFactor() * Math.max(.1, ceiling) * (S.player.energy < 30 ? .6 : 1));
+  const v = S.player.attrs[attr], ceiling = 1 - Math.max(0, v - 80) / 25, extra = equipMult() - 1;
+  const mult = part === 'pitch' ? extra * EQUIP_PITCH : 1 + extra * (1 - EQUIP_PITCH);
+  if (part === 'pitch' && !extra) return 0;
+  return Math.max(part === 'pitch' ? 0 : .01, .06 * mult * growthFactor() * Math.max(.1, ceiling) * (S.player.energy < 30 ? .6 : 1));
+}
+
+// How much of the held-back equipment XP a game earns, 0 to 1. The bench earns nothing; minutes
+// earn a little, and goals and assists (clean sheets, saves and tackles at the back) earn the most.
+function pitchShare(u) {
+  if (!u || !u.mins) return 0;
+  const grp = POS_GROUP[S.player.pos];
+  const ga = (u.goals || 0) + (u.assists || 0)
+    + (grp === 'GK' ? (u.clean ? 1 : 0) + (u.saves || 0) / 4 : grp === 'DEF' ? (u.clean ? .6 : 0) + (u.tackles || 0) / 4 : 0);
+  return clamp(u.mins / 90 * .3 + ga * .3 + Math.max(0, (u.rating || 6) - 6.5) * .1, 0, 1);
+}
+
+// After the week's games, bank the equipment XP they earned. With no game that week it waits.
+function pitchXp(games, report) {
+  const p = S.player, pool = p.pitchPool || {};
+  if (!games.length || !Object.keys(pool).length) return;
+  const share = Math.min(1, games.reduce((s, u) => s + pitchShare(u), 0));
+  let total = 0;
+  for (const [k, v] of Object.entries(pool)) { p.attrs[k] = clamp(p.attrs[k] + v * share, 1, 99); total += v * share; }
+  p.pitchPool = {};
+  if (total > 0) report.events.push(`Training kit paid off on the pitch: +${total.toFixed(2)} attribute XP (${Math.round(share * 100)}%)`);
+  else report.events.push('No game time, so the pitch half of your training kit XP was lost');
 }
 
 function train(attr) {
   const p = S.player;
   if (S.phase !== 'season' || p.slots <= 0 || p.injured || p.energy < TRAIN_ENERGY) return null;
-  const gain = trainGain(attr);
+  const gain = trainGain(attr), held = trainGain(attr, 'pitch');
+  if (held) p.pitchPool = { ...(p.pitchPool || {}), [attr]: ((p.pitchPool || {})[attr] || 0) + held };
   p.attrs[attr] = clamp(p.attrs[attr] + gain, 1, 99);
   p.slots--;
   p.energy -= TRAIN_ENERGY;
@@ -1066,6 +1099,7 @@ function resolveWish() {
   if (!p.wishPending || !c) return;
   if (p.wish === p.club) { p.wishPending = false; return; }
   if (isBanned(p.wish)) { p.wishPending = false; agentSay(`${c.name} will not talk to us. They have not forgiven you for joining their rivals.`, 'bad'); return; }
+  if (clauseActive()) { agentSay(`Your loyalty clause at ${myClub().name} stops any club from bidding. ${c.name} will have to wait.`); return; }
   if (offerLocked()) { agentSay(`Clubs will not bid while you are settling in at ${myClub().name}. ${c.name} will look again at the next window.`); return; }
   p.wishPending = false;
   if (S.offers.some(o => o.club === p.wish)) { p.wishResult = 'offer'; agentSay(`${c.name} already have an offer on the table for you.`, 'good'); return; }
@@ -1079,7 +1113,7 @@ function resolveWish() {
   const gap = teamStrength(c) - calcOVR();
   const why = ((p.wishNo || {})[p.wish] || 0) > absWeek() ? 'they already turned you down and have not changed their minds'
     : vetYears() && clubTier(c) === 1 && vetTopFlight(c) < 1 ? 'they are wary of signing a player your age'
-    : !topFlightOpen(c) ? `top-flight clubs only sign players rated ${TOP_FLIGHT_OVR}+ (or after a +${BREAKOUT_OVR} OVR breakout season), and you are ${calcOVR()}`
+    : !topFlightOpen(c) ? `${eliteTopFlight(c) ? `the top top-flight clubs only sign players rated ${TOP_FLIGHT_OVR}+` : `top-flight clubs only sign players rated ${MID_TOP_FLIGHT_OVR}+`} (or after a +${BREAKOUT_OVR} OVR breakout season), and you are ${calcOVR()}`
     : gap > 8 ? `they think you are not ready for their level yet (team rating ${Math.round(teamStrength(c))}, you are ${calcOVR()})`
     : gap > 3 ? 'they like you, but went for a more experienced player'
     : pick(['they are happy with the players they have in your position', 'the board would not approve the budget', 'their manager prefers another target']);
@@ -1413,6 +1447,8 @@ function advanceWeek() {
     S.results.unshift(resultRow(cupRes, efx.isHome, cupUser, efx.t.name.replace(/ \d{4}$/, ''), efx.euro ? 'euro' : 'cup', efx.stage));
   }
 
+  pitchXp([user, cupUser].filter(Boolean), report);
+
   // Finances
   const net = weeklyNet();
   p.money += net;
@@ -1481,10 +1517,11 @@ function advanceWeek() {
   randomEvent(report);
   checkContractBoost();
   veteranRenewal();
+  loyaltyOffer();
   const card = cardTier(calcOVR());
   if (card !== 'Bronze' && !(p.cards || []).includes(card)) {
     p.cards = [...(p.cards || []), card];
-    msg(card === 'Silver' ? 'You reached a silver rating (65)! Second-tier clubs will start bidding for you. Top-flight clubs want 85, or a +8 OVR breakout season.' : 'You reached a gold rating (75)! You are now one of the most wanted players around.', 'good');
+    msg(card === 'Silver' ? 'You reached a silver rating (65)! Second-tier clubs will start bidding for you. Top-flight clubs want 78 (the top sides 85), or a +8 OVR breakout season.' : 'You reached a gold rating (75)! You are now one of the most wanted players around.', 'good');
     notify('good', `${card} rating!`, card === 'Silver' ? 'You hit 65 OVR. Second-tier clubs will bid for you now.' : 'You hit 75 OVR. You are one of the most wanted players around.');
   }
 
@@ -1557,8 +1594,23 @@ function checkContractBoost() {
   if (p.loan || p.years < 1 || ovr - p.ovrAtSign < 4 || effAff() < 45 || negLocked()) return;
   if (S.offers.some(o => o.type === 'renew')) return;
   if (p.wage > marketWage(ovr, myClub()) * .8 || ageOf(p.by) >= OLD_RENEW_AGE) return;
-  S.offers.push(makeOffer(myClub(), 'renew'));
-  msg(`${myClub().name} want to reward your progress with an improved contract.`, 'good');
+  const o = makeOffer(myClub(), 'renew', 0, true);
+  S.offers.push(o);
+  msg(o.clause ? `${myClub().name} want to reward your progress with a loyalty deal: 25% more, but you stay for ${o.clause} seasons.` : `${myClub().name} want to reward your progress with an improved contract.`, 'good');
+}
+
+// A manager who rates you highly (affection 80+) may come to you with a loyalty deal when you are
+// 20 to 28 and have two years or less left: once a season, at week 20, half the time.
+function loyaltyOffer() {
+  const p = S.player, age = ageOf(p.by);
+  if (S.week !== 20 || p.loan || p.needsContract || p.loyalAsked === S.season || age < CLAUSE_AGES[0] || age > CLAUSE_AGES[1]) return;
+  if (p.years > 2 || effAff() < 80 || negLocked() || S.offers.some(o => o.type === 'renew')) return;
+  p.loyalAsked = S.season;
+  if (Math.random() >= .5) return;
+  const o = makeOffer(myClub(), 'renew', 0, true);
+  S.offers.push(o);
+  msg(`${myClub().mgr} wants to build the team around you and has offered a loyalty deal.`, 'good');
+  notify('good', 'Loyalty deal offered', `${myClub().mgr} offers 25% more a week if you commit for ${o.clause} seasons. Check the Contract tab.`);
 }
 
 // No club pays more than 35% above your market value, and nobody earns more than the
@@ -1603,7 +1655,7 @@ const vetRichWage = type => Math.round((type === 'renew' ? Math.max(S.player.wag
 
 // Renewals pay around market value; rival clubs bid a little above it to tempt you away.
 // A fixed wage (a veteran's Saudi or MLS deal) skips the market maths.
-function makeOffer(c, type, fixedWage = 0) {
+function makeOffer(c, type, fixedWage = 0, loyalty = false) {
   const ovr = calcOVR();
   // Saudi and MLS clubs open higher to lure you.
   const range = type === 'renew' ? [.85, 1] : freeAgent() ? [.9, 1.05] : richLeague(c) ? [1.15, 1.4] : [1, 1.2];
@@ -1628,6 +1680,12 @@ function makeOffer(c, type, fixedWage = 0) {
   // 34–35, 2 at 36–37, then one year at a time.
   if (richLeague(c) && vy) years = randi(1, age <= 35 ? 3 : age <= 37 ? 2 : 1);
   if (age >= OLD_RENEW_AGE) years = 1;
+  // A loyalty deal (only when the club or manager comes to you, aged 20 to 28): 25% above your
+  // current wage, with a clause of 2–3 seasons with no bids from other clubs and no salary talks.
+  // The deal is take it or leave it.
+  const clause = loyalty && type === 'renew' && age >= CLAUSE_AGES[0] && age <= CLAUSE_AGES[1] && S.player.wage > 0 && !fixedWage ? randi(2, 3) : 0;
+  if (clause) years = Math.min(5, Math.max(years, clause + (S.phase === 'season' ? 1 : 0)));
+  const clauseWage = clause ? Math.round(Math.min(S.player.wage * (1 + CLAUSE_RAISE), richLeague(c) ? Infinity : Math.max(S.player.wage, WAGE_MAX[POS_GROUP[S.player.pos]])) / 10) * 10 : 0;
   let status = squadStatus(c, ovr), promised = false;
   // Buying clubs sometimes promise a starting place, more often when you are close to their level.
   if (type === 'transfer' && (status === 'Rotation' || status === 'Reserve') && Math.random() < clamp(.45 - (teamStrength(c) - ovr) * .04, .1, .6)) {
@@ -1636,10 +1694,15 @@ function makeOffer(c, type, fixedWage = 0) {
   }
   // Buying clubs only haggle a set number of times (1 to 3) before walking away.
   const maxRounds = (type === 'transfer' ? randi(1, 3) : 2) + ((S.player.agent || 0) >= 4 ? 1 : 0);
-  return { id: Math.random().toString(36).slice(2, 9), club: c.id, type, wage, years, status, promised, week: S.week, season: S.season, rounds: 0, maxRounds, pen: 0, ...(fixedWage ? { prime: true } : {}) };
+  return { id: Math.random().toString(36).slice(2, 9), club: c.id, type, wage: clauseWage || wage, years, status, promised, week: S.week, season: S.season, rounds: 0, maxRounds, pen: 0, ...(fixedWage ? { prime: true } : {}), ...(clause ? { clause } : {}) };
 }
 
-const maxRounds = o => o.maxRounds || 2;
+const maxRounds = o => o.clause ? 0 : o.maxRounds || 2;
+const CLAUSE_AGES = [20, 28], CLAUSE_RAISE = .25;
+// The loyalty clause covers whole seasons: signed in summer, the next X; signed during a season,
+// the X after this one.
+const clauseEnd = x => S.season + x;
+const clauseActive = () => (S.player.clauseUntil || 0) > absWeek();
 const negLocked = () => (S.player.negLock || 0) > absWeek();
 
 // Scouting signals: an 8+ OVR jump this season (breakout), a 6+ jump (rising), and a silver (65+) rating.
@@ -1730,6 +1793,7 @@ function generateOffers(count, guarantee = false) {
 function windowOffers() {
   const { breakout } = scoutBuzz(), p = S.player;
   resolveWish();
+  if (clauseActive()) { msg('Your loyalty clause is active: no club can bid for you this window.'); return; }
   if (offerLocked()) { msg('Clubs are leaving you to settle in at your new club: no transfer offers this window.'); return; }
   // A club you agreed to listen to comes back with a bid.
   if (p.interested && p.interested !== p.club && !isBanned(p.interested) && topFlightOpen(club(p.interested)) && !S.offers.some(o => o.club === p.interested)) S.offers.push(makeOffer(club(p.interested), 'transfer'));
@@ -1848,6 +1912,7 @@ function acceptOffer(id) {
     p.objHard = o.negotiated ? .1 : 0;
     p.promise = o.promised ? 15 : 0;
     p.negLock = 0;
+    p.clauseUntil = 0;
     if (o.promised) msg(`${club(o.club).mgr} has promised you a starting place. Keep him happy and it is yours.`, 'good');
     if (S.seasonSummary) S.seasonSummary.loanNext = false;
     msg(`Signed for ${club(o.club).name} from ${from}: ${money(o.wage)}/week for ${o.years} years.`, 'good');
@@ -1857,6 +1922,14 @@ function acceptOffer(id) {
     msg(`Signed a new ${o.years}-year deal at ${money(o.wage)}/week. No more salary talks for about six months.`, 'good');
     notify('good', 'New contract signed!', `${o.years} more years at ${club(o.club).name}, ${money(o.wage)} a week.`);
     p.negLock = absWeek() + NEG_LOCK_WEEKS;
+    if (o.clause) {
+      const end = clauseEnd(o.clause);
+      p.clauseUntil = (end + 1) * SEASON_WEEKS + 1;
+      p.negLock = Math.max(p.negLock, p.clauseUntil);
+      p.offerLock = Math.max(p.offerLock || 0, p.clauseUntil);
+      p.listed = false;
+      msg(`Loyalty clause: until the end of ${seasonLabel(end)} no club can bid for you and there are no salary talks.`);
+    }
     if (o.negotiated) {
       p.objHard = Math.min(.3, (p.objHard || 0) + .1);
       msg(`${myClub().mgr} expects more after your pay rise. His objectives will be a little harder.`);
@@ -1889,7 +1962,7 @@ const inWindow = () => S.phase === 'offseason' || (S.week >= JAN_WINDOW[0] && S.
 // Hand in a transfer request: the manager and the board take it badly, but clubs hear you are available.
 function requestTransfer() {
   const p = S.player;
-  if (p.listed || p.loan) return false;
+  if (p.listed || p.loan || clauseActive()) return false;
   p.listed = true;
   changeAff(-15);
   changeBoard(-20);

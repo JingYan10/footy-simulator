@@ -216,11 +216,12 @@ function offersHtml() {
     const c = club(o.club), left = maxRounds(o) - o.rounds;
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
+      : o.clause ? `<div class="small flood"><b>Loyalty clause: ${o.clause} seasons.</b> 25% above your current wage, but no club can bid for you and no salary talks until the end of ${seasonLabel(clauseEnd(o.clause))}. Take it or leave it.</div>`
       : o.talksOver ? '<div class="small bad">Talks broke down. You can still sign this offer or decline it, but not negotiate.</div>'
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
-      <span class="chip ${o.type === 'renew' ? '' : 'flood'}">${o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
+      <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b></div><div><small>Role</small><b class="${o.promised ? 'good' : ''}">${o.status}${o.promised ? ' (promised)' : ''}</b></div></div>
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
       ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again.</div>` : ''}
@@ -354,13 +355,14 @@ function contractCard() {
   const { breakout, rising } = scoutBuzz();
   return `<section class="card"><h2>Your options</h2>
     ${breakout ? '<div class="small flood">Breakout season (+8 OVR): top-flight scouts are watching.</div>' : rising ? '<div class="small flood">Rising season (+6 OVR): smaller top-flight and second-division clubs are watching.</div>' : ''}
-    ${negLocked() ? `<div class="small muted">You just re-signed: no salary talks until about week ${lockWeekLabel()}.</div>` : ''}
+    ${clauseActive() ? `<div class="small flood"><b>Loyalty clause</b> until the end of ${seasonLabel(Math.floor((p.clauseUntil - 1) / SEASON_WEEKS) - 1)}: no bids from other clubs, no salary talks and no transfer requests.</div>`
+    : negLocked() ? `<div class="small muted">You just re-signed: no salary talks until about week ${lockWeekLabel()}.</div>` : ''}
     ${leagueGrowth() < 1 ? '<div class="small muted">Weaker league: your OVR grows about 40% slower here than in Europe.</div>' : ''}
-    ${offerLocked() ? `<div class="small muted">Settling in: other clubs will not bid for you until about week ${lockWeekLabel(S.player.offerLock)}.</div>` : ''}
+    ${offerLocked() && !clauseActive() ? `<div class="small muted">Settling in: other clubs will not bid for you until about week ${lockWeekLabel(S.player.offerLock)}.</div>` : ''}
     ${p.listed ? `<div class="small flood">You are transfer-listed. ${inWindow() ? 'Clubs are bidding now.' : `Bids arrive when the window opens (week ${JAN_WINDOW[0]} or summer).`}</div>` : ''}
     <div class="btns">
       <button class="btn sm" data-act="askContract">Ask for new contract</button>
-      ${p.listed ? '<button class="btn sm" data-act="unlist">Withdraw request</button>' : '<button class="btn sm danger" data-act="listAsk">Request transfer</button>'}
+      ${p.listed ? '<button class="btn sm" data-act="unlist">Withdraw request</button>' : `<button class="btn sm danger" data-act="listAsk" ${clauseActive() ? 'disabled' : ''}>Request transfer</button>`}
     </div></section>`;
 }
 
@@ -569,17 +571,17 @@ function viewTrain() {
   const p = S.player, keys = attrKeys(p.pos), w = WEIGHTS[p.pos];
   const can = S.phase === 'season' && p.slots > 0 && !p.injured;
   const head = `<section class="card"><div class="row"><h2>Training</h2><span class="small"><b>${p.slots}</b>/${TRAIN_SLOTS} sessions left</span></div>
-    <p class="small muted" style="margin:0">Each session uses ${TRAIN_ENERGY} energy. Your ${EQUIP_TIERS[p.equip].name.toLowerCase()} equipment gives ×${EQUIP_TIERS[p.equip].mult} XP; upgrade it in the Shop. Gains slow with age (a lot from 34) and as you get close to the maximum of ${MAX_OVR} OVR. Match ratings, goals, assists and awards also move your OVR up or down. Your OVR is weighted the way EA rates a ${POS_NAMES[p.pos].toLowerCase()}.</p>
+    <p class="small muted" style="margin:0">Each session uses ${TRAIN_ENERGY} energy. Your ${EQUIP_TIERS[p.equip].name.toLowerCase()} equipment gives ×${EQUIP_TIERS[p.equip].mult} XP; upgrade it in the Shop. A third of the extra XP is only earned on the pitch that week: none on the bench, more for goals and assists. Gains slow with age (a lot from 34) and as you get close to the maximum of ${MAX_OVR} OVR. Match ratings, goals, assists and awards also move your OVR up or down. Your OVR is weighted the way EA rates a ${POS_NAMES[p.pos].toLowerCase()}.</p>
     <p class="small" style="margin:6px 0 0">Physicality ${Math.round(physOf())}: injury risk <b class="${injuryMult() <= 1 ? 'good' : 'bad'}">×${injuryMult().toFixed(2)}</b>, and ${Math.round(seriousChance() * 100)}% of injuries are serious. More Physicality means fewer and milder injuries.${youngBody() ? ' Includes the teenage bonus (until 19): fewer and milder injuries.' : ''}</p>
     ${calcOVR() >= MAX_OVR ? `<p class="small good" style="margin:0">You are at the maximum ${MAX_OVR} OVR. Training now just keeps you sharp.</p>` : ''}
     ${p.injured ? '<p class="bad small" style="margin:0">You are injured and cannot train.</p>' : ''}
     ${S.phase !== 'season' ? '<p class="small muted" style="margin:0">Training resumes when the season starts.</p>' : ''}
   </section>`;
   const cards = keys.map(k => {
-    const v = p.attrs[k], gain = trainGain(k);
+    const v = p.attrs[k], gain = trainGain(k), held = trainGain(k, 'pitch');
     const brief = (p.objectives || []).find(o => o.kind === 'train' && o.attr === k && o.progress < o.target);
     return `<div class="attr">
-      <div><span class="name">${ATTR_NAMES[k]}</span>${w[k] >= .2 ? '<span class="key">key</span>' : ''}${brief ? `<span class="key brief">Manager ${brief.progress}/${brief.target}</span>` : ''}<div class="meta">${gain ? `+${gain.toFixed(2)} per session` : 'Max OVR'} · ${Math.round(w[k] * 100)}% of your OVR</div></div>
+      <div><span class="name">${ATTR_NAMES[k]}</span>${w[k] >= .2 ? '<span class="key">key</span>' : ''}${brief ? `<span class="key brief">Manager ${brief.progress}/${brief.target}</span>` : ''}<div class="meta">${gain ? `+${gain.toFixed(2)} per session${held ? ` · up to +${held.toFixed(2)} on the pitch` : ''}` : 'Max OVR'} · ${Math.round(w[k] * 100)}% of your OVR</div></div>
       <div class="val num">${Math.floor(v)}<small class="dec">.${Math.floor((v % 1) * 10)}</small></div>
       <div class="bar"><i style="width:${v}%"></i></div>
       <button class="btn sm" style="grid-column:1/-1" data-act="train" data-v="${k}" ${can && p.energy >= TRAIN_ENERGY ? '' : 'disabled'}>Train ${ATTR_NAMES[k]}</button>
@@ -1238,7 +1240,7 @@ document.addEventListener('click', e => {
     case 'honTab': honTab = v; render(); return;
     case "refresh": refreshStartChoices(); render(); window.scrollTo(0, 0); return;
     case "refreshOffers": { const n = refreshOffers(); toast(n ? `${n} more club${n > 1 ? 's' : ''} came in` : 'No new clubs this time'); render(); return; }
-    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? "You only just re-signed" : "Not possible right now"); render(); return; }
+    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : "Not possible right now"); render(); return; }
     case 'summerPlay': { const r = playSummerStage(); render(); showSummerReport(r); return; }
     case 'summerSim': simulateSummer(); render(); return;
     case 'exportSave': showExport(); return;
