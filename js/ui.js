@@ -341,9 +341,9 @@ function contractDetails() {
 function contractCard() {
   const p = S.player;
   if (p.loan) return '';
-  const { breakout } = scoutBuzz();
+  const { breakout, rising } = scoutBuzz();
   return `<section class="card"><h2>Your options</h2>
-    ${breakout ? '<div class="small flood">Breakout season: top-flight scouts are watching.</div>' : ''}
+    ${breakout ? '<div class="small flood">Breakout season (+8 OVR): top-flight scouts are watching.</div>' : rising ? '<div class="small flood">Rising season (+6 OVR): smaller top-flight and second-division clubs are watching.</div>' : ''}
     ${negLocked() ? `<div class="small muted">You just re-signed: no salary talks until about week ${lockWeekLabel()}.</div>` : ''}
     ${leagueGrowth() < 1 ? '<div class="small muted">Weaker league: your OVR grows about 40% slower here than in Europe.</div>' : ''}
     ${offerLocked() ? `<div class="small muted">Settling in: other clubs will not bid for you until about week ${lockWeekLabel(S.player.offerLock)}.</div>` : ''}

@@ -690,9 +690,9 @@ function rivalBetrayal(id) {
   return (p.clubsPlayed || []).filter(x => x !== id && !isBanned(x) && areRivals(x, id));
 }
 
-// Breaking into a top flight takes 85 OVR, or a breakout season (+8 OVR). Players already at a
-// top-flight club are exempt.
-const TOP_FLIGHT_OVR = 85, BREAKOUT_OVR = 8;
+// Breaking into a top flight takes 85 OVR, or a breakout season (+8 OVR). A rising season (+6 or +7)
+// opens the bottom half of top-flight leagues. Players already at a top-flight club are exempt.
+const TOP_FLIGHT_OVR = 85, BREAKOUT_OVR = 8, RISING_OVR = 6;
 function topFlightOpen(c) {
   const p = S.player, home = club(p.loan ? p.loan.parent : p.club);
   const nat = league(c.league).nat;
@@ -700,7 +700,8 @@ function topFlightOpen(c) {
     if ([...VET_LEAGUES, 'POR'].includes(nat)) return true;
     if (!vetTopFlight(c)) return false;
   }
-  return clubTier(c) !== 1 || calcOVR() >= TOP_FLIGHT_OVR || scoutBuzz().breakout || (!p.needsContract && home && clubTier(home) === 1);
+  const buzz = scoutBuzz();
+  return clubTier(c) !== 1 || calcOVR() >= TOP_FLIGHT_OVR || buzz.breakout || (buzz.rising && smallTopFlight(c)) || (!p.needsContract && home && clubTier(home) === 1);
 }
 
 // Leagues that chase big-name veterans, and the most you have ever been paid.
@@ -1562,14 +1563,16 @@ function makeOffer(c, type, fixedWage = 0) {
 const maxRounds = o => o.maxRounds || 2;
 const negLocked = () => (S.player.negLock || 0) > absWeek();
 
-// Scouting signals: an 8+ OVR jump this season, and a silver (65+) rating.
+// Scouting signals: an 8+ OVR jump this season (breakout), a 6+ jump (rising), and a silver (65+) rating.
 function scoutBuzz() {
-  const ovr = calcOVR();
-  return { breakout: ovr - (S.ovrSeasonStart || ovr) >= BREAKOUT_OVR, silver: ovr >= 65 };
+  const ovr = calcOVR(), jump = ovr - (S.ovrSeasonStart || ovr);
+  return { breakout: jump >= BREAKOUT_OVR, rising: jump >= RISING_OVR, silver: ovr >= 65 };
 }
+// The bottom half of a top flight by squad strength: the clubs a rising player can step up to.
+const smallTopFlight = c => clubTier(c) === 1 && tierPrestige(c) < .5;
 
 function generateOffers(count, guarantee = false) {
-  const p = S.player, ovr = calcOVR(), { breakout, silver } = scoutBuzz();
+  const p = S.player, ovr = calcOVR(), { breakout, rising, silver } = scoutBuzz();
   // Free agents always hear from someone; otherwise clubs leave you to settle in for six months.
   if (!guarantee && offerLocked()) return;
   // An ageing free agent hears from fewer and fewer clubs.
@@ -1582,7 +1585,8 @@ function generateOffers(count, guarantee = false) {
     if (!free(c)) return false;
     const s = teamStrength(c), top = clubTier(c) === 1;
     // Top-flight scouts stretch further for a breakout or silver-rated player.
-    return s <= reach + (top && breakout ? 5 : 0) + (top && silver ? 2 : 0) && s >= ovr - 10;
+    // A rising player also catches the eye of smaller top-flight clubs a few points above their level.
+    return s <= reach + (top && breakout ? 5 : 0) + (top && silver ? 2 : 0) + (rising && smallTopFlight(c) ? 4 : 0) && s >= ovr - 10;
   });
   // Prefer the strongest clubs that rate you.
   pool.sort((a, b) => teamStrength(b) - teamStrength(a));
@@ -1603,7 +1607,9 @@ function generateOffers(count, guarantee = false) {
     if (added >= count) break;
     if (bigTopFlight(c) && !bigLeft) continue;
     // Silver: second-tier clubs are much keener, top-flight clubs a little.
-    const w = clubTier(c) === 1 ? (breakout ? 3 : 1) * (silver ? 1.3 : 1) : clubTier(c) === 2 && silver ? 1.5 : 1;
+    // Rising (+6 OVR): the bottom half of top flights and second-tier clubs are much keener.
+    const w = (clubTier(c) === 1 ? (breakout ? 3 : 1) * (silver ? 1.3 : 1) : clubTier(c) === 2 && silver ? 1.5 : 1)
+      * (rising && (smallTopFlight(c) || clubTier(c) === 2) ? 2.2 : 1);
     if (Math.random() < (guarantee ? .5 : base) * w * interest) { add(c); if (bigTopFlight(c)) bigLeft--; }
   }
   // A silver-rated player in the lower leagues always gets a second-tier (or better) offer.
