@@ -949,7 +949,7 @@ function agentSay(text, kind = 'info') {
 // ---------- sponsors ----------
 // One deal per category. Your reputation decides which level of brand will talk to you; a better
 // agent gets bigger fees, an extra slot and brands coming to you sooner. Famous players also get
-// unsolicited requests, which pay a quarter more.
+// unsolicited requests from reputation 25 (small brands at first), which pay a quarter more.
 const SPONSOR_CATS = [
   { key: 'boots', label: 'Boots', brands: ['Strikeline', 'Volt Boots', 'Apex Studs', 'Kinetic'] },
   { key: 'kit', label: 'Sportswear', brands: ['Northpeak Athletic', 'Sprintwear', 'Fieldform'] },
@@ -966,7 +966,10 @@ const SPONSOR_LEVELS = [
 ];
 const sponsorAgentMult = () => 1 + (S.player.agent || 0) * .08;
 const sponsorSlots = () => Math.min(6, 2 + Math.floor(S.player.rep / 35) + ((S.player.agent || 0) >= 3 ? 1 : 0));
-const sponsorReqRep = () => 50 - (S.player.agent || 0) * 3;
+const sponsorReqRep = () => 25 - (S.player.agent || 0) * 2;
+// Weekly chance a brand comes to you: a small one now and then from reputation 25 (about 1.5%
+// a week), rising steadily with fame (about 10% at 100), plus a little more with a good agent.
+const sponsorReqChance = () => .015 + Math.max(0, S.player.rep - 25) * .0012 + (S.player.agent || 0) * .008;
 const sponsorDeals = () => S.player.sponsors || [];
 const sponsorLevel = () => SPONSOR_LEVELS.filter(l => S.player.rep >= l.minRep).length - 1;
 
@@ -1011,7 +1014,7 @@ function sponsorWeek() {
   });
   p.sponsorReqs = (p.sponsorReqs || []).map(r => ({ ...r, expires: r.expires - 1 })).filter(r => r.expires > 0);
   if (p.rep < sponsorReqRep() || sponsorDeals().length >= sponsorSlots()) return;
-  if (Math.random() >= .04 + p.rep / 2000 + (p.agent || 0) * .01) return;
+  if (Math.random() >= sponsorReqChance()) return;
   const open = SPONSOR_CATS.filter(c => !sponsorDeals().some(d => d.cat === c.key) && !(p.sponsorReqs || []).some(r => r.cat === c.key));
   if (!open.length) return;
   const r = { ...makeSponsor(pick(open), true), expires: 4 };
