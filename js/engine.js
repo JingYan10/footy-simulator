@@ -1128,11 +1128,18 @@ function resolveWish() {
   if (!p.wishPending || !c) return;
   if (p.wish === p.club) { p.wishPending = false; return; }
   if (isBanned(p.wish)) { p.wishPending = false; agentSay(`${c.name} will not talk to us. They have not forgiven you for joining their rivals.`, 'bad'); return; }
-  if (clauseActive()) { agentSay(`Your loyalty clause at ${myClub().name} stops any club from bidding. ${c.name} will have to wait.`); return; }
-  if (offerLocked()) { agentSay(`Clubs will not bid while you are settling in at ${myClub().name}. ${c.name} will look again at the next window.`); return; }
+  if (clauseActive() && !blockActive()) { agentSay(`Your loyalty clause at ${myClub().name} stops any club from bidding. ${c.name} will have to wait.`); return; }
+  if (offerLocked() && !blockActive()) { agentSay(`Clubs will not bid while you are settling in at ${myClub().name}. ${c.name} will look again at the next window.`); return; }
   p.wishPending = false;
   if (S.offers.some(o => o.club === p.wish)) { p.wishResult = 'offer'; agentSay(`${c.name} already have an offer on the table for you.`, 'good'); return; }
   if (Math.random() < wishChance()) {
+    if (blockActive()) {
+      addInquiry(c);
+      p.wishResult = 'offer';
+      agentSay(`Great news: ${c.name} want you! Your release clause blocks a bid, so they came to me first. Listen to them in the Contract tab.`, 'good');
+      notify('good', `${c.name} want you!`, 'Your dream club contacted your agent. Your release clause is in the way, but they want to talk.');
+      return;
+    }
     S.offers.push(makeOffer(c, 'transfer'));
     p.wishResult = 'offer';
     agentSay(`Great news: ${c.name} have made you an offer! It is on your Home screen.`, 'good');
@@ -1395,6 +1402,7 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   changeAff(rating >= 7.5 ? 2 : rating >= 7 ? 1 : rating < 6 ? -2 : 0);
   nudgeOvr(perfDelta(rating, user));
   derbyStakes(user, res, isHome, report);
+  renewTaskGame(user, clean);
   // Goals, assists, tackles and clean sheets in every competition count towards objectives.
   (p.objectives || []).forEach(o => {
     o.progress += o.kind === 'goals' ? user.goals : o.kind === 'assists' ? user.assists : o.kind === 'tackles' ? user.tackles || 0
@@ -1568,6 +1576,8 @@ function advanceWeek() {
   checkContractBoost();
   veteranRenewal();
   loyaltyOffer();
+  inquiryWeek();
+  renewTaskWeek();
   const card = cardTier(calcOVR());
   if (card !== 'Bronze' && !(p.cards || []).includes(card)) {
     p.cards = [...(p.cards || []), card];
@@ -1618,7 +1628,7 @@ function veteranRenewal() {
   if (S.offers.some(o => o.type === 'renew')) return;
   p.vetAsked = S.season;
   if (Math.random() >= .7 * renewOdds() * payOdds()) return;
-  S.offers.push(makeOffer(myClub(), 'renew'));
+  S.offers.push(makeOffer(myClub(), 'renew', 0, false, true));
   msg(`${myClub().mgr} wants you to stay and has offered you a new contract.`, 'good');
   notify('good', 'The manager wants you to stay', `${myClub().mgr} came to you with a new contract. Check your Home screen.`);
 }
@@ -1644,9 +1654,11 @@ function checkContractBoost() {
   if (p.loan || p.years < 1 || ovr - p.ovrAtSign < 4 || effAff() < 45 || negLocked()) return;
   if (S.offers.some(o => o.type === 'renew')) return;
   if (p.wage > marketWage(ovr, myClub()) * .8 || ageOf(p.by) >= OLD_RENEW_AGE) return;
-  const o = makeOffer(myClub(), 'renew', 0, loyaltyRoll());
+  // When the club comes to you it is a loyalty deal half the time (if the manager adores you); any
+  // other deal it offers you itself comes with a one-year release clause.
+  const o = makeOffer(myClub(), 'renew', 0, loyaltyRoll() && Math.random() < .5, true);
   S.offers.push(o);
-  msg(o.clause ? `"We really love you as a player," say ${myClub().name}. They want ${o.clause} seasons to make you their star, on ${raisePct(o)}% more a week, and promise to keep every distraction away from you.` : `${myClub().name} want to reward your progress with an improved contract.`, 'good');
+  msg(o.clause ? `"We really love you as a player," say ${myClub().name}. They want ${o.clause} seasons to make you their star, on ${raisePct(o)}% more a week, and promise to keep every distraction away from you.` : `${myClub().name} want to reward your progress with an improved contract. It comes with a one-year release clause.`, 'good');
 }
 
 // Loyalty deals only go to players the manager adores (93+ affection). Turn one down and the club
@@ -1674,8 +1686,14 @@ function loyaltyOffer() {
     p.loyalAsked = S.season;
     if (Math.random() >= .5) return;
   }
-  const o = makeOffer(myClub(), 'renew', 0, true);
+  // Half the time it is a loyalty deal; otherwise a normal new contract with a one-year release clause.
+  const o = makeOffer(myClub(), 'renew', 0, Math.random() < .5, true);
   S.offers.push(o);
+  if (!o.clause) {
+    msg(`${myClub().mgr} wants to keep you and has offered a new contract, with a one-year release clause.`, 'good');
+    notify('good', 'A new contract', `${myClub().mgr} came to you with a new deal. Check the Contract tab.`);
+    return;
+  }
   msg(`${myClub().mgr} pulled you aside: "You're the one we want to build this team around." He has offered you a loyalty deal.`, 'good');
   notify('good', 'We want you here', `"We really love you as a player," says ${myClub().mgr}. ${o.clause} seasons to make you our star, ${raisePct(o)}% more a week, and no distractions from other clubs. Check the Contract tab.`);
 }
@@ -1722,7 +1740,7 @@ const vetRichWage = type => Math.round((type === 'renew' ? Math.max(S.player.wag
 
 // Renewals pay around market value; rival clubs bid a little above it to tempt you away.
 // A fixed wage (a veteran's Saudi or MLS deal) skips the market maths.
-function makeOffer(c, type, fixedWage = 0, loyalty = false) {
+function makeOffer(c, type, fixedWage = 0, loyalty = false, clubOffer = false) {
   const ovr = calcOVR();
   // Saudi and MLS clubs open higher to lure you.
   const range = type === 'renew' ? [.85, 1] : freeAgent() ? [.9, 1.05] : richLeague(c) ? [1.15, 1.4] : [1, 1.2];
@@ -1762,7 +1780,10 @@ function makeOffer(c, type, fixedWage = 0, loyalty = false) {
   }
   // Buying clubs only haggle a set number of times (1 to 3) before walking away.
   const maxRounds = (type === 'transfer' ? randi(1, 3) : 2) + ((S.player.agent || 0) >= 4 ? 1 : 0);
-  return { id: Math.random().toString(36).slice(2, 9), club: c.id, type, wage: clauseWage || wage, years, status, promised, week: S.week, season: S.season, rounds: 0, maxRounds, pen: 0, ...(fixedWage ? { prime: true } : {}), ...(clause ? { clause } : {}) };
+  // A release clause: 65% of transfers, and every renewal the club offers you itself (other than a
+  // loyalty deal) for one year.
+  const block = clause ? 0 : type === 'transfer' ? (Math.random() < BLOCK_CHANCE ? blockYears() : 0) : clubOffer ? 1 : 0;
+  return { id: Math.random().toString(36).slice(2, 9), club: c.id, type, wage: clauseWage || wage, years, status, promised, week: S.week, season: S.season, rounds: 0, maxRounds, pen: 0, ...(fixedWage ? { prime: true } : {}), ...(clause ? { clause } : {}), ...(block ? { block, blockFee: breachFee(c) } : {}) };
 }
 
 const maxRounds = o => o.clause ? 0 : o.maxRounds || 2;
@@ -1775,6 +1796,136 @@ const clauseActive = () => (S.player.clauseUntil || 0) > absWeek();
 const raisePct = o => Math.round((o.wage / Math.max(1, S.player.wage) - 1) * 100);
 const negLocked = () => (S.player.negLock || 0) > absWeek();
 
+// ---------- release clauses ----------
+// A release clause blocks any move and salary talks for 1 year (80% of the time) or 2. Other clubs
+// can only reach you through your agent. Breaking it costs a fee set by your club's standing:
+// €1–2M at a top-flight giant, €500–800k mid-table, €100–350k at the bottom (less a division down).
+const BLOCK_CHANCE = .65;
+const blockYears = () => Math.random() < .8 ? 1 : 2;
+function breachFee(c) {
+  const t = clubTier(c), pr = tierPrestige(c);
+  const [lo, hi] = t === 1 ? (pr >= 2 / 3 ? [1e6, 2e6] : pr >= 1 / 3 ? [5e5, 8e5] : [1e5, 3.5e5]) : t === 2 ? [5e4, 1.5e5] : [2e4, 6e4];
+  return Math.round(rand(lo, hi) / 1e4) * 1e4;
+}
+// Old saves only had loyalty clauses.
+const blockActive = () => clauseActive() && S.player.clauseKind === 'block';
+const inquiries = () => S.player.inquiries || [];
+// The three ways to break the clause: the buying club pays (45%), you split it (70%), or you pay it all.
+const BREACH_ODDS = { they: .45, half: .7, full: 1 };
+
+// A club that would have bid gets in touch with your agent instead.
+function addInquiry(c, o = makeOffer(c, 'transfer')) {
+  const p = S.player;
+  if (inquiries().some(q => q.club === c.id) || c.id === p.club) return false;
+  p.inquiries = [...inquiries(), { id: Math.random().toString(36).slice(2, 9), club: c.id, offer: o, week: absWeek(), talks: false, triedThey: false, triedHalf: false }];
+  return true;
+}
+
+// Ask your agent to sound out clubs, once per transfer window. Each club is 50-50 to be interested;
+// three in four of those get back to your agent, the rest go quiet.
+const windowKey = () => `${S.season}${S.phase === 'offseason' ? 's' : 'j'}`;
+const canSoundOut = () => blockActive() && inWindow() && S.player.soundedAt !== windowKey();
+function soundOut() {
+  const p = S.player;
+  if (!canSoundOut()) return null;
+  p.soundedAt = windowKey();
+  const ovr = calcOVR(), reach = ovr + 2 + p.rep / 30;
+  const pool = Object.values(S.clubs).filter(c => c.id !== p.club && !isBanned(c.id) && topFlightOpen(c) && !inquiries().some(q => q.club === c.id)
+    && teamStrength(c) <= reach && teamStrength(c) >= ovr - 10).sort((a, b) => teamStrength(b) - teamStrength(a));
+  const asked = shuffle(pool.slice(0, 12)).slice(0, 3);
+  const back = asked.filter(() => Math.random() < .5 && Math.random() < .75).filter(c => addInquiry(c));
+  if (!asked.length) agentSay('I made some calls, but nobody at your level is looking right now.');
+  else if (!back.length) agentSay(`I put the word out to ${asked.map(c => c.name).join(', ')}. Nobody has got back to me.`, 'bad');
+  else {
+    agentSay(`I put the word out to ${asked.map(c => c.name).join(', ')}. ${back.map(c => c.name).join(' and ')} got back to me: they want to talk.`, 'good');
+    notify('good', 'Clubs want to talk!', `${back.map(c => c.name).join(' and ')} answered your agent. See the Contract tab.`);
+  }
+  save();
+  return back.length;
+}
+
+// Listen to an inquiry: the club opens talks with yours about the release clause.
+function listenInquiry(id) {
+  const q = inquiries().find(x => x.id === id), c = q && club(q.club);
+  if (!q || q.talks) return;
+  q.talks = true;
+  msg(`${c.name} have opened talks with ${myClub().name} about your release clause.`, 'good');
+  notify('talks', 'Talks are on!', `${c.name} are talking to ${myClub().name} about you right now. Now decide how the ${money(S.player.clauseFee)} release fee gets paid.`);
+  save();
+}
+
+function ignoreInquiry(id) {
+  const q = inquiries().find(x => x.id === id);
+  if (q) msg(`You told your agent you are not interested in ${club(q.club).name}.`);
+  S.player.inquiries = inquiries().filter(x => x.id !== id);
+  save();
+}
+
+// Who pays the release fee. Only one try each at asking the club and at splitting it; a failed
+// split costs nothing. Paying it all yourself always works.
+function payBreach(id, mode) {
+  const p = S.player, q = inquiries().find(x => x.id === id), fee = p.clauseFee || 0;
+  if (!q || !q.talks || !blockActive()) return null;
+  const c = club(q.club), cost = mode === 'full' ? fee : mode === 'half' ? Math.round(fee / 2) : 0;
+  if ((mode === 'they' && q.triedThey) || (mode === 'half' && q.triedHalf) || p.money < cost) return null;
+  if (mode === 'they') q.triedThey = true;
+  if (mode === 'half') q.triedHalf = true;
+  if (Math.random() >= BREACH_ODDS[mode]) {
+    msg(mode === 'they' ? `${c.name} refused to pay your release fee.` : `${c.name} would not split the fee. No money changed hands.`, 'bad');
+    save();
+    return 'no';
+  }
+  p.money -= cost;
+  // The clause is gone: this club bids officially, and so do the others that were asking.
+  p.clauseUntil = 0;
+  p.clauseKind = null;
+  p.offerLock = Math.min(p.offerLock || 0, absWeek());
+  p.negLock = Math.min(p.negLock || 0, absWeek());
+  const rest = inquiries().filter(x => x.id !== id);
+  p.inquiries = [];
+  [q, ...rest].forEach(x => { if (!S.offers.some(o => o.club === x.club)) S.offers.push({ ...x.offer, week: S.week, season: S.season }); });
+  const who = mode === 'they' ? `${c.name} paid the full ${money(fee)}` : mode === 'half' ? `you and ${c.name} split the ${money(fee)}` : `you paid the ${money(fee)} yourself`;
+  msg(`Release clause broken: ${who}. ${c.name}${rest.length ? ` and ${rest.length} other club${rest.length > 1 ? 's' : ''}` : ''} can now make official offers.`, 'good');
+  notify('good', 'You are free to talk!', `The release clause is gone (${who}). ${c.name}'s official offer is in the Contract tab.`);
+  save();
+  return 'ok';
+}
+
+// Weekly: old inquiries go cold, and once the clause runs out clubs bid normally again.
+function inquiryWeek() {
+  const p = S.player;
+  if (!inquiries().length) return;
+  if (!blockActive()) { p.inquiries = []; return; }
+  const cold = inquiries().filter(q => absWeek() - q.week >= 6);
+  if (cold.length) msg(`${cold.map(q => club(q.club).name).join(', ')} stopped waiting and moved on.`);
+  p.inquiries = inquiries().filter(q => absWeek() - q.week < 6);
+}
+
+// ---------- asking for a renewal ----------
+// Asking for a new deal works 80% of the time. Otherwise the board sets you a task first: hit it
+// within 8 weeks and the offer is guaranteed.
+const RENEW_TASK = { FWD: ['ga', 4], MID: ['ga', 3], DEF: ['tackles', 14], GK: ['clean', 2] };
+function setRenewTask() {
+  const [kind, target] = RENEW_TASK[POS_GROUP[S.player.pos]];
+  S.player.renewTask = { kind, target, progress: 0, until: absWeek() + 8 };
+}
+const renewTaskText = t => `${t.target} ${t.kind === 'ga' ? 'goals + assists' : t.kind === 'tackles' ? 'tackles' : 'clean sheets'}`;
+function renewTaskGame(user, clean) {
+  const p = S.player, t = p.renewTask;
+  if (!t) return;
+  t.progress += t.kind === 'ga' ? user.goals + user.assists : t.kind === 'tackles' ? user.tackles || 0 : clean ? 1 : 0;
+  if (t.progress < t.target) return;
+  p.renewTask = null;
+  if (p.loan || p.needsContract) return;
+  S.offers.push(makeOffer(myClub(), 'renew'));
+  msg(`You did what the board asked (${renewTaskText(t)}). ${myClub().name} have put a new contract on the table.`, 'good');
+  notify('good', 'Task complete!', `The board kept their word: ${myClub().name} have offered you a new contract.`);
+}
+function renewTaskWeek() {
+  const p = S.player, t = p.renewTask;
+  if (t && absWeek() >= t.until) { p.renewTask = null; msg(`You ran out of time on the board's task (${t.progress}/${t.target}). No new contract for now.`, 'bad'); }
+}
+
 // Scouting signals: an 8+ OVR jump this season (breakout), a 6+ jump (rising), and a silver (65+) rating.
 function scoutBuzz() {
   const ovr = calcOVR(), jump = ovr - (S.ovrSeasonStart || ovr);
@@ -1786,13 +1937,15 @@ const smallTopFlight = c => clubTier(c) === 1 && tierPrestige(c) < .5;
 function generateOffers(count, guarantee = false) {
   const p = S.player, ovr = calcOVR(), { breakout, rising, silver } = scoutBuzz();
   // Free agents always hear from someone; otherwise clubs leave you to settle in for six months.
-  if (!guarantee && offerLocked()) return;
+  // Under a release clause, clubs that would have bid get in touch with your agent instead.
+  const divert = !guarantee && blockActive();
+  if (!guarantee && offerLocked() && !divert) return;
   // An ageing free agent hears from fewer and fewer clubs.
   const [odds, maxNew] = freeAgentInterest(), interest = 1, before = S.offers.length;
   if (Math.random() >= odds) { msg(`No club came forward. At ${ageOf(p.by)}, offers for a player without a club are getting scarce: it may be time to retire.`, 'bad'); return; }
   const reach = ovr + 2 + p.rep / 30;
   const home = p.loan ? p.loan.parent : p.club;
-  const free = c => c.id !== p.club && c.id !== home && !isBanned(c.id) && topFlightOpen(c) && !S.offers.some(o => o.club === c.id) && !coolingOff(c.id);
+  const free = c => c.id !== p.club && c.id !== home && !isBanned(c.id) && topFlightOpen(c) && !S.offers.some(o => o.club === c.id) && !coolingOff(c.id) && !inquiries().some(q => q.club === c.id);
   const pool = Object.values(S.clubs).filter(c => {
     if (!free(c)) return false;
     const s = teamStrength(c), top = clubTier(c) === 1;
@@ -1806,6 +1959,7 @@ function generateOffers(count, guarantee = false) {
   let added = 0;
   const names = [];
   const add = c => {
+    if (divert) { if (addInquiry(c)) { added++; names.push(c.name); } return; }
     const o = makeOffer(c, 'transfer'), again = declinedUntil(c.id) > absWeek();
     // An eager club uses up its one extra try.
     if (again) { o.again = true; p.declined[c.id] = { until: declinedUntil(c.id), eager: false }; }
@@ -1837,6 +1991,7 @@ function generateOffers(count, guarantee = false) {
     const rich = shuffle(Object.values(S.clubs).filter(c => free(c) && clubTier(c) === 1 && VET_LEAGUES.includes(nat(c)))
       .sort((a, b) => teamStrength(b) - teamStrength(a)).slice(0, 10));
     rich.slice(0, Math.random() < .6 ? 2 : 1).filter(() => Math.random() < interest).forEach(c => {
+      if (divert) { add(c); return; }
       const o = makeOffer(c, 'transfer'), wage = o.wage;
       S.offers.push(o); added++; names.push(c.name);
       msg(`${c.name} (${league(c.league).name}) want your experience and offer ${money(wage)}/week${o.prime ? ', close to your prime wage' : ''}.`, 'good');
@@ -1856,14 +2011,18 @@ function generateOffers(count, guarantee = false) {
     S.inbox = S.inbox.filter(m => !(m.week === S.week && m.season === S.season && cut.some(n => m.text.startsWith(n))));
     names.splice(maxNew); added = maxNew;
   }
-  if (added) notify('good', added > 1 ? `${added} clubs want you!` : 'A club wants you!', `${names.join(', ')} ${added > 1 ? 'have' : 'has'} made you an offer. Check the Contract tab.`);
+  if (added && divert) {
+    agentSay(`${names.join(', ')} ${added > 1 ? 'have' : 'has'} been asking about you. Your release clause stops them bidding, but they want to talk.`, 'good');
+    notify('good', added > 1 ? `${added} clubs are asking about you!` : 'A club is asking about you!', `${names.join(', ')} contacted your agent. Listen to them in the Contract tab.`);
+  } else if (added) notify('good', added > 1 ? `${added} clubs want you!` : 'A club wants you!', `${names.join(', ')} ${added > 1 ? 'have' : 'has'} made you an offer. Check the Contract tab.`);
 }
 
 // Offers when a window opens: more for a breakout season or a transfer request.
 function windowOffers() {
   const { breakout } = scoutBuzz(), p = S.player;
   resolveWish();
-  if (clauseActive()) { msg('Your loyalty clause is active: no club can bid for you this window.'); return; }
+  if (clauseActive() && !blockActive()) { msg('Your loyalty clause is active: no club can bid for you this window.'); return; }
+  if (blockActive()) { generateOffers(randi(1, 3) + (breakout ? 2 : 0)); return; }
   if (offerLocked()) { msg('Clubs are leaving you to settle in at your new club: no transfer offers this window.'); return; }
   // A club you agreed to listen to comes back with a bid.
   if (p.interested && p.interested !== p.club && !isBanned(p.interested) && topFlightOpen(club(p.interested)) && !S.offers.some(o => o.club === p.interested)) S.offers.push(makeOffer(club(p.interested), 'transfer'));
@@ -1995,6 +2154,7 @@ function acceptOffer(id) {
     if (o.clause) {
       const end = clauseEnd(o.clause);
       p.clauseUntil = (end + 1) * SEASON_WEEKS + 1;
+      p.clauseKind = 'loyal';
       p.loyalNext = 0;
       p.negLock = Math.max(p.negLock, p.clauseUntil);
       p.offerLock = Math.max(p.offerLock || 0, p.clauseUntil);
@@ -2005,6 +2165,16 @@ function acceptOffer(id) {
       p.objHard = Math.min(.3, (p.objHard || 0) + .1);
       msg(`${myClub().mgr} expects more after your pay rise. His objectives will be a little harder.`);
     }
+  }
+  if (o.block) {
+    p.clauseKind = 'block';
+    p.clauseUntil = absWeek() + o.block * SEASON_WEEKS;
+    p.clauseFee = o.blockFee;
+    p.negLock = Math.max(p.negLock || 0, p.clauseUntil);
+    p.offerLock = Math.max(p.offerLock || 0, p.clauseUntil);
+    p.listed = false;
+    p.inquiries = [];
+    msg(`Release clause: for ${o.block} year${o.block > 1 ? 's' : ''} ${club(o.club).name} will block any move and salary talks. Clubs can still reach you through your agent, and breaking the clause costs ${money(o.blockFee)}.`);
   }
   p.wage = o.wage;
   p.peakWage = Math.max(p.peakWage || 0, o.wage);
@@ -2073,7 +2243,14 @@ function requestContract() {
     save();
     return 'tooOld';
   }
+  if (p.renewTask) return 'task';
   if (p.board >= 40 && effAff() >= 50) {
+    if (Math.random() >= .8) {
+      setRenewTask();
+      msg(`${myClub().name} are not ready to offer a new deal yet. The board wants ${renewTaskText(p.renewTask)} in the next 8 weeks: do it and the contract is yours.`, 'bad');
+      save();
+      return 'challenge';
+    }
     S.offers.push(makeOffer(myClub(), 'renew'));
     msg(`${myClub().name} have put a new contract on the table.`, 'good');
     save();
@@ -2375,6 +2552,8 @@ function endSeason() {
     S.offers = [];
     S.seasonSummary.loanNext = false;
     p.needsContract = true;
+    p.clauseUntil = 0;
+    p.inquiries = [];
     const home = myClub();
     const wanted = (effAff() >= 35 && p.board >= 30) || squadStatus() === 'Key Player';
     const why = wanted ? renewalRefusal() : null;

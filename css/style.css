@@ -448,3 +448,14 @@ select.pick { width: 100%; margin: 8px 0; background: var(--surface); border: 1p
 .pastrow { display: flex; gap: 8px; align-items: stretch; }
 .pastrow .house { flex: 1; min-width: 0; }
 .pastrow .btn { flex: none; }
+
+/* Release clauses: club inquiries and the transfer-talks alert */
+.offer.talks { border-color: var(--good); box-shadow: 0 0 0 1px var(--good) inset; }
+.inq-opts { display: grid; gap: 6px; }
+.inq-opts .odds { font-size: 22px; }
+.inq-opts .odds.mid { color: var(--flood); }
+.inq-opts .odds.good { color: var(--good); }
+#fx.talks { background: radial-gradient(circle at 50% 38%, rgba(76, 195, 138, .24), rgba(5, 10, 18, .9) 70%); }
+#fx.talks .pop { border-color: var(--good); box-shadow: 0 0 56px rgba(76, 195, 138, .35); }
+#fx.talks .pop-icon { color: var(--good); }
+.talks-tag { justify-self: center; font: 800 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--good); padding: 4px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--good); }

@@ -208,63 +208,83 @@ document.addEventListener('load', e => {
   if (img.tagName === 'IMG' && img.dataset.club) logoState[img.dataset.club] = +img.dataset.ext;
 }, true);
 
-// What the club says when it hands you an offer: a few heartfelt lines that fit the deal.
-// The same offer always shows the same words.
+// What the club says when it hands you an offer. Each pitch is built from an opening, a line about
+// you (your season, your position, your country, your age) and a closing, all picked to fit the
+// deal, so two offers rarely read the same. The same offer always shows the same words.
 function offerPitch(o, c) {
-  const p = S.player, age = ageOf(p.by), seed = [...o.id].reduce((s, ch) => s + ch.charCodeAt(0), 0);
-  const one = list => list[seed % list.length];
+  const p = S.player, age = ageOf(p.by), seed = [...o.id].reduce((s, ch, i) => s + ch.charCodeAt(0) * (i + 7), 0);
+  // Each part uses its own slice of the seed, so the pieces vary independently.
+  const one = (list, salt) => list[Math.floor(seed / (salt * 3 + 1)) % list.length];
+  const mine = myClub(), lg = league(c.league), pos = POS_NAMES[p.pos].toLowerCase(), gk = p.pos === 'GK';
+  const last = (p.career || []).at(-1), yrs = o.years === 1 ? 'one season' : `${o.years} seasons`;
+
+  // Something personal: last season's numbers, your position, coming home, your age or your fame.
+  const facts = [];
+  if (last && last.apps >= 10) {
+    facts.push(gk ? `${last.cleanAll || 0} clean sheets last season. We counted every one of them.`
+      : `${last.goals} goals and ${last.assists} assists last season. Our analysts watched every single one.`);
+    if (!gk && last.goals >= 10) facts.push(`${last.goals} goals in a season doesn't happen by accident. That's a hunger we want in our dressing room.`);
+    if (last.avg >= 7) facts.push(`An average rating of ${last.avg.toFixed(2)}. Week in, week out, you deliver.`);
+  }
+  facts.push(gk ? 'Keepers who make the impossible saves look routine are rare. You\'re one of them.'
+    : `The way you play as a ${pos}, the movement, the timing, the courage... you can't coach that.`);
+  if (lg.nat === p.nat && league(mine.league).nat !== p.nat && o.type === 'transfer') facts.push(`It's time to come home. ${natName(p.nat)} misses you, and so do we.`);
+  if (age <= 21) facts.push(`At ${age}, you're already doing things most players never manage. Imagine where you'll be in a few years.`);
+  if (p.rep >= 60) facts.push(`Half of ${lg.name} knows your name already. The other half soon will.`);
+  if (o.type === 'transfer' && teamStrength(c) > teamStrength(mine) + 4) facts.push(`${mine.name} gave you a start. We can give you the next level.`);
+  if (o.type === 'renew' && p.joinedSeason != null && S.season - p.joinedSeason >= 2) facts.push(`${S.season - p.joinedSeason} seasons in this shirt, and every one of them has meant something to us.`);
+  const fact = one(facts, 2);
+
+  let open, close;
   if (o.clause) {
-    const yrs = `${o.clause} seasons`, more = `${raisePct(o)}% more`;
-    return one([
-      `We really, truly love you as a player. From the first day you walked through those doors, we knew you were special. We want to spend the next ${yrs} turning you into the star this club is built around, and we've put ${more} than you earn now on the table, because you deserve to feel how much you mean to us. And don't worry about the noise from outside. Other clubs, phone calls... we'll take care of all of that. You just play, and let us look after you.`,
-      `Do you know what you mean to this club? The kitman, the cleaners, the fans in the stands... everyone smiles when your name comes up. We want ${yrs} with you, to watch you become everything we know you can be. Here's ${more} than you earn now, from the bottom of our hearts. We'll keep every distraction far away from you, if you know what we mean. This is your family now.`,
-      `We've had a lot of players through here, but very few like you. You're not just part of our plans, you are the plan. Give us ${yrs}, and we promise we'll make you our star. We're offering ${more} than you earn now, because we want you to know, without any doubt, how much we believe in you. Let us handle the outside world, the agents, the rumours, the other clubs. You focus on being you.`,
-    ]);
+    const more = `${raisePct(o)}% more than you earn now`;
+    open = one([
+      'We really, truly love you as a player.',
+      'Do you know what you mean to this club? The kitman, the cleaners, the fans in the stands... everyone smiles when your name comes up.',
+      'We\'ve had a lot of players through here, but very few like you. You\'re not just part of our plans, you are the plan.',
+      'Some players join a club. Others become part of it. You\'re the second kind.',
+      'We sat down as a board last night and every single person in that room said your name first.',
+    ], 1);
+    close = one([
+      `Give us ${o.clause} seasons and we'll make you our star. There's ${more} on the table, because you deserve to feel how much you mean to us. And the noise from outside? Other clubs, phone calls... we'll take care of all that. You just play.`,
+      `We want ${o.clause} seasons with you, to watch you become everything we know you can be. Here's ${more}, from the bottom of our hearts. We'll keep every distraction far away from you, if you know what we mean. This is your family now.`,
+      `Stay for ${o.clause} seasons and build something with us. We're offering ${more} so there's no doubt how much we believe in you. Let us handle the agents, the rumours and the other clubs. You focus on being you.`,
+      `${o.clause} seasons, ${more}, and a club that will protect you like one of its own. Nobody will come knocking, we'll make sure of it. All you have to do is keep smiling on that pitch.`,
+    ], 3);
+  } else if (o.type === 'renew') {
+    if (p.needsContract) {
+      open = one(['Your contract may have run out, but our belief in you never did.', 'We know the paperwork says it\'s over. We don\'t.', 'Some goodbyes just don\'t feel right. This would be one of them.', 'Before you listen to anyone else, hear us out.'], 1);
+      close = one(['This is your home. Let\'s go again, together.', 'Sign, and let\'s finish what we started.', `${yrs} more. That's all we ask, and we'll give you everything back.`, 'The door was never closed. Walk back through it.'], 3);
+    } else if (vetYears(age)) {
+      open = one(['You\'ve been a leader for us, on the pitch and off it.', 'Players like you don\'t come around often.', 'The young lads watch how you train, how you speak, how you carry yourself.', 'Every club needs someone who has seen it all. We have you.'], 1);
+      close = one([`Give us ${o.years > 1 ? 'a couple more years' : 'one more year'}, and let the next generation learn from the best.`, 'The fans sing your name every week. We\'d love you to stay a little longer.', 'There\'s still a chapter left to write here, and we want you to write it.', 'Stay. Not because you have to, but because this place wouldn\'t be the same without you.'], 3);
+    } else {
+      open = one(['You\'ve given everything for this badge, and the supporters adore you for it.', 'This club feels different with you in it.', 'We\'ve watched you grow into this shirt.', 'Every time you step onto that pitch, the whole stadium leans forward a little.', `${mine.mgr} says you're the first name on his team sheet. The board agrees.`], 1);
+      close = one(['We want you to keep writing your story here.', 'Stay with us, and let\'s win something special together.', 'There\'s so much more to come, and we want to be there for all of it.', `${yrs} more, and we promise you'll look back on them as the best of your life.`, 'Let\'s make this the place people remember you for.'], 3);
+    }
+  } else if (p.needsContract) {
+    open = one(['Others let you go. We see exactly what they missed.', 'Every player has a tough spell. What matters is what comes next.', 'We\'ve been waiting for the chance to call you.', 'A club without you is losing out. A club with you is lucky. We want to be lucky.'], 1);
+    close = one(['Come to us, and let\'s prove them all wrong together.', 'We\'re ready to give you a fresh start and a real home.', `${yrs} to show everyone who you really are. We'll be right behind you.`, 'Pick up the phone. Your next chapter starts here.'], 3);
+  } else if (o.promised) {
+    open = one(['We\'ve followed you for months and we\'re convinced.', 'We don\'t make promises lightly. This is one we\'ll keep.', 'Our manager has already drawn the team with your name in it.', `${c.mgr} told the board he won't sign anyone else for your position.`], 1);
+    close = one(['Come to us and the starting shirt is yours. That\'s a promise.', 'You won\'t be sitting on any bench here. We want you on the pitch every week.', 'Ninety minutes, every week, at the heart of everything we do. Come and take it.', 'Starting XI, from day one. All you have to do is say yes.'], 3);
+  } else if (o.status === 'Reserve') {
+    open = one(['We know it may take a little time to break into this team.', 'Nobody walks straight into a side like ours, and we won\'t pretend otherwise.', 'Our squad is stacked, we won\'t lie to you.', 'Every great player started somewhere. Some started right here, on our bench.'], 1);
+    close = one(['But we see a future star in you. Be patient with us, and we\'ll make you great.', 'Train with the best every day, learn, and when your chance comes, take it. We believe you will.', 'Work hard, stay hungry, and that shirt will be yours sooner than you think.', `Give us ${yrs} and we'll turn potential into something special.`], 3);
+  } else if (richLeague(c)) {
+    open = one(['Come and be the face of our project.', 'We\'re building something huge.', `${lg.name} is changing, and we want you to lead that change.`, 'Imagine sold-out stadiums chanting your name every week.'], 1);
+    close = one(['The fans here will treat you like a king, and you\'ll be part of history.', 'A new city, a new challenge, and people who will love you from day one.', 'We\'ll look after you and your family like our own. Whatever you need, it\'s yours.', `${yrs} that people here will talk about for decades.`], 3);
+  } else if (vetYears(age)) {
+    open = one(['You still have so much to give.', 'Age is just a number.', 'Experience like yours can\'t be bought. Well, we\'re trying.', 'Young players can run. You know where to run. That\'s the difference.'], 1);
+    close = one(['Bring your experience to our dressing room. Our young players need someone like you.', 'We\'ve seen you play, and we know you can still make the difference for us.', 'Come and show everyone you\'re far from finished.', `${yrs} to add one more great chapter to your story.`], 3);
+  } else if (teamStrength(c) > teamStrength(mine) + 2) {
+    open = one(['Our scouts can\'t stop talking about you.', 'Big nights, full stadiums, trophies.', `${c.mgr} has a picture of you on his office wall. Don't tell him we told you.`, 'We don\'t chase many players. We\'re chasing you.', `At ${c.name}, ordinary isn't enough. We think you're not ordinary.`], 1);
+    close = one(['This is the stage you were made for. Come and show the world.', 'We think you\'re ready for it all, and we want you to do it in our colours.', 'Come and play where the whole world is watching.', `${yrs} at the top. Are you ready? We think you are.`, 'The next level is right here. Step up.'], 3);
+  } else {
+    open = one(['We\'d build our team around you.', 'Our fans already know your name.', 'We\'ve been watching you for a long time.', `Ask anyone at ${c.name}: you're the one we want.`, 'We\'re not looking for just another player. We\'re looking for a hero.'], 1);
+    close = one(['Here, you wouldn\'t just be one of the players. You\'d be the player.', 'Join us, and we\'ll give you the platform and the love to become someone special.', 'You\'re exactly the player we\'ve been looking for.', `${yrs} to become a legend here. The badge is waiting.`, 'Come and be the reason our supporters believe again.'], 3);
   }
-  if (o.type === 'renew') {
-    if (p.needsContract) return one([
-      'Your contract may have run out, but our belief in you never did. This is your home. Let\'s go again, together.',
-      'We couldn\'t imagine this dressing room without you. Sign, and let\'s finish what we started.',
-    ]);
-    if (vetYears(age)) return one([
-      `You've been a leader for us, on the pitch and off it. The young lads look up to you. Give us ${o.years > 1 ? 'a couple more years' : 'one more year'}, and let them learn from the best.`,
-      'Players like you don\'t come around often. The fans sing your name every week. We\'d love you to stay a little longer.',
-    ]);
-    return one([
-      'You\'ve given everything for this badge, and the supporters adore you for it. We want you to keep writing your story here.',
-      'This club feels different with you in it. Stay with us, and let\'s win something special together.',
-      'We\'ve watched you grow into this shirt. There\'s so much more to come, and we want to be there for all of it.',
-    ]);
-  }
-  if (p.needsContract) return one([
-    'Others let you go. We see exactly what they missed. Come to us, and let\'s prove them all wrong together.',
-    'Every player has a tough spell. We believe in you, and we\'re ready to give you a fresh start and a real home.',
-  ]);
-  if (o.promised) return one([
-    'We\'ve followed you for months and we\'re convinced. Come to us and the starting shirt is yours. That\'s a promise.',
-    'You won\'t be sitting on any bench here. We want you on the pitch every week, at the heart of everything we do.',
-  ]);
-  if (o.status === 'Reserve') return one([
-    'We know it may take a little time to break into this team, but we see a future star in you. Be patient with us, and we\'ll make you great.',
-    'Train with the best every day, learn, and when your chance comes, take it. We believe you will.',
-  ]);
-  if (richLeague(c)) return one([
-    'Come and be the face of our project. The fans here will treat you like a king, and you\'ll be part of history.',
-    'We\'re building something huge, and we want you at the centre of it. A new city, a new challenge, and people who will love you.',
-  ]);
-  if (vetYears(age)) return one([
-    'You still have so much to give. Bring your experience to our dressing room. Our young players need someone like you.',
-    'Age is just a number. We\'ve seen you play, and we know you can still make the difference for us.',
-  ]);
-  if (teamStrength(c) > teamStrength(myClub()) + 2) return one([
-    'Our scouts can\'t stop talking about you. This is the stage you were made for. Come and show the world.',
-    'Big nights, full stadiums, trophies. We think you\'re ready for it all, and we want you to do it in our colours.',
-  ]);
-  return one([
-    'We\'d build our team around you. Here, you wouldn\'t just be one of the players, you\'d be the player.',
-    'Our fans already know your name. Join us, and we\'ll give you the platform and the love to become someone special.',
-    'We\'ve been watching you for a long time. You\'re exactly the player we\'ve been looking for.',
-  ]);
+  return `${open} ${fact} ${close}`;
 }
 
 function offersHtml() {
@@ -285,6 +305,7 @@ function offersHtml() {
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
       ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again.</div>` : ''}
       ${o.type === 'transfer' && leagueGrowth(c) < 1 ? '<div class="small flood">Big money, weaker league: your OVR will grow more slowly here.</div>' : ''}
+      ${o.block ? `<div class="small flood"><b>Release clause:</b> for ${o.block} year${o.block > 1 ? 's' : ''} after you sign, ${esc(c.name)} block any move and salary talks. Breaking it costs ${money(o.blockFee)}.</div>` : ''}
       <div class="loyal ${o.type === 'transfer' ? 'away' : ''}"><p>"${offerPitch(o, c)}"</p><span>— ${esc(c.mgr)}, ${esc(c.name)}</span></div>
       ${talk}
       <div class="btns"><button class="btn good sm" data-act="accept" data-v="${o.id}">Sign</button><button class="btn sm" data-act="negAsk" data-v="${o.id}" ${canNegotiate(o) ? '' : 'disabled'}>Negotiate</button><button class="btn sm" data-act="decline" data-v="${o.id}">Decline</button></div>
@@ -391,7 +412,7 @@ function viewContract() {
   if (S.phase === 'retired') return '<section class="card"><h2>Contract</h2><p class="muted" style="margin:0">You have retired.</p></section>';
   if (p.needsContract) return `<section class="card hero"><h2>Free agent</h2><p class="bad" style="margin:0">${S.phase === 'offseason' ? 'Your contract has run out.' : 'You have no club.'} Sign with a club below to keep playing.</p>
     <button class="btn block" data-act="findClubs">Ask your agent to find clubs</button></section>` + offersHtml();
-  return contractDetails() + offersHtml() + contractCard();
+  return contractDetails() + offersHtml() + inquiriesHtml() + contractCard();
 }
 
 // The deal you are on now.
@@ -409,19 +430,47 @@ function contractDetails() {
   </section>`;
 }
 
+// Clubs that got in touch with your agent while a release clause blocks bids. Listen, and they open
+// talks with your club; then choose who pays the fee.
+function inquiriesHtml() {
+  const list = inquiries();
+  if (!blockActive() || !list.length) return '';
+  const fee = S.player.clauseFee || 0, half = Math.round(fee / 2), cash = S.player.money;
+  return `<section class="card"><h2>Agent: clubs asking about you</h2>
+    <p class="small muted" style="margin:0">Your release clause blocks official bids, so these clubs came to your agent first. They wait about 6 weeks.</p>
+    ${list.map(q => {
+      const c = club(q.club), o = q.offer;
+      const pay = q.talks ? `<div class="inq-opts">
+          <button class="house" data-act="inqThey" data-v="${q.id}" ${q.triedThey ? 'disabled' : ''}><span><b>Ask them to pay the fee</b><br><span class="small muted">${q.triedThey ? 'They already said no.' : 'Costs you nothing.'}</span></span><span class="odds mid">45%</span></button>
+          <button class="house" data-act="inqHalf" data-v="${q.id}" ${q.triedHalf || cash < half ? 'disabled' : ''}><span><b>Split it: you pay ${money(half)}</b><br><span class="small muted">${q.triedHalf ? 'They already said no.' : cash < half ? 'Not enough money.' : 'If they say no, you lose nothing.'}</span></span><span class="odds good">70%</span></button>
+          <button class="house" data-act="inqFull" data-v="${q.id}" ${cash < fee ? 'disabled' : ''}><span><b>Pay it all: ${money(fee)}</b><br><span class="small muted">${cash < fee ? 'Not enough money.' : 'Always works.'}</span></span><span class="odds good">100%</span></button>
+        </div>
+        <div class="small muted">Once the clause is broken, ${esc(c.name)} make their official offer. The fee is gone even if you then turn it down.</div>`
+        : `<div class="btns"><button class="btn good sm" data-act="inqListen" data-v="${q.id}">Listen</button><button class="btn sm" data-act="inqIgnore" data-v="${q.id}">Not interested</button></div>`;
+      return `<div class="offer ${q.talks ? 'talks' : ''}">
+        <div class="row"><div class="clubcell">${crest(c.id, 'small')}<div style="min-width:0"><div class="club">${esc(c.name)}</div><div class="small muted">${esc(league(c.league).name)} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
+        <span class="chip ${q.talks ? 'good' : 'flood'}">${q.talks ? 'In talks' : 'Inquiry'}</span></div>
+        <div class="small muted">They would offer about ${money(o.wage)}/wk for ${o.years} years as a ${o.status.toLowerCase()}.</div>
+        ${pay}</div>`;
+    }).join('')}</section>`;
+}
+
 function contractCard() {
   const p = S.player;
   if (p.loan) return '';
   const { breakout, rising } = scoutBuzz();
   return `<section class="card"><h2>Your options</h2>
     ${breakout ? '<div class="small flood">Breakout season (+8 OVR): top-flight scouts are watching.</div>' : rising ? '<div class="small flood">Rising season (+6 OVR): smaller top-flight and second-division clubs are watching.</div>' : ''}
-    ${clauseActive() ? `<div class="small flood"><b>Loyalty clause</b> until the end of ${seasonLabel(Math.floor((p.clauseUntil - 1) / SEASON_WEEKS) - 1)}: no bids from other clubs, no salary talks and no transfer requests.</div>`
+    ${blockActive() ? `<div class="small flood"><b>Release clause</b> until about week ${lockWeekLabel(p.clauseUntil)}: other clubs can only reach you through your agent, and there are no salary talks. Breaking it costs ${money(p.clauseFee)}.</div>`
+    : clauseActive() ? `<div class="small flood"><b>Loyalty clause</b> until the end of ${seasonLabel(Math.floor((p.clauseUntil - 1) / SEASON_WEEKS) - 1)}: no bids from other clubs, no salary talks and no transfer requests.</div>`
     : negLocked() ? `<div class="small muted">You just re-signed: no salary talks until about week ${lockWeekLabel()}.</div>` : ''}
     ${leagueGrowth() < 1 ? '<div class="small muted">Weaker league: your OVR grows about 40% slower here than in Europe.</div>' : ''}
     ${offerLocked() && !clauseActive() ? `<div class="small muted">Settling in: other clubs will not bid for you until about week ${lockWeekLabel(S.player.offerLock)}.</div>` : ''}
     ${p.listed ? `<div class="small flood">You are transfer-listed. ${inWindow() ? 'Clubs are bidding now.' : `Bids arrive when the window opens (week ${JAN_WINDOW[0]} or summer).`}</div>` : ''}
+    ${p.renewTask ? `<div class="obj"><div class="row small"><span><b>Board's task</b> · ${renewTaskText(p.renewTask)} for a new contract</span><span class="num">${p.renewTask.progress}/${p.renewTask.target}</span></div><div class="bar"><i class="mid" style="width:${Math.min(100, Math.round(p.renewTask.progress / p.renewTask.target * 100))}%"></i></div><div class="small muted">Until about week ${lockWeekLabel(p.renewTask.until)} · hit it and the offer is guaranteed</div></div>` : ''}
     <div class="btns">
       <button class="btn sm" data-act="askContract">Ask for new contract</button>
+      ${blockActive() ? `<button class="btn sm" data-act="soundOut" ${canSoundOut() ? '' : 'disabled'}>${inWindow() ? (S.player.soundedAt === windowKey() ? 'Agent already asked around' : 'Ask agent to sound out clubs') : 'Agent can ask around in a window'}</button>` : ''}
       ${p.listed ? '<button class="btn sm" data-act="unlist">Withdraw request</button>' : `<button class="btn sm danger" data-act="listAsk" ${clauseActive() ? 'disabled' : ''}>Request transfer</button>`}
     </div></section>`;
 }
@@ -1086,6 +1135,8 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 const POP_ICON = {
   good: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.2 5.8 20.9l1.6-7L2 9.2l7.1-.6z"/></svg>',
   bad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 15a4 4 0 0 1-.6-8 5.5 5.5 0 0 1 10.6 1.5A3.5 3.5 0 0 1 17 15z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></svg>',
+  // Transfer talks: two hands shaking on a deal.
+  talks: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11l4-4 4 2 3-2 4 1 5 4"/><path d="M22 11l-3 3-6-4-3 3-2-2"/><path d="M6 13l4 4a1.5 1.5 0 0 0 2.2-2l1.3 1.3a1.5 1.5 0 0 0 2.2-2l.8.7a1.5 1.5 0 0 0 2-2.2L19 14"/><path d="M2 11l3 3"/></svg>',
 };
 
 function nextPopup() {
@@ -1121,12 +1172,14 @@ function showHaul(pop) {
 
 function showPopup(pop) {
   if (pop.kind === 'haul') { showHaul(pop); return; }
-  fxLayer.className = pop.kind;
+  // Transfer talks get the celebration plus their own look.
+  const fx = pop.kind === 'talks' ? 'good' : pop.kind;
+  fxLayer.className = pop.kind === 'talks' ? 'good talks' : pop.kind;
   fxLayer.innerHTML = `<canvas></canvas><div class="pop" role="dialog" aria-modal="true">
-    <div class="pop-icon">${POP_ICON[pop.kind]}</div><h3>${esc(pop.title)}</h3><p>${esc(pop.text)}</p>
-    <button class="btn ${pop.kind === 'good' ? 'primary' : ''} block" data-act="popNext">Continue</button></div>`;
+    ${pop.kind === 'talks' ? '<div class="talks-tag">Transfer talks</div>' : ''}<div class="pop-icon">${POP_ICON[pop.kind]}</div><h3>${esc(pop.title)}</h3><p>${esc(pop.text)}</p>
+    <button class="btn ${fx === 'good' ? 'primary' : ''} block" data-act="popNext">${pop.kind === 'talks' ? "Let's do this" : 'Continue'}</button></div>`;
   fxLayer.hidden = false;
-  startFx(fxLayer.querySelector('canvas'), pop.kind);
+  startFx(fxLayer.querySelector('canvas'), fx);
 }
 
 function closePopup() {
@@ -1303,7 +1356,11 @@ document.addEventListener('click', e => {
     case 'honTab': honTab = v; render(); return;
     case "refresh": refreshStartChoices(); render(); window.scrollTo(0, 0); return;
     case "refreshOffers": { const n = refreshOffers(); toast(n ? `${n} more club${n > 1 ? 's' : ''} came in` : 'No new clubs this time'); render(); return; }
-    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : "Not possible right now"); render(); return; }
+    case "soundOut": { const n = soundOut(); toast(n ? `${n} club${n > 1 ? 's' : ''} want${n > 1 ? '' : 's'} to talk` : 'No luck this time'); render(); return; }
+    case "inqListen": listenInquiry(v); render(); nextPopup(); return;
+    case "inqIgnore": ignoreInquiry(v); render(); return;
+    case "inqThey": case "inqHalf": case "inqFull": { const [id] = [v]; const r = payBreach(id, act === "inqThey" ? 'they' : act === "inqHalf" ? 'half' : 'full'); toast(r === 'ok' ? 'Release clause broken!' : r === 'no' ? 'They said no' : 'Not enough money'); render(); nextPopup(); return; }
+    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : "Not possible right now"); render(); return; }
     case 'summerPlay': { const r = playSummerStage(); render(); showSummerReport(r); return; }
     case 'summerSim': simulateSummer(); render(); return;
     case 'exportSave': showExport(); return;
