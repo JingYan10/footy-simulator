@@ -55,7 +55,7 @@ const EURO_WEEKS = [3, 5, 7, 11, 13, 16, 19, 24, 28, 30, 31, 34, 35, 36, 37, 38,
 // The old 16-team group format, for competitions already under way in older saves.
 const OLD_EURO_WEEKS = [5, 8, 11, 14, 17, 20, 30, 36, 44];
 const euroWeeks = t => t.weeks || OLD_EURO_WEEKS;
-const EURO_NATS = ['ENG', 'ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED']; // UEFA ranking order
+const EURO_NATS = ['ENG', 'ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED', 'TUR']; // UEFA ranking order
 
 // Domestic cups, one midweek round at a time. Weeks never clash with Europe or each other:
 // main = the big knockout cup (FA Cup, Copa del Rey...), league = league cup, super = super cup
@@ -69,6 +69,7 @@ const DOMESTIC = {
   FRA: [{ key: 'CDF', name: 'Coupe de France', type: 'main', tiers: 3 }, { key: 'TDC', name: 'Trophée des Champions', type: 'super2' }],
   POR: [{ key: 'TDP', name: 'Taça de Portugal', type: 'main', tiers: 3 }, { key: 'TDL', name: 'Taça da Liga', type: 'league', tiers: 2 }, { key: 'STP', name: 'Supertaça', type: 'super2' }],
   NED: [{ key: 'KNVB', name: 'KNVB Cup', type: 'main', tiers: 3 }, { key: 'JCS', name: 'Johan Cruyff Shield', type: 'super2' }],
+  TUR: [{ key: 'TFFC', name: 'Turkish Cup', type: 'main', tiers: 3 }, { key: 'TSC', name: 'Turkish Super Cup', type: 'super4' }],
   KSA: [{ key: 'KC', name: 'King\'s Cup', type: 'main', tiers: 2 }, { key: 'SSC', name: 'Saudi Super Cup', type: 'super4' }],
   USA: [{ key: 'USOC', name: 'U.S. Open Cup', type: 'main', tiers: 3 }, { key: 'MLSC', name: 'MLS Cup', type: 'playoff' }],
 };

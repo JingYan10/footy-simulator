@@ -436,13 +436,15 @@ function inquiriesHtml() {
   const list = inquiries();
   if (!blockActive() || !list.length) return '';
   const fee = S.player.clauseFee || 0, half = Math.round(fee / 2), cash = S.player.money;
+  const pctClass = x => x >= .7 ? 'good' : x >= .4 ? 'mid' : 'bad';
   return `<section class="card"><h2>Agent: clubs asking about you</h2>
     <p class="small muted" style="margin:0">Your release clause blocks official bids, so these clubs came to your agent first. They wait about 6 weeks.</p>
     ${list.map(q => {
       const c = club(q.club), o = q.offer;
+      if (q.talks && !q.odds) q.odds = breachOdds();
       const pay = q.talks ? `<div class="inq-opts">
-          <button class="house" data-act="inqThey" data-v="${q.id}" ${q.triedThey ? 'disabled' : ''}><span><b>Ask them to pay the fee</b><br><span class="small muted">${q.triedThey ? 'They already said no.' : 'Costs you nothing.'}</span></span><span class="odds mid">45%</span></button>
-          <button class="house" data-act="inqHalf" data-v="${q.id}" ${q.triedHalf || cash < half ? 'disabled' : ''}><span><b>Split it: you pay ${money(half)}</b><br><span class="small muted">${q.triedHalf ? 'They already said no.' : cash < half ? 'Not enough money.' : 'If they say no, you lose nothing.'}</span></span><span class="odds good">70%</span></button>
+          <button class="house" data-act="inqThey" data-v="${q.id}" ${q.triedThey ? 'disabled' : ''}><span><b>Ask them to pay the fee</b><br><span class="small muted">${q.triedThey ? 'They already said no.' : 'Costs you nothing.'}</span></span><span class="odds ${pctClass(q.odds.they)}">${Math.round(q.odds.they * 100)}%</span></button>
+          <button class="house" data-act="inqHalf" data-v="${q.id}" ${q.triedHalf || cash < half ? 'disabled' : ''}><span><b>Split it: you pay ${money(half)}</b><br><span class="small muted">${q.triedHalf ? 'They already said no.' : cash < half ? 'Not enough money.' : 'If they say no, you lose nothing.'}</span></span><span class="odds ${pctClass(q.odds.half)}">${Math.round(q.odds.half * 100)}%</span></button>
           <button class="house" data-act="inqFull" data-v="${q.id}" ${cash < fee ? 'disabled' : ''}><span><b>Pay it all: ${money(fee)}</b><br><span class="small muted">${cash < fee ? 'Not enough money.' : 'Always works.'}</span></span><span class="odds good">100%</span></button>
         </div>
         <div class="small muted">Once the clause is broken, ${esc(c.name)} make their official offer. The fee is gone even if you then turn it down.</div>`
@@ -704,18 +706,24 @@ function viewTrain() {
 // Every weekly bill you are tied into: homes in each country (with lease time left), kit and agent.
 function commitmentsView() {
   const p = S.player, nat = homeNat(), w = absWeek();
-  const homes = [{ nat, house: p.house, end: p.house ? p.leaseEnd || 0 : 0, current: true }, ...oldLeases()];
+  const own = ownedHomes();
+  const homes = [...(ownedHere() ? [] : [{ nat, house: p.house, end: p.house ? p.leaseEnd || 0 : 0, current: true }]), ...oldLeases()];
+  const owned = Object.entries(own).map(([n, i]) => `<div class="commit ${n === nat && ownedHere() ? 'on' : ''}"><div><b>${natName(n)}</b> · ${HOUSING[i].name} <span class="chip good">Owned</span>${n === nat && ownedHere() ? ' <span class="chip">You live here</span>' : n === nat ? '' : ' <span class="chip">Waiting for you</span>'}
+      <div class="small muted">Upkeep ${money(upkeepMonth(n, i))} a month · worth ${money(Math.round(housePrice(n, i) * SELL_BACK))} if sold</div>
+      <div class="btns"><button class="btn sm" data-act="sellAsk" data-v="${n}">Sell</button></div></div>
+      <b class="num bad">−${money(upkeepWeek(n, i))}/wk</b></div>`).join('');
   const rows = homes.map(h => {
     const left = Math.max(0, h.end - w);
     return `<div class="commit ${h.current ? 'on' : ''}"><div><b>${natName(h.nat)}</b> · ${HOUSING[h.house].name}${h.current ? ' <span class="chip">You live here</span>' : ' <span class="chip bad">Moved away</span>'}
-      <div class="small muted">${h.house ? left ? `Lease: ${left} week${left !== 1 ? 's' : ''} left` : 'Lease done: you can move any time' : 'No lease'}</div></div>
+      <div class="small muted">${h.bought ? `Old lease, still paid after you bought: ${left} week${left !== 1 ? 's' : ''} left` : h.house ? left ? `Lease: ${left} week${left !== 1 ? 's' : ''} left` : 'Lease done: you can move any time' : 'No lease'}</div></div>
       <b class="num bad">−${money(houseRent(h.nat, h.house))}/wk</b></div>`;
   }).join('');
+  const rowsAll = owned + rows;
   const kit = p.equip ? `<div class="commit"><div><b>${EQUIP_TIERS[p.equip].name} training kit</b><div class="small muted">Running costs, until you switch back to Normal</div></div><b class="num bad">−${money(EQUIP_TIERS[p.equip].fee)}/wk</b></div>` : '';
   const ag = p.agent ? `<div class="commit"><div><b>${agent().name}</b><div class="small muted">${Math.round(agent().cut * 100)}% of your wage</div></div><b class="num bad">−${money(agentCut())}/wk</b></div>` : '';
   return `<section class="card"><h2>Commitments</h2>
-    <p class="small muted" style="margin:0">Leases follow the country you play in. Move abroad before one ends and you keep paying it until it runs out, on top of your new home.</p>
-    <div class="commits">${rows}${kit}${ag}</div>
+    <p class="small muted" style="margin:0">Leases follow the country you play in. Move abroad before one ends and you keep paying it until it runs out, on top of your new home. Homes you own cost a little upkeep wherever you are, and are waiting for you when you come back.</p>
+    <div class="commits">${rowsAll}${kit}${ag}</div>
     <div class="row"><span>Total per week</span><b class="num bad">−${money(weeklyCosts())}</b></div></section>`;
 }
 
@@ -730,6 +738,7 @@ function viewShop() {
     <div class="row small"><span class="muted">Wage</span><b class="num">${money(p.wage)}/wk</b></div>
     <div class="row small"><span class="muted">Sponsors (${sponsorDeals().length} deal${sponsorDeals().length !== 1 ? 's' : ''} + image rights)</span><b class="num">${money(sponsorIncome())}/wk</b></div>
     <div class="row small"><span class="muted">Rent${away.length ? ` (incl. ${away.length} lease${away.length > 1 ? 's' : ''} abroad)` : ''}</span><b class="num bad">−${money(rentNow())}/wk</b></div>
+    ${upkeepNow() ? `<div class="row small"><span class="muted">Home upkeep (${Object.keys(ownedHomes()).length} owned)</span><b class="num bad">−${money(upkeepNow())}/wk</b></div>` : ''}
     <div class="row small"><span class="muted">Equipment</span><b class="num bad">−${money(EQUIP_TIERS[p.equip].fee)}/wk</b></div>
     ${p.agent ? `<div class="row small"><span class="muted">Agent (${Math.round(agent().cut * 100)}% of wage)</span><b class="num bad">−${money(agentCut())}/wk</b></div>` : ''}
     <div class="row"><span>Net per week</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${money(weeklyNet())}</b></div>
@@ -740,12 +749,19 @@ function viewShop() {
       <span><b class="tiername">${t.name}</b> · ×${t.mult} training XP${t.energy ? ` · +${t.energy} energy` : ''}<br><span class="small muted">${t.desc}</span></span><span class="num small r">${!i ? 'Free' : `${owned ? 'Owned' : money(cost)}<br><span class="muted">${money(t.fee)}/wk</span>`}</span></button>`;
   }).join('');
   const left = leaseLeft();
-  const houses = HOUSING.map((h, i) => `<button class="house ${p.house === i ? 'on' : ''}" data-act="house" data-v="${i}" ${p.house !== i && left ? 'disabled' : ''}>
-      <span><b>${h.name}</b><br><span class="small muted">${h.energy ? `+${h.energy} energy/week` : 'No energy bonus'}${i ? ' · 1-year lease' : ' · No lease'}</span></span><span class="num small">${money(houseRent(nat, i))}/wk</span></button>`).join('');
+  const mine = ownedHomes()[nat] || 0;
+  const houses = HOUSING.map((h, i) => {
+    const isMine = mine === i && i > 0, cost = i ? buyCost(i) : 0;
+    const rent = `<button class="btn sm" data-act="house" data-v="${i}" ${p.house === i || (p.house !== i && left) || mine ? 'disabled' : ''}>${p.house === i && !ownedHere() ? 'Renting' : `Rent ${money(houseRent(nat, i))}/wk`}</button>`;
+    const buy = i ? (isMine ? '<span class="chip good">Owned</span>' : `<button class="btn sm good" data-act="buyAsk" data-v="${i}" ${i < mine || p.money < cost ? 'disabled' : ''}>${mine && i > mine ? `Trade up ${money(cost)}` : `Buy ${money(housePrice(nat, i))}`}</button>`) : '';
+    return `<div class="house home-row ${p.house === i ? 'on' : ''}"><span><b>${h.name}</b>${isMine && ownedHere() ? ' <span class="small good">· your home</span>' : ''}<br><span class="small muted">${h.energy ? `+${h.energy} energy/week` : 'No energy bonus'}${i ? ` · upkeep ${money(upkeepMonth(nat, i))}/month if bought` : ' · No lease'}</span></span>
+      <span class="home-acts">${isMine ? '' : rent}${buy}</span></div>`;
+  }).join('');
+  const ownNote = mine ? `<p class="small good" style="margin:0">You own a ${HOUSING[mine].name.toLowerCase()} here: no rent, just ${money(upkeepMonth(nat, mine))} a month upkeep. Trade up any time (your home sells for 90% towards it).</p>` : `<p class="small muted" style="margin:0">Rent on a one-year lease, or buy outright: no rent ever again in ${natName(nat)}, a small monthly upkeep, and it waits for you if you move abroad and come back.</p>`;
   const lease = left ? `<p class="small flood" style="margin:0">You are tied into your lease for ${left} more week${left !== 1 ? 's' : ''}. You can move once it ends.</p>`
     : `<p class="small muted" style="margin:0">Homes are let on a one-year lease: once you move in, you can't move again until it ends.</p>`;
   const awayNote = away.length ? `<p class="small bad" style="margin:0">Still paying for ${away.map(l => `a ${HOUSING[l.house].name.toLowerCase()} in ${natName(l.nat)}`).join(' and ')}. See Commitments.</p>` : '';
-  return seg + fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing in ${natName(nat)}</h2>${lease}${awayNote}<div class="inbox">${houses}</div></section>`;
+  return seg + fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing in ${natName(nat)}</h2>${ownNote}${mine ? '' : lease}${awayNote}<div class="inbox">${houses}</div></section>`;
 }
 
 // ---------- agent ----------
@@ -1403,6 +1419,10 @@ document.addEventListener('click', e => {
     case "list": requestTransfer(); closeModal(); render(); return;
     case "unlist": withdrawTransferRequest(); render(); return;
     case 'house': if (setHouse(+v)) toast(HOUSING[+v].name); render(); return;
+    case 'buyAsk': { const i = +v, nat = homeNat(); confirmSheet(`Buy a ${HOUSING[i].name.toLowerCase()}?`, `${money(housePrice(nat, i))} in ${natName(nat)}${ownedHomes()[nat] ? ` (your current home sells for ${money(Math.round(housePrice(nat, ownedHomes()[nat]) * SELL_BACK))}, so you pay ${money(buyCost(i))})` : ''}. No rent here again, just ${money(upkeepMonth(nat, i))} a month upkeep.${leaseLeft() && !ownedHere() ? ' Your current lease still has to be paid until it ends.' : ''}`, 'buyHouse', 'Buy it', v); return; }
+    case 'buyHouse': if (buyHouse(+v)) toast('Home bought!'); closeModal(); render(); return;
+    case 'sellAsk': { const i = ownedHomes()[v]; if (i) confirmSheet(`Sell your ${HOUSING[i].name.toLowerCase()}?`, `You get ${money(Math.round(housePrice(v, i) * SELL_BACK))} (90% of what it cost) and stop paying upkeep.${v === homeNat() ? ' You move back into a shared flat.' : ''}`, 'sellHouse', 'Sell', v); return; }
+    case 'sellHouse': if (sellHouse(v)) toast('Home sold'); closeModal(); render(); return;
     case 'choose': chooseStart(v); tab = 'home'; render(); window.scrollTo(0, 0); return;
     case 'accept': {
       const o = S.offers.find(x => x.id === v), burned = o && o.type === 'transfer' ? rivalBetrayal(o.club) : [];

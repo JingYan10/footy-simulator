@@ -207,3 +207,47 @@ Object.assign(NAME_POOLS, {
   USA: [['Tyler', 'Brandon', 'Josh', 'Christian', 'Weston', 'Gio', 'Jordan', 'Kellyn', 'Brenden', 'Cole', 'Caden', 'Diego', 'Malik', 'Owen'], ['Johnson', 'Miller', 'Davis', 'Wilson', 'Anderson', 'Taylor', 'Thomas', 'Moore', 'Jackson', 'Robinson', 'Reyna', 'Adams', 'Ramirez', 'Brooks']],
 });
 Object.assign(NATIONS, { KSA: 'Saudi Arabia' });
+
+// ---------- Turkey ----------
+// Süper Lig, 1. Lig and 2. Lig (2025-26, best effort). Same row format as above.
+DB.leagues.push(
+  {
+    id: 'TUR', name: 'Süper Lig', country: 'Turkey', nat: 'TUR', tier: 1,
+    clubs: [
+      ['Galatasaray', 'Okan Buruk', 'TUR', 'Uğurcan Çakır,GK,1996,TUR,82;Davinson Sánchez,CB,1996,COL,80;Abdülkerim Bardakcı,CB,1994,TUR,78;Wilfried Singo,RB,2000,CIV,79;Eren Elmalı,LB,2000,TUR,76;Lucas Torreira,CDM,1996,URU,81;Gabriel Sara,CM,1999,BRA,80;İlkay Gündoğan,CM,1990,GER,82;Leroy Sané,LW,1996,GER,82;Barış Alper Yılmaz,RW,2000,TUR,80;Yunus Akgün,RW,2000,TUR,77;Roland Sallai,RW,1997,HUN,77;Victor Osimhen,ST,1998,NGA,86;Mauro Icardi,ST,1993,ARG,80', 76, 'GAL'],
+      ['Fenerbahçe', 'Domenico Tedesco', 'ITA', 'Ederson,GK,1993,BRA,85;Milan Škriniar,CB,1995,SVK,81;Jayden Oosterwolde,CB,2001,NED,77;Nélson Semedo,RB,1993,POR,78;Archie Brown,LB,2002,ENG,76;Edson Álvarez,CDM,1997,MEX,80;İsmail Yüksek,CDM,1999,TUR,77;Fred,CM,1993,BRA,79;Marco Asensio,CAM,1996,ESP,81;Anderson Talisca,CAM,1994,BRA,79;Kerem Aktürkoğlu,LW,1998,TUR,80;Jhon Durán,ST,2003,COL,79;Youssef En-Nesyri,ST,1997,MAR,80', 75, 'FEN'],
+      ['Beşiktaş', 'Sergen Yalçın', 'TUR', 'Ersin Destanoğlu,GK,2001,TUR,76;Tiago Djaló,CB,2000,POR,77;Emirhan Topçu,CB,2001,TUR,75;Gabriel Paulista,CB,1990,BRA,75;Jonas Svensson,RB,1993,NOR,74;Rıdvan Yılmaz,LB,2001,TUR,75;Wilfred Ndidi,CDM,1996,NGA,79;Orkun Kökçü,CM,2000,TUR,81;Salih Uçan,CM,1994,TUR,75;Milot Rashica,LW,1996,KOS,76;Cengiz Ünder,RW,1997,TUR,77;Tammy Abraham,ST,1997,ENG,78;El Bilal Touré,ST,2001,MLI,77', 72, 'BJK'],
+      ['Trabzonspor', 'Fatih Tekke', 'TUR', 'André Onana,GK,1996,CMR,80;Stefan Savić,CB,1991,MNE,77;Arseniy Batagov,CB,2002,UKR,74;Wagner Pina,RB,2002,POR,74;Mustafa Eskihellaç,LB,1997,TUR,73;Tim Jabol-Folcarelli,CM,1999,FRA,74;Ernest Muçi,CAM,2001,ALB,76;Oleksandr Zubkov,RW,1996,UKR,76;Edin Višća,RW,1990,BIH,74;Paul Onuachu,ST,1994,NGA,79', 70, 'TRA'],
+      ['Başakşehir', 'Nuri Şahin', 'TUR', 'Muhammed Şengezer,GK,1997,TUR,74;Léo Duarte,CB,1996,BRA,75;Jerome Opoku,CB,1998,GHA,73;Onur Bulut,RB,1994,TUR,72;Olivier Kemen,CM,1996,FRA,74;Miguel Crespo,CM,1996,POR,74;Yusuf Sarı,RW,1998,TUR,73;Eldor Shomurodov,ST,1995,UZB,76;Davie Selke,ST,1995,GER,75', 69, 'IBFK'],
+      ['Göztepe', 'Stanimir Stoilov', 'BUL', 'Mateusz Lis,GK,1997,POL,75;Heliton,CB,1996,BRA,73;David Tijanić,CAM,1997,SVN,74;Romulo,ST,2001,BRA,75', 68, 'GÖZ'],
+      ['Samsunspor', 'Thomas Reis', 'GER', 'Okan Kocuk,GK,1995,TUR,75;Rick van Drongelen,CB,1998,NED,74;Olivier Ntcham,CM,1996,CMR,74;Carlo Holse,RW,1999,DEN,75;Marius Mouandilmadji,ST,1998,CHA,74', 68, 'SAM'],
+      ['Eyüpspor', '', '', '', 66, 'EYP'], ['Kasımpaşa', 'Emre Belözoğlu', 'TUR', '', 66, 'KAS'], ['Kocaelispor', 'Selçuk İnan', 'TUR', '', 65, 'KOC'],
+      ['Antalyaspor', 'Erol Bulut', 'TUR', '', 65, 'ANT'], ['Alanyaspor', 'João Pereira', 'POR', '', 66, 'ALA'], ['Konyaspor', 'Recep Uçar', 'TUR', '', 66, 'KON'],
+      ['Kayserispor', 'Markus Gisdol', 'GER', '', 64, 'KAY'], ['Gaziantep FK', 'Burak Yılmaz', 'TUR', '', 66, 'GFK'], ['Çaykur Rizespor', 'İlhan Palut', 'TUR', '', 66, 'RİZ'],
+      ['Gençlerbirliği', '', '', '', 64, 'GEN'], ['Fatih Karagümrük', '', '', '', 64, 'FKG'],
+    ],
+  },
+  {
+    id: 'TUR2', name: '1. Lig', country: 'Turkey', nat: 'TUR', tier: 2,
+    clubs: [
+      ['Sivasspor', '', '', '', 61], ['Hatayspor', '', '', '', 60], ['Adana Demirspor', '', '', '', 59], ['Bodrum FK', '', '', '', 61],
+      ['Bandırmaspor', '', '', '', 60], ['Erzurumspor FK', '', '', '', 61], ['Esenler Erokspor', '', '', '', 60], ['Amed SK', '', '', '', 60],
+      ['Çorum FK', '', '', '', 60], ['Iğdır FK', '', '', '', 59], ['Keçiörengücü', '', '', '', 59], ['Manisa FK', '', '', '', 59],
+      ['Pendikspor', '', '', '', 60], ['Sakaryaspor', '', '', '', 59], ['Serikspor', '', '', '', 58], ['Sarıyer', '', '', '', 58],
+      ['Ümraniyespor', '', '', '', 59], ['Boluspor', '', '', '', 59], ['İstanbulspor', '', '', '', 59], ['Vanspor FK', '', '', '', 58],
+    ],
+  },
+  {
+    id: 'TUR3', name: '2. Lig', country: 'Turkey', nat: 'TUR', tier: 3,
+    clubs: [
+      ['MKE Ankaragücü', '', '', '', 56], ['Bursaspor', '', '', '', 56], ['Şanlıurfaspor', '', '', '', 55], ['Altınordu', '', '', '', 54],
+      ['Tuzlaspor', '', '', '', 54], ['Kırklarelispor', '', '', '', 53], ['Bucaspor 1928', '', '', '', 53], ['Beyoğlu Yeni Çarşı', '', '', '', 53],
+      ['Batman Petrolspor', '', '', '', 53], ['Muşspor', '', '', '', 52], ['Karaman FK', '', '', '', 52], ['Somaspor', '', '', '', 52],
+      ['Ankara Demirspor', '', '', '', 52], ['Kepezspor', '', '', '', 52], ['Aliağa FK', '', '', '', 52], ['İnegölspor', '', '', '', 53],
+      ['Arnavutköy Belediyespor', '', '', '', 52], ['68 Aksaray Belediyespor', '', '', '', 52], ['Mardin 1969 Spor', '', '', '', 51], ['Isparta 32 Spor', '', '', '', 51],
+    ],
+  },
+);
+Object.assign(NAME_POOLS, {
+  TUR: [['Emre', 'Mert', 'Burak', 'Arda', 'Kerem', 'Can', 'Efe', 'Yusuf', 'Ozan', 'Kaan', 'Berk', 'Hakan', 'Cenk', 'Oğuz'], ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Aydın', 'Öztürk', 'Arslan', 'Doğan', 'Kılıç', 'Aslan', 'Koç', 'Kurt']],
+});

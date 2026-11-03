@@ -99,6 +99,7 @@ const HOUSE_RENT = {
   GER: [200, 600, 2000, 6000, 18000],
   FRA: [220, 700, 2800, 8500, 26000],
   POR: [130, 400, 1300, 4000, 12000],
+  TUR: [150, 450, 1500, 5000, 15000],
   NED: [200, 650, 2000, 5500, 15000],
   USA: [280, 900, 3200, 10000, 30000],
   KSA: [150, 550, 1800, 6000, 20000],
@@ -121,6 +122,7 @@ const RIVALRIES = [
   ['Paris Saint-Germain', 'Marseille'], ['Lyon', 'Saint-Étienne'], ['Lens', 'Lille'], ['Nice', 'Monaco'],
   ['Benfica', 'Sporting CP'], ['Benfica', 'Porto'], ['Porto', 'Sporting CP'], ['Braga', 'Vitória SC'],
   ['Ajax', 'Feyenoord'], ['Ajax', 'PSV'], ['PSV', 'Feyenoord'],
+  ['Galatasaray', 'Fenerbahçe'], ['Galatasaray', 'Beşiktaş'], ['Fenerbahçe', 'Beşiktaş'], ['Trabzonspor', 'Fenerbahçe'],
   ['Al Hilal', 'Al Nassr'], ['Al Ittihad', 'Al Ahli'], ['Al Hilal', 'Al Ittihad'], ['Al Nassr', 'Al Shabab'],
   ['LA Galaxy', 'LAFC'], ['Seattle Sounders', 'Portland Timbers'], ['New York City FC', 'New York Red Bulls'], ['Inter Miami', 'Orlando City'], ['Columbus Crew', 'FC Cincinnati'],
 ];
@@ -136,6 +138,7 @@ const DERBY_NAMES = {
   'Paris Saint-Germain|Marseille': 'Le Classique', 'Lyon|Saint-Étienne': 'Derby du Rhône', 'Lens|Lille': 'Derby du Nord', 'Nice|Monaco': "Derby de la Côte d'Azur",
   'Benfica|Sporting CP': 'Lisbon derby', 'Benfica|Porto': 'O Clássico', 'Porto|Sporting CP': 'O Clássico', 'Braga|Vitória SC': 'Minho derby',
   'Ajax|Feyenoord': 'De Klassieker', 'Ajax|PSV': 'De Topper', 'PSV|Feyenoord': 'Dutch derby',
+  'Galatasaray|Fenerbahçe': 'Intercontinental Derby', 'Galatasaray|Beşiktaş': 'Istanbul derby', 'Fenerbahçe|Beşiktaş': 'Istanbul derby', 'Trabzonspor|Fenerbahçe': 'Black Sea rivalry',
   'Al Hilal|Al Nassr': 'Riyadh derby', 'Al Ittihad|Al Ahli': 'Jeddah derby', 'Al Hilal|Al Ittihad': 'Saudi Clásico', 'Al Nassr|Al Shabab': 'Riyadh derby',
   'LA Galaxy|LAFC': 'El Tráfico', 'Seattle Sounders|Portland Timbers': 'Cascadia derby', 'New York City FC|New York Red Bulls': 'Hudson River derby', 'Inter Miami|Orlando City': 'Florida derby', 'Columbus Crew|FC Cincinnati': 'Hell is Real',
 };
@@ -1168,12 +1171,70 @@ const LEASE_WEEKS = SEASON_WEEKS;
 const homeNat = () => league(myClub().league).nat;
 const leaseLeft = () => S.player.house ? Math.max(0, (S.player.leaseEnd || 0) - absWeek()) : 0;
 const oldLeases = () => (S.player.oldLeases || []).filter(l => l.end > absWeek());
-const rentNow = () => houseRent(homeNat(), S.player.house) + oldLeases().reduce((s, l) => s + houseRent(l.nat, l.house), 0);
+// Homes you own, one per country: { ENG: 3, ... } (the HOUSING tier). You live in yours rent-free.
+const ownedHomes = () => S.player.homes || {};
+const ownedHere = () => S.player.house > 0 && ownedHomes()[homeNat()] === S.player.house;
+const rentNow = () => (ownedHere() ? 0 : houseRent(homeNat(), S.player.house)) + oldLeases().reduce((s, l) => s + houseRent(l.nat, l.house), 0);
+
+// What a home costs to buy outright (euros), by country: a flat, a family house, a villa and a
+// footballer's mansion around the big clubs (London, Madrid, Milan, Munich, Paris, Lisbon, Amsterdam,
+// LA and Miami, Riyadh, Istanbul). Upkeep is about 1% of the price a year, paid monthly.
+const HOUSE_PRICE = {
+  ENG: [0, 450000, 1400000, 4000000, 12000000],
+  ESP: [0, 300000, 900000, 2500000, 7000000],
+  ITA: [0, 300000, 850000, 2400000, 6500000],
+  GER: [0, 380000, 1000000, 2600000, 6000000],
+  FRA: [0, 450000, 1300000, 3500000, 9000000],
+  POR: [0, 250000, 650000, 1600000, 4000000],
+  NED: [0, 400000, 1000000, 2400000, 5000000],
+  USA: [0, 550000, 1500000, 4000000, 12000000],
+  KSA: [0, 300000, 900000, 2500000, 8000000],
+  TUR: [0, 200000, 600000, 1800000, 5000000],
+};
+const housePrice = (nat, i) => (HOUSE_PRICE[nat] || HOUSE_PRICE.ESP)[i];
+const upkeepMonth = (nat, i) => Math.round(housePrice(nat, i) * .01 / 12 / 10) * 10;
+const upkeepWeek = (nat, i) => Math.round(upkeepMonth(nat, i) * 12 / 52);
+const upkeepNow = () => Object.entries(ownedHomes()).reduce((s, [nat, i]) => s + upkeepWeek(nat, i), 0);
+// Selling a home (or trading up) gets back 90% of what it cost.
+const SELL_BACK = .9;
+const buyCost = i => housePrice(homeNat(), i) - (ownedHomes()[homeNat()] ? Math.round(housePrice(homeNat(), ownedHomes()[homeNat()]) * SELL_BACK) : 0);
+
+// Buy a home outright in the country you play in. A better one replaces the one you own there (sold
+// for 90%). A lease you are still in keeps being paid until it ends.
+function buyHouse(i) {
+  const p = S.player, nat = homeNat(), cost = buyCost(i);
+  syncHousing();
+  if (!i || ownedHomes()[nat] >= i || p.money < cost) return false;
+  if (p.house && leaseLeft() && !ownedHere()) p.oldLeases = [...oldLeases(), { nat, house: p.house, end: p.leaseEnd, bought: true }];
+  const old = ownedHomes()[nat];
+  p.money -= cost;
+  p.homes = { ...ownedHomes(), [nat]: i };
+  p.house = i;
+  p.leaseEnd = 0;
+  msg(`Bought a ${HOUSING[i].name.toLowerCase()} in ${natName(nat)} for ${money(housePrice(nat, i))}${old ? ` (your ${HOUSING[old].name.toLowerCase()} sold for ${money(Math.round(housePrice(nat, old) * SELL_BACK))})` : ''}. No more rent here: upkeep is ${money(upkeepMonth(nat, i))} a month.`, 'good', 'house');
+  save();
+  return true;
+}
+
+// Sell a home you own, anywhere. If you live in it you move back to a shared flat.
+function sellHouse(nat) {
+  const p = S.player, i = ownedHomes()[nat];
+  if (!i) return false;
+  const back = Math.round(housePrice(nat, i) * SELL_BACK);
+  p.money += back;
+  const homes = { ...ownedHomes() }; delete homes[nat]; p.homes = homes;
+  if (nat === homeNat() && p.house === i && !leaseLeft()) { p.house = 0; p.leaseEnd = 0; }
+  msg(`Sold your ${HOUSING[i].name.toLowerCase()} in ${natName(nat)} for ${money(back)}.`, 'info', 'house');
+  save();
+  return true;
+}
 
 function setHouse(i) {
   const p = S.player;
   syncHousing();
   if (i === p.house || leaseLeft()) return false;
+  // Own a home here and you live in it: no renting on top.
+  if (ownedHomes()[homeNat()]) return false;
   p.house = i;
   p.leaseEnd = i ? absWeek() + LEASE_WEEKS : 0;
   msg(`Moved into a ${HOUSING[i].name.toLowerCase()} in ${natName(homeNat())} (${money(houseRent(homeNat(), i))}/week${i ? ', one-year lease' : ''}).`, 'info', 'house');
@@ -1189,13 +1250,16 @@ function syncHousing() {
   if (p.homeNat === nat) return;
   const from = p.homeNat;
   // The home you leave behind stays yours (and on your bill) until its lease ends.
-  if (p.house && leaseLeft()) {
+  if (p.house && leaseLeft() && ownedHomes()[from] !== p.house) {
     p.oldLeases.push({ nat: from, house: p.house, end: p.leaseEnd });
     msg(`You still owe rent on your ${HOUSING[p.house].name.toLowerCase()} in ${natName(from)}: ${money(houseRent(from, p.house))}/week until the lease ends in ${leaseLeft()} weeks.`, 'bad');
   }
-  // Coming back to a country where you still hold a lease: that home is waiting for you.
-  const back = p.oldLeases.find(l => l.nat === nat);
-  if (back) {
+  // Coming back to a country where you own a home, or still hold a lease: it is waiting for you.
+  const back = p.oldLeases.find(l => l.nat === nat && !l.bought), own = ownedHomes()[nat];
+  if (own) {
+    p.house = own; p.leaseEnd = 0;
+    msg(`Welcome home: you moved back into your own ${HOUSING[own].name.toLowerCase()} in ${natName(nat)}. No rent to pay.`, 'good');
+  } else if (back) {
     p.house = back.house; p.leaseEnd = back.end;
     p.oldLeases = p.oldLeases.filter(l => l !== back);
     msg(`You moved back into your ${HOUSING[p.house].name.toLowerCase()} in ${natName(nat)}.`);
@@ -1212,7 +1276,7 @@ const imageRights = () => Math.round(S.player.rep * 15);
 const sponsorGross = () => sponsorDeals().reduce((s, d) => s + d.weekly, 0) + imageRights();
 function sponsorIncome() { return Math.min(SPONSOR_CAP, sponsorGross()); }
 const agentCut = () => Math.round(S.player.wage * agent().cut);
-function weeklyCosts() { const p = S.player; return rentNow() + EQUIP_TIERS[p.equip].fee + agentCut(); }
+function weeklyCosts() { const p = S.player; return rentNow() + upkeepNow() + EQUIP_TIERS[p.equip].fee + agentCut(); }
 function weeklyNet() { return S.player.wage + sponsorIncome() - weeklyCosts(); }
 // Physicality protects you: a strong body gets injured less often, and less badly.
 // 50 PHY is about normal risk; 90 is roughly half the injuries and a third of the serious ones.
@@ -1517,8 +1581,8 @@ function advanceWeek() {
     p.equip = 0;
     msg('You could not pay for your training equipment, so you are back on normal kit.', 'bad');
   }
-  if (p.money < 0 && (p.house > 0 || (p.oldLeases || []).length)) {
-    p.house = 0;
+  if (p.money < 0 && ((p.house > 0 && !ownedHere()) || (p.oldLeases || []).length)) {
+    p.house = ownedHere() ? p.house : 0;
     p.leaseEnd = 0;
     p.oldLeases = [];
     msg('You ran out of money and had to move back into a shared flat.', 'bad');
@@ -1657,10 +1721,10 @@ function checkContractBoost() {
   if (S.offers.some(o => o.type === 'renew')) return;
   if (p.wage > marketWage(ovr, myClub()) * .8 || ageOf(p.by) >= OLD_RENEW_AGE) return;
   // When the club comes to you it is a loyalty deal half the time (if the manager adores you); any
-  // other deal it offers you itself comes with a one-year release clause.
+  // other deal it offers you itself comes with a release clause.
   const o = makeOffer(myClub(), 'renew', 0, loyaltyRoll() && Math.random() < .5, true);
   S.offers.push(o);
-  msg(o.clause ? `"We really love you as a player," say ${myClub().name}. They want ${o.clause} seasons to make you their star, on ${raisePct(o)}% more a week, and promise to keep every distraction away from you.` : `${myClub().name} want to reward your progress with an improved contract. It comes with a one-year release clause.`, 'good');
+  msg(o.clause ? `"We really love you as a player," say ${myClub().name}. They want ${o.clause} seasons to make you their star, on ${raisePct(o)}% more a week, and promise to keep every distraction away from you.` : `${myClub().name} want to reward your progress with an improved contract.${o.block ? ` It comes with a ${o.block}-year release clause.` : ''}`, 'good');
 }
 
 // Loyalty deals only go to players the manager adores (93+ affection). Turn one down and the club
@@ -1688,11 +1752,11 @@ function loyaltyOffer() {
     p.loyalAsked = S.season;
     if (Math.random() >= .5) return;
   }
-  // Half the time it is a loyalty deal; otherwise a normal new contract with a one-year release clause.
+  // Half the time it is a loyalty deal; otherwise a normal new contract with a release clause.
   const o = makeOffer(myClub(), 'renew', 0, Math.random() < .5, true);
   S.offers.push(o);
   if (!o.clause) {
-    msg(`${myClub().mgr} wants to keep you and has offered a new contract, with a one-year release clause.`, 'good');
+    msg(`${myClub().mgr} wants to keep you and has offered a new contract${o.block ? `, with a ${o.block}-year release clause` : ''}.`, 'good');
     notify('good', 'A new contract', `${myClub().mgr} came to you with a new deal. Check the Contract tab.`);
     return;
   }
@@ -1783,8 +1847,8 @@ function makeOffer(c, type, fixedWage = 0, loyalty = false, clubOffer = false) {
   // Buying clubs only haggle a set number of times (1 to 3) before walking away.
   const maxRounds = (type === 'transfer' ? randi(1, 3) : 2) + ((S.player.agent || 0) >= 4 ? 1 : 0);
   // A release clause: 65% of transfers, and every renewal the club offers you itself (other than a
-  // loyalty deal) for one year.
-  const block = clause ? 0 : type === 'transfer' ? (Math.random() < BLOCK_CHANCE ? blockYears() : 0) : clubOffer ? 1 : 0;
+  // loyalty deal).
+  const block = clause ? 0 : Math.min(years, type === 'transfer' ? (Math.random() < BLOCK_CHANCE ? blockYears() : 0) : clubOffer ? blockYears() : 0);
   return { id: Math.random().toString(36).slice(2, 9), club: c.id, type, wage: clauseWage || wage, years, status, promised, week: S.week, season: S.season, rounds: 0, maxRounds, pen: 0, ...(fixedWage ? { prime: true } : {}), ...(clause ? { clause } : {}), ...(block ? { block, blockFee: breachFee() } : {}) };
 }
 
@@ -1799,10 +1863,11 @@ const raisePct = o => Math.round((o.wage / Math.max(1, S.player.wage) - 1) * 100
 const negLocked = () => (S.player.negLock || 0) > absWeek();
 
 // ---------- release clauses ----------
-// A release clause blocks any move and salary talks for 1 year (80% of the time) or 2. Other clubs
+// A release clause blocks any move and salary talks for 2 years (50% of the time), 3 (30%) or 4 (20%),
+// never longer than the contract itself. Other clubs
 // can only reach you through your agent. Breaking it costs a fee set by your OVR when you sign.
 const BLOCK_CHANCE = .65;
-const blockYears = () => Math.random() < .8 ? 1 : 2;
+const blockYears = () => { const r = Math.random(); return r < .5 ? 2 : r < .8 ? 3 : 4; };
 // Each band runs from its lowest fee at its lowest OVR to its highest at its top OVR:
 // 55–67: €50–250k, 68–77: €750k–5M, 78–84: €10–30M, 85–91: €40–100M (below 55: €20–50k).
 const BREACH_BANDS = [[0, 54, 2e4, 5e4], [55, 67, 5e4, 2.5e5], [68, 77, 7.5e5, 5e6], [78, 84, 1e7, 3e7], [85, MAX_OVR, 4e7, 1e8]];
@@ -1814,8 +1879,23 @@ function breachFee(ovr = calcOVR()) {
 // Old saves only had loyalty clauses.
 const blockActive = () => clauseActive() && S.player.clauseKind === 'block';
 const inquiries = () => S.player.inquiries || [];
-// The three ways to break the clause: the buying club pays (45%), you split it (70%), or you pay it all.
-const BREACH_ODDS = { they: .45, half: .7, full: 1 };
+// Will the buying club pay the fee? It depends on your goals + assists (the better of last season and
+// this one): 40+ makes it 90–100% likely, 30–39 70–89%, 23–29 58–69%, 18–22 46–57%, fewer 0–45%.
+// Offering to pay half lifts the odds a band (and 0–45% straight to 58–69%). Paying it all always works.
+// Deeper roles count their G/A against a lower par (a centre-back's 8 count like a striker's 40);
+// keepers count two per clean sheet.
+const BREACH_TIERS = [[40, [.9, 1], [1, 1]], [30, [.7, .89], [.9, 1]], [23, [.58, .69], [.7, .89]], [18, [.46, .57], [.58, .69]], [0, [0, .45], [.58, .69]]];
+function clauseGA() {
+  const p = S.player, last = (p.career || []).at(-1), st = p.st;
+  if (p.pos === 'GK') return Math.max(last ? last.cleanAll || 0 : 0, st ? st.cleanAll || 0 : 0) * 2;
+  const now = st ? st.goals + st.assists + (st.cup ? st.cup.goals + st.cup.assists : 0) : 0;
+  const before = last ? last.goals + last.assists : 0;
+  return Math.round(Math.max(now, before) * 10 / (GA_PAR[p.pos] || 10));
+}
+function breachOdds() {
+  const [, they, half] = BREACH_TIERS.find(([min]) => clauseGA() >= min);
+  return { they: rand(...they), half: rand(...half), full: 1 };
+}
 
 // A club that would have bid gets in touch with your agent instead.
 function addInquiry(c, o = makeOffer(c, 'transfer')) {
@@ -1853,6 +1933,7 @@ function listenInquiry(id) {
   const q = inquiries().find(x => x.id === id), c = q && club(q.club);
   if (!q || q.talks) return;
   q.talks = true;
+  q.odds = breachOdds();
   msg(`${c.name} have opened talks with ${myClub().name} about your release clause.`, 'good');
   notify('talks', 'Talks are on!', `${c.name} are talking to ${myClub().name} about you right now. Now decide how the ${money(S.player.clauseFee)} release fee gets paid.`);
   save();
@@ -1874,7 +1955,8 @@ function payBreach(id, mode) {
   if ((mode === 'they' && q.triedThey) || (mode === 'half' && q.triedHalf) || p.money < cost) return null;
   if (mode === 'they') q.triedThey = true;
   if (mode === 'half') q.triedHalf = true;
-  if (Math.random() >= BREACH_ODDS[mode]) {
+  q.odds = q.odds || breachOdds();
+  if (Math.random() >= q.odds[mode]) {
     msg(mode === 'they' ? `${c.name} refused to pay your release fee.` : `${c.name} would not split the fee. No money changed hands.`, 'bad');
     save();
     return 'no';
@@ -2346,7 +2428,7 @@ function performanceReview(st, avg, awards) {
 // ---------- individual accolades ----------
 // The Ballon d'Or and friends are decided against the best players in the world (the AI
 // squads), on rating, goals, assists and team success.
-const GOLDEN_SHOE_COEF = { ENG: 2, ESP: 2, ITA: 2, GER: 2, FRA: 2, POR: 1.5, NED: 1.5 };
+const GOLDEN_SHOE_COEF = { ENG: 2, ESP: 2, ITA: 2, GER: 2, FRA: 2, POR: 1.5, NED: 1.5, TUR: 1.5 };
 const BIG_TROPHY = [[/World Cup$/, 12], [/Champions League/, 10], [/European Championship|Copa América|Africa Cup|Asian Cup/, 6], [/champion$/, 6], [/Cup|Copa|Coppa|Coupe|Pokal|Taça|Shield|Super/, 2]];
 
 // Goals in a weaker league impress the voters less.
