@@ -729,9 +729,9 @@ function resolveObjective(o) {
 // you 80% of the time for the next 10 league games, but sets a 3-month target 1.5× tougher than
 // usual. Hit it for +7 affection; miss it and he loses faith (−6).
 const CHANCE_START = .8, CHANCE_GAMES = 10, CHANCE_HARDER = 1.5;
-// After a chance is settled you wait 2 months to ask again. Hit three in a row at one club and the
+// After a chance is settled you wait a month to ask again. Hit three in a row at one club and the
 // manager trusts you for good there: +20 points on your start chance, permanently.
-const CHANCE_COOLDOWN = 8, CHANCE_STREAK = 3, CHANCE_BOOST = .2;
+const CHANCE_COOLDOWN = 4, CHANCE_STREAK = 3, CHANCE_BOOST = .2;
 const chanceBoosted = () => (S.player.boostClubs || []).includes(S.player.club);
 const chanceCooldown = () => Math.max(0, (S.player.chanceNext || 0) - absWeek());
 const chanceObjective = () => (S.player.objectives || []).find(o => o.span === 'chance');
