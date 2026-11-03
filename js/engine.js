@@ -627,8 +627,8 @@ const BANDS = {
 };
 
 // Wingers are judged on goals and assists together; other forwards on goals. Midfielders get goals +
-// assists 60% of the time and assists alone otherwise.
-const MID_GA = .6;
+// assists 80% of the time and assists alone otherwise.
+const MID_GA = .8;
 const objKind = (pos = S.player.pos) => ['LW', 'RW'].includes(pos) ? 'ga' : POS_GROUP[pos] === 'MID' ? (Math.random() < MID_GA ? 'ga' : 'assists') : ({ FWD: 'goals', DEF: 'tackles' }[POS_GROUP[pos]] || 'clean');
 
 function gamesBetween(from, to) {
