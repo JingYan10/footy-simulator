@@ -1035,6 +1035,8 @@ function train(attr) {
   p.slots--;
   p.energy -= TRAIN_ENERGY;
   p.trainedThisWeek = (p.trainedThisWeek || 0) + 1;
+  // The week's running cost follows the best kit you trained with, even if you switch back down.
+  p.weekEquip = Math.max(p.weekEquip || 0, p.equip);
   (p.objectives || []).forEach(o => { if (o.kind === 'train' && o.attr === attr) o.progress++; });
   changeAff(.1);
   save();
@@ -1343,7 +1345,10 @@ const imageRights = () => Math.round(S.player.rep * 15);
 const sponsorGross = () => sponsorDeals().reduce((s, d) => s + d.weekly, 0) + imageRights();
 function sponsorIncome() { return Math.min(SPONSOR_CAP, sponsorGross()); }
 const agentCut = () => Math.round(S.player.wage * agent().cut);
-function weeklyCosts() { const p = S.player; return rentNow() + upkeepNow() + EQUIP_TIERS[p.equip].fee + agentCut(); }
+// Kit running costs: the best kit you trained with this week, or the kit you have now if that is better.
+const kitTier = () => Math.max(S.player.equip, S.player.weekEquip || 0);
+const kitFee = () => EQUIP_TIERS[kitTier()].fee;
+function weeklyCosts() { return rentNow() + upkeepNow() + kitFee() + agentCut(); }
 function weeklyNet() { return S.player.wage + sponsorIncome() - weeklyCosts(); }
 // Physicality protects you: a strong body gets injured less often, and less badly.
 // 50 PHY is about normal risk; 90 is roughly half the injuries and a third of the serious ones.
@@ -1697,6 +1702,7 @@ function advanceWeek() {
   p.energy = clamp(p.energy + energyRegen(), 0, 100);
   p.slots = TRAIN_SLOTS;
   p.trainedThisWeek = 0;
+  p.weekEquip = 0;
   p.affPen = Math.max(0, p.affPen - 1.5);
   p.aff += (50 - p.aff) * .04; // Goodwill fades unless you keep earning it.
   // Rivals' standing with the manager drifts week to week.

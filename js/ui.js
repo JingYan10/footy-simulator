@@ -741,7 +741,7 @@ function commitmentsView() {
       <b class="num bad">−${money(houseRent(h.nat, h.house))}/wk</b></div>`;
   }).join('');
   const rowsAll = owned + rows;
-  const kit = p.equip ? `<div class="commit"><div><b>${EQUIP_TIERS[p.equip].name} training kit</b><div class="small muted">Running costs, until you switch back to Normal</div></div><b class="num bad">−${money(EQUIP_TIERS[p.equip].fee)}/wk</b></div>` : '';
+  const kit = kitTier() ? `<div class="commit"><div><b>${EQUIP_TIERS[kitTier()].name} training kit</b><div class="small muted">${kitTier() > p.equip ? `You trained with it this week, so this week is charged at its rate` : 'Running costs, until you switch back to Normal'}</div></div><b class="num bad">−${money(kitFee())}/wk</b></div>` : '';
   const ag = p.agent ? `<div class="commit"><div><b>${agent().name}</b><div class="small muted">${Math.round(agent().cut * 100)}% of your wage</div></div><b class="num bad">−${money(agentCut())}/wk</b></div>` : '';
   return `<section class="card"><h2>Commitments</h2>
     <p class="small muted" style="margin:0">Leases follow the country you play in. Move abroad before one ends and you keep paying it until it runs out, on top of your new home. Homes you own cost a little upkeep wherever you are, and are waiting for you when you come back.</p>
@@ -761,7 +761,7 @@ function viewShop() {
     <div class="row small"><span class="muted">Sponsors (${sponsorDeals().length} deal${sponsorDeals().length !== 1 ? 's' : ''} + image rights)</span><b class="num">${money(sponsorIncome())}/wk</b></div>
     <div class="row small"><span class="muted">Rent${away.length ? ` (incl. ${away.length} lease${away.length > 1 ? 's' : ''} abroad)` : ''}</span><b class="num bad">−${money(rentNow())}/wk</b></div>
     ${upkeepNow() ? `<div class="row small"><span class="muted">Home upkeep (${Object.keys(ownedHomes()).length} owned)</span><b class="num bad">−${money(upkeepNow())}/wk</b></div>` : ''}
-    <div class="row small"><span class="muted">Equipment</span><b class="num bad">−${money(EQUIP_TIERS[p.equip].fee)}/wk</b></div>
+    <div class="row small"><span class="muted">Equipment${kitTier() > p.equip ? ` (${EQUIP_TIERS[kitTier()].name}: you trained with it this week)` : ''}</span><b class="num bad">−${money(kitFee())}/wk</b></div>
     ${p.agent ? `<div class="row small"><span class="muted">Agent (${Math.round(agent().cut * 100)}% of wage)</span><b class="num bad">−${money(agentCut())}/wk</b></div>` : ''}
     <div class="row"><span>Net per week</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${money(weeklyNet())}</b></div>
     <div class="row small"><span class="muted">Bank</span><b class="num">${money(p.money)}</b></div></section>`;
@@ -783,7 +783,7 @@ function viewShop() {
   const lease = left ? `<p class="small flood" style="margin:0">You are tied into your lease for ${left} more week${left !== 1 ? 's' : ''}. You can move once it ends.</p>`
     : `<p class="small muted" style="margin:0">Homes are let on a one-year lease: once you move in, you can't move again until it ends.</p>`;
   const awayNote = away.length ? `<p class="small bad" style="margin:0">Still paying for ${away.map(l => `a ${HOUSING[l.house].name.toLowerCase()} in ${natName(l.nat)}`).join(' and ')}. See Commitments.</p>` : '';
-  return seg + fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running; if you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing in ${natName(nat)}</h2>${ownNote}${mine ? '' : lease}${awayNote}<div class="inbox">${houses}</div></section>`;
+  return seg + fin + `<section class="card"><h2>Training equipment</h2><p class="small muted" style="margin:0">Your equipment decides how fast your OVR rises. Buy it once, then pay weekly to keep it running: each week costs the running fee of the best kit you trained with, even if you switch back down before the match. If you run out of money you drop back to Normal (you keep what you bought).</p><div class="inbox">${tiers}</div></section>` + `<section class="card"><h2>Housing in ${natName(nat)}</h2>${ownNote}${mine ? '' : lease}${awayNote}<div class="inbox">${houses}</div></section>`;
 }
 
 // ---------- agent ----------
