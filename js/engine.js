@@ -570,7 +570,7 @@ function startChance() {
     if (promised) start = Math.max(start, .82);
     subShare = .5;
   }
-  // Three chances taken in a row at this club: +20 points for good.
+  // Three chances taken in a row at this club, or a loyalty deal: +40 points for good.
   if (chanceBoosted()) start += CHANCE_BOOST;
   // You asked the manager for a chance: he starts you most games (80%) for the next 10 league games.
   if (p.chance > 0) start = Math.max(start, CHANCE_START);
@@ -730,8 +730,8 @@ function resolveObjective(o) {
 // usual. Hit it for +7 affection; miss it and he loses faith (−6).
 const CHANCE_START = .8, CHANCE_GAMES = 10, CHANCE_HARDER = 1.5;
 // After a chance is settled you wait a month to ask again. Hit three in a row at one club and the
-// manager trusts you for good there: +20 points on your start chance, permanently.
-const CHANCE_COOLDOWN = 4, CHANCE_STREAK = 3, CHANCE_BOOST = .2;
+// manager trusts you for good there: +40 points on your start chance, permanently.
+const CHANCE_COOLDOWN = 4, CHANCE_STREAK = 3, CHANCE_BOOST = .4;
 const chanceBoosted = () => (S.player.boostClubs || []).includes(S.player.club);
 const chanceCooldown = () => Math.max(0, (S.player.chanceNext || 0) - absWeek());
 const chanceObjective = () => (S.player.objectives || []).find(o => o.span === 'chance');
@@ -2324,7 +2324,7 @@ function acceptOffer(id) {
       const end = clauseEnd(o.clause);
       p.clauseUntil = (end + 1) * SEASON_WEEKS + 1;
       p.clauseKind = 'loyal';
-      // A loyalty deal is the club's promise to build around you: +20% start chance here for good.
+      // A loyalty deal is the club's promise to build around you: +40 points on your start chance here for good.
       if (!chanceBoosted()) p.boostClubs = [...(p.boostClubs || []), p.club];
       p.loyalNext = 0;
       p.negLock = Math.max(p.negLock, p.clauseUntil);
