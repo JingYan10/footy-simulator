@@ -423,7 +423,7 @@ function prepareGame({ name, nat, pos }) {
 function startingClubs() {
   const all = Object.values(S.clubs), used = new Set(), out = [];
   while (out.length < 5) {
-    const r = Math.random(), tier = r < .05 ? 1 : r < .35 ? 2 : 3;
+    const r = Math.random(), tier = r < .01 ? 1 : r < .31 ? 2 : 3;
     const c = pick(all.filter(x => clubTier(x) === tier && !used.has(x.id)));
     used.add(c.id);
     out.push(c.id);
