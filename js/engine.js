@@ -1610,6 +1610,7 @@ function advanceWeek() {
         const ga = user.goals + user.assists;
         if (ga && won) { changeAff(2); report.events.push('You ignored the plan, but your goal or assist helped win the game. Affection +2'); }
         else if (ga) { changeAff(-2); report.events.push('You ignored the plan. You got a goal or assist, but the team didn\x27t win: affection −2'); }
+        else if (won) { changeAff(-2); report.events.push('You ignored the plan and got no goal or assist, but the team won. He lets it slide a little: affection −2'); }
         else { changeAff(-6); report.events.push('You ignored the manager\x27s plan and got no goal or assist. He is furious: affection −6'); }
       }
     }

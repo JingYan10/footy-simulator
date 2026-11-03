@@ -1324,7 +1324,7 @@ function showOrderSheet() {
   openModal(`<h3>Manager's plan</h3><p style="margin:0">Before the game, ${myClub().mgr} pulls you aside: “${esc(o.text)}”</p>
     <div class="inbox">
       <button class="house" data-act="orderGo" data-v="follow"><span><b>Follow the plan</b><br><span class="small muted">Slightly better chance of winning, same scoring chance. Affection +2 if you play.</span></span></button>
-      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning. Goal or assist in a win: +2. Goal or assist without winning: −2. Neither: −6.</span></span></button>
+      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning. Goal or assist in a win: +2. Goal or assist without winning: −2. Neither, but a win: −2. Neither and no win: −6.</span></span></button>
     </div>`);
 }
 
