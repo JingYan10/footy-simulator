@@ -10,6 +10,7 @@ const TRAIN_ENERGY = 10;
 const PROMOTE = 3;
 const MAX_OVR = 91;
 const NEG_LOCK_WEEKS = 26; // about six months without salary talks after re-signing
+const RENEW_PROMISE = 15; // games your starting place is protected after re-signing as a starter
 const OFFER_LOCK_WEEKS = 26; // and no transfer offers for six months after joining a club
 const TIER_OVR = { 1: [58, 91], 2: [55, 80], 3: [48, 72] };
 const SQUAD_TARGET = { GK: 3, CB: 4, LB: 2, RB: 2, CDM: 2, CM: 3, CAM: 2, LM: 1, RM: 1, LW: 2, RW: 2, ST: 2 };
@@ -2240,6 +2241,12 @@ function acceptOffer(id) {
     msg(`Signed a new ${o.years}-year deal at ${money(o.wage)}/week. No more salary talks for about six months.`, 'good');
     notify('good', 'New contract signed!', `${o.years} more years at ${club(o.club).name}, ${money(o.wage)} a week.`);
     p.negLock = absWeek() + NEG_LOCK_WEEKS;
+    // Signing as a starter (or key player) keeps you in the team for about 15 games, like a
+    // transfer's promised place, as long as the manager doesn't turn on you (affection 30+).
+    if (['Starter', 'Key Player'].includes(squadStatus())) {
+      p.promise = Math.max(p.promise || 0, RENEW_PROMISE);
+      msg(`${myClub().mgr} has kept you in his plans: your starting place is safe for the next ${RENEW_PROMISE} games.`, 'good');
+    }
     if (o.clause) {
       const end = clauseEnd(o.clause);
       p.clauseUntil = (end + 1) * SEASON_WEEKS + 1;

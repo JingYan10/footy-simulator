@@ -309,6 +309,7 @@ function offersHtml() {
       <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
+      ${o.type === 'renew' && ROLE_RANK[role] >= 2 ? `<div class="small good">Sign as ${role.toLowerCase()} and your starting place is protected for ${RENEW_PROMISE} games.</div>` : ''}
       ${dropped ? `<div class="small bad">Was offered as ${o.status.toLowerCase()}: your contract talks cost you affection with ${esc(c.mgr)}, and your place with it.</div>` : ''}
       ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again. You could never be a legend at either club.</div>` : ''}
       ${o.type === 'transfer' && leagueGrowth(c) < 1 ? '<div class="small flood">Big money, weaker league: your OVR will grow more slowly here.</div>' : ''}
