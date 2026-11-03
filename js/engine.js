@@ -1946,7 +1946,11 @@ function addInquiry(c, o = makeOffer(c, 'transfer')) {
 // Ask your agent to sound out clubs, once per transfer window. Each club is 50-50 to be interested;
 // three in four of those get back to your agent, the rest go quiet.
 const windowKey = () => `${S.season}${S.phase === 'offseason' ? 's' : 'j'}`;
-const canSoundOut = () => blockActive() && inWindow() && S.player.soundedAt !== windowKey();
+// Your whole first season at a new club: no asking for a new contract and no sounding out other
+// clubs. Join in summer and it lasts that coming season; join in January and it runs to the summer.
+const newClubLock = () => ((S.phase === 'offseason' ? S.season + 1 : S.season) + 1) * SEASON_WEEKS + 1;
+const newClub = () => (S.player.newClubUntil || 0) > absWeek();
+const canSoundOut = () => blockActive() && inWindow() && S.player.soundedAt !== windowKey() && !newClub();
 function soundOut() {
   const p = S.player;
   if (!canSoundOut()) return null;
@@ -2250,6 +2254,7 @@ function acceptOffer(id) {
     p.offerLock = absWeek() + OFFER_LOCK_WEEKS;
     p.loan = null;
     p.joinedSeason = S.season;
+    p.newClubUntil = newClubLock();
     p.aff = o.promised ? 60 : 50;
     p.affPen = 0;
     p.frozen = false;
@@ -2362,6 +2367,7 @@ function withdrawTransferRequest() {
 function requestContract() {
   const p = S.player, wk = S.season * 100 + S.week;
   if (p.loan || p.needsContract || S.offers.some(o => o.type === 'renew')) return 'busy';
+  if (newClub()) return 'newclub';
   if (negLocked()) return 'locked';
   if (p.lastAsk && wk - p.lastAsk < 10) return 'soon';
   p.lastAsk = wk;
@@ -2819,6 +2825,8 @@ function migrate() {
   }
   // Equipment used to be rented only: what you already use counts as bought.
   if (p.equipOwned == null) p.equipOwned = p.equip || 0;
+  // Saves from before the first-season lock: a club joined this summer still counts as new.
+  if (p.newClubUntil == null) p.newClubUntil = p.joinedSeason === S.season && S.phase === 'offseason' ? (S.season + 2) * SEASON_WEEKS + 1 : 0;
   // Wages below the new minimum (a little above the cheapest rent in the country) are raised to it.
   if (p.club && !p.needsContract && !p.loan && p.wage < minWage(myClub())) p.wage = minWage(myClub());
   // Sponsor fees were cut hard: rescale deals and requests signed at the old rates.

@@ -371,7 +371,7 @@ function managerCard() {
   const note = eff <= FROZEN_AFF ? `You are frozen out: he won't pick you until affection is above ${FROZEN_AFF}.`
     : eff < 45 && ['elite', 'great', 'good'].includes(band) ? 'You hit your targets, but he has gone cold on you. Win him back before asking for money.'
     // Straight after contract talks there's no room to promise: he's still sore, or talks are locked.
-    : negLocked() ? `You just re-signed: no salary talks until about week ${lockWeekLabel()}.`
+    : negLocked() ? (blockActive() ? `Your release clause rules out salary talks until about week ${lockWeekLabel()}.` : clauseActive() ? `Your loyalty clause rules out salary talks until about week ${lockWeekLabel()}.` : `You just re-signed: no salary talks until about week ${lockWeekLabel()}.`)
     : p.affPen >= 1 ? 'He is still sore from your contract talks. Let it settle before asking for more money.'
     : BAND_NOTE[band];
   const cls = eff >= 60 ? '' : eff >= 40 ? 'mid' : 'low';
@@ -388,7 +388,7 @@ function managerCard() {
     ${eff <= FROZEN_AFF + 5 ? `<div class="small bad"><b>Warning:</b> at ${FROZEN_AFF} he freezes you out, and at ${SACK_AFF} he tears up your contract.</div>` : ''}
     <div class="energy" style="margin:0"><span>Board</span><div class="bar"><i class="${p.board >= 60 ? '' : p.board >= 40 ? 'mid' : 'low'}" style="width:${p.board}%"></i></div><b class="num">${Math.round(p.board)}</b></div>
     <div class="row small"><span class="muted">Objectives hit</span><b>${rate === null ? '–' : Math.round(rate * 100) + '%'} <span class="muted">(${(p.objHist || []).length} so far)</span></b></div>
-    <div class="small ${band === 'poor' || note !== BAND_NOTE[band] ? 'bad' : band === 'elite' || band === 'great' ? 'good' : 'muted'}">${note}</div>
+    <div class="small ${negLocked() && note !== BAND_NOTE[band] && eff > FROZEN_AFF && !(eff < 45 && ['elite', 'great', 'good'].includes(band)) ? 'muted' : band === 'poor' || note !== BAND_NOTE[band] ? 'bad' : band === 'elite' || band === 'great' ? 'good' : 'muted'}">${note}</div>
     ${p.objHard ? `<div class="small muted">Targets are ${Math.round(p.objHard * 100)}% harder since your pay rise.</div>` : ''}
     ${p.promise > 0 ? `<div class="small good">Promised starting place: ${p.promise} more league games${effAff() < 30 ? ' (on hold while affection is under 30)' : ''}.</div>` : ''}
     ${objs}
@@ -479,10 +479,11 @@ function contractCard() {
     ${leagueGrowth() < 1 ? `<div class="small muted">Weaker league: your OVR grows about ${Math.round((1 - leagueGrowth()) * 100)}% slower here than in Europe.</div>` : ''}
     ${offerLocked() && !clauseActive() ? `<div class="small muted">Settling in: other clubs will not bid for you until about week ${lockWeekLabel(S.player.offerLock)}.</div>` : ''}
     ${p.listed ? `<div class="small flood">You are transfer-listed. ${inWindow() ? 'Clubs are bidding now.' : `Bids arrive when the window opens (week ${JAN_WINDOW[0]} or summer).`}</div>` : ''}
+    ${newClub() ? `<div class="small muted">First season at ${esc(myClub().name)}: settle in before asking for a new contract or sounding out other clubs (until about week ${lockWeekLabel(p.newClubUntil)}).</div>` : ''}
     ${p.renewTask ? `<div class="obj"><div class="row small"><span><b>Board's task</b> · ${renewTaskText(p.renewTask)} for a new contract</span><span class="num">${p.renewTask.progress}/${p.renewTask.target}</span></div><div class="bar"><i class="mid" style="width:${Math.min(100, Math.round(p.renewTask.progress / p.renewTask.target * 100))}%"></i></div><div class="small muted">Until about week ${lockWeekLabel(p.renewTask.until)} · hit it and the offer is guaranteed</div></div>` : ''}
     <div class="btns">
-      <button class="btn sm" data-act="askContract">Ask for new contract</button>
-      ${blockActive() ? `<button class="btn sm" data-act="soundOut" ${canSoundOut() ? '' : 'disabled'}>${inWindow() ? (S.player.soundedAt === windowKey() ? 'Agent already asked around' : 'Ask agent to sound out clubs') : 'Agent can ask around in a window'}</button>` : ''}
+      <button class="btn sm" data-act="askContract" ${newClub() ? 'disabled' : ''}>Ask for new contract</button>
+      ${blockActive() ? `<button class="btn sm" data-act="soundOut" ${canSoundOut() ? '' : 'disabled'}>${newClub() ? 'Ask agent to sound out clubs' : inWindow() ? (S.player.soundedAt === windowKey() ? 'Agent already asked around' : 'Ask agent to sound out clubs') : 'Agent can ask around in a window'}</button>` : ''}
       ${p.listed ? '<button class="btn sm" data-act="unlist">Withdraw request</button>' : `<button class="btn sm danger" data-act="listAsk" ${clauseActive() ? 'disabled' : ''}>Request transfer</button>`}
     </div></section>`;
 }
@@ -1408,7 +1409,7 @@ document.addEventListener('click', e => {
     case "inqListen": listenInquiry(v); render(); nextPopup(); return;
     case "inqIgnore": ignoreInquiry(v); render(); return;
     case "inqThey": case "inqHalf": case "inqFull": { const [id] = [v]; const r = payBreach(id, act === "inqThey" ? 'they' : act === "inqHalf" ? 'half' : 'full'); toast(r === 'ok' ? 'Release clause broken!' : r === 'no' ? 'They said no' : 'Not enough money'); render(); nextPopup(); return; }
-    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : "Not possible right now"); render(); return; }
+    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : "Not possible right now"); render(); return; }
     case 'summerPlay': { const r = playSummerStage(); render(); showSummerReport(r); return; }
     case 'summerSim': simulateSummer(); render(); return;
     case 'exportSave': showExport(); return;
