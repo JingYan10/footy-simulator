@@ -609,7 +609,7 @@ const OBJ_RATE = { ST: .4, LW: .3, RW: .3, CAM: .35, CM: .2, CDM: .12 };
 // Assists a midfielder can expect per game before OVR and team strength.
 const OBJ_AST_RATE = { CAM: .3, LM: .25, RM: .25, CM: .18, CDM: .08, LW: .18, RW: .18 };
 const TIER_DEMAND = { 1: 1.15, 2: 1, 3: .9 };
-const OBJ_WORDS = { goals: ['goal', 'goals'], assists: ['assist', 'assists'], tackles: ['tackle', 'tackles'], ga: ['goal or assist', 'goals + assists'], clean: ['clean sheet', 'clean sheets'] };
+const OBJ_WORDS = { goals: ['goal', 'goals'], assists: ['assist', 'assists'], tackles: ['tackle', 'tackles'], ga: ['goal or assist', 'goals + assists'], clean: ['clean sheet', 'clean sheets'], gat: ['goal, assist or tackle', 'goals + assists + tackles'] };
 const objWord = (kind, n) => OBJ_WORDS[kind][n === 1 ? 0 : 1];
 function objText(o) {
   if (o.kind === 'train') return `Train ${ATTR_NAMES[o.attr]} ${o.target} times`;
@@ -631,7 +631,10 @@ const BANDS = {
 // Wingers are judged on goals and assists together; other forwards on goals. Midfielders get goals +
 // assists 80% of the time and assists alone otherwise.
 const MID_GA = .8;
-const objKind = (pos = S.player.pos) => ['LW', 'RW'].includes(pos) ? 'ga' : POS_GROUP[pos] === 'MID' ? (Math.random() < MID_GA ? 'ga' : 'assists') : ({ FWD: 'goals', DEF: 'tackles' }[POS_GROUP[pos]] || 'clean');
+// Holding midfielders are judged on tackles (40%), on goals + assists + tackles together (35%), or on
+// goals + assists alone (25%). Their G/A and tackle targets sit below other midfielders' and centre-backs'.
+const cdmKind = () => { const r = Math.random(); return r < .4 ? 'tackles' : r < .75 ? 'gat' : 'ga'; };
+const objKind = (pos = S.player.pos) => pos === 'CDM' ? cdmKind() : ['LW', 'RW'].includes(pos) ? 'ga' : POS_GROUP[pos] === 'MID' ? (Math.random() < MID_GA ? 'ga' : 'assists') : ({ FWD: 'goals', DEF: 'tackles' }[POS_GROUP[pos]] || 'clean');
 
 function gamesBetween(from, to) {
   const lid = myClub().league, id = S.player.club;
@@ -677,6 +680,12 @@ function makeObjective(span) {
   } else if (kind === 'ga') {
     // A winger's (or midfielder's) goals plus assists.
     perGame = (OBJ_RATE[p.pos] || .12) * clamp(Math.pow(calcOVR() / str, 3), .5, 1.6) + (OBJ_AST_RATE[p.pos] || .15) * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
+    // Holding midfielders aren't there to score: their goals + assists target is 40% lower.
+    if (p.pos === 'CDM') perGame *= .6;
+  } else if (kind === 'gat') {
+    // A holding midfielder's goals, assists and tackles added up.
+    perGame = Math.max(1, 2 + ((p.attrs.DEF || 40) - 50) * .2) * (TACKLE_ROLE[p.pos] || 1)
+      + (OBJ_RATE[p.pos] || .12) * clamp(Math.pow(calcOVR() / str, 3), .5, 1.6) + (OBJ_AST_RATE[p.pos] || .15) * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
   } else if (kind === 'assists') {
     perGame = (OBJ_AST_RATE[p.pos] || .15) * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
   } else {
@@ -692,7 +701,7 @@ function makeObjective(span) {
   if (span !== 'season' && expected < 1.1) return null;
   // Tackles come steadily every game, so that target sits much closer to what you should manage.
   // After 34 the manager slowly eases off: 8% lower targets for every year past 34, down to 60%.
-  const target = Math.max(1, Math.floor(expected * (kind === 'tackles' ? .85 : .7) * objVetEase() + .3));
+  const target = Math.max(1, Math.floor(expected * (kind === 'tackles' ? .85 : kind === 'gat' ? .8 : .7) * objVetEase() + .3));
   return { span, kind, target, progress: 0, endWeek: to, games };
 }
 
@@ -1530,7 +1539,7 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   // Goals, assists, tackles and clean sheets in every competition count towards objectives.
   (p.objectives || []).forEach(o => {
     o.progress += o.kind === 'goals' ? user.goals : o.kind === 'assists' ? user.assists : o.kind === 'tackles' ? user.tackles || 0
-      : o.kind === 'ga' ? user.goals + user.assists : o.kind === 'clean' && clean ? 1 : 0;
+      : o.kind === 'ga' ? user.goals + user.assists : o.kind === 'gat' ? user.goals + user.assists + (user.tackles || 0) : o.kind === 'clean' && clean ? 1 : 0;
   });
 }
 
