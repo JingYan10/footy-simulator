@@ -1968,17 +1968,13 @@ function payBreach(id, mode) {
     return 'no';
   }
   p.money -= cost;
-  // The clause is gone: this club bids officially, and so do the others that were asking.
-  p.clauseUntil = 0;
-  p.clauseKind = null;
-  p.offerLock = Math.min(p.offerLock || 0, absWeek());
-  p.negLock = Math.min(p.negLock || 0, absWeek());
-  const rest = inquiries().filter(x => x.id !== id);
-  p.inquiries = [];
-  [q, ...rest].forEach(x => { if (!S.offers.some(o => o.club === x.club)) S.offers.push({ ...x.offer, week: S.week, season: S.season }); });
+  // The fee buys this one club the right to bid. The clause still blocks everyone else, and other
+  // clubs that were asking keep waiting.
+  p.inquiries = inquiries().filter(x => x.id !== id);
+  if (!S.offers.some(o => o.club === q.club)) S.offers.push({ ...q.offer, week: S.week, season: S.season, released: true });
   const who = mode === 'they' ? `${c.name} paid the full ${money(fee)}` : mode === 'half' ? `you and ${c.name} split the ${money(fee)}` : `you paid the ${money(fee)} yourself`;
-  msg(`Release clause broken: ${who}. ${c.name}${rest.length ? ` and ${rest.length} other club${rest.length > 1 ? 's' : ''}` : ''} can now make official offers.`, 'good');
-  notify('good', 'You are free to talk!', `The release clause is gone (${who}). ${c.name}'s official offer is in the Contract tab.`);
+  msg(`Release fee settled: ${who}. Only ${c.name} can make you an official offer; your clause still blocks every other club.`, 'good');
+  notify('good', `${c.name} can bid!`, `The release fee is settled (${who}). ${c.name}'s official offer is in the Contract tab. Other clubs are still blocked.`);
   save();
   return 'ok';
 }

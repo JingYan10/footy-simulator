@@ -455,7 +455,7 @@ function inquiriesHtml() {
           <button class="house" data-act="inqHalf" data-v="${q.id}" ${q.triedHalf || cash < half ? 'disabled' : ''}><span><b>Split it: you pay ${money(half)}</b><br><span class="small muted">${q.triedHalf ? 'They already said no.' : cash < half ? 'Not enough money.' : 'If they say no, you lose nothing.'}</span></span><span class="odds ${pctClass(q.odds.half)}">${Math.round(q.odds.half * 100)}%</span></button>
           <button class="house" data-act="inqFull" data-v="${q.id}" ${cash < fee ? 'disabled' : ''}><span><b>Pay it all: ${money(fee)}</b><br><span class="small muted">${cash < fee ? 'Not enough money.' : 'Always works.'}</span></span><span class="odds good">100%</span></button>
         </div>
-        <div class="small muted">Once the clause is broken, ${esc(c.name)} make their official offer. The fee is gone even if you then turn it down.</div>`
+        <div class="small muted">Once the fee is settled, only ${esc(c.name)} can bid for you: every other club stays blocked by your clause. The fee is gone even if you then turn their offer down.</div>`
         : `<div class="btns"><button class="btn good sm" data-act="inqListen" data-v="${q.id}">Listen</button><button class="btn sm" data-act="inqIgnore" data-v="${q.id}">Not interested</button></div>`;
       return `<div class="offer ${q.talks ? 'talks' : ''}">
         <div class="row"><div class="clubcell">${crest(c.id, 'small')}<div style="min-width:0"><div class="club">${esc(c.name)}</div><div class="small muted">${esc(league(c.league).name)} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
