@@ -1776,7 +1776,7 @@ function randomEvent(report) {
 
 function checkContractBoost() {
   const p = S.player, ovr = calcOVR();
-  if (p.loan || p.years < 1 || ovr - p.ovrAtSign < 4 || effAff() < 45 || negLocked()) return;
+  if (p.loan || p.years < 1 || ovr - p.ovrAtSign < 4 || effAff() < 45 || clubTalksLocked()) return;
   if (S.offers.some(o => o.type === 'renew')) return;
   if (p.wage > marketWage(ovr, myClub()) * .8 || ageOf(p.by) >= OLD_RENEW_AGE) return;
   // When the club comes to you it is a loyalty deal half the time (if the manager adores you); any
@@ -1804,7 +1804,7 @@ function loyaltyRoll() {
 // only thinks again about every three months, again half the time.
 function loyaltyOffer() {
   const p = S.player;
-  if (p.loan || p.needsContract || !loyalAge() || negLocked() || S.offers.some(o => o.type === 'renew')) return;
+  if (p.loan || p.needsContract || !loyalAge() || clubTalksLocked() || S.offers.some(o => o.type === 'renew')) return;
   if (p.loyalNext) { if (!loyaltyRoll()) return; }
   else {
     if (p.loyalAsked === S.season || effAff() < LOYAL_AFF) return;
@@ -1920,6 +1920,9 @@ const clauseActive = () => (S.player.clauseUntil || 0) > absWeek();
 // How much more than your current wage an offer pays, in %.
 const raisePct = o => Math.round((o.wage / Math.max(1, S.player.wage) - 1) * 100);
 const negLocked = () => (S.player.negLock || 0) > absWeek();
+// Offers your club makes itself: a loyalty clause stops you asking, not the club coming to you, once
+// six months have passed since you last signed.
+const clubTalksLocked = () => negLocked() && !(clauseActive() && S.player.clauseKind === 'loyal' && absWeek() >= (S.player.renewedAt || 0) + NEG_LOCK_WEEKS);
 
 // ---------- release clauses ----------
 // A release clause blocks any move and salary talks for 2 years (50% of the time), 3 (30%) or 4 (20%),
@@ -2298,8 +2301,18 @@ function acceptOffer(id) {
     notify('good', 'Welcome to ' + club(o.club).name + '!', `You signed a ${o.years}-year deal worth ${money(o.wage)} a week.`);
     addRep(2);
   } else {
+    // A new contract with your club replaces the old one, clauses included: an old loyalty (or
+    // release) clause ends here, and the new deal's own clause, if it has one, takes its place.
+    if (clauseActive()) {
+      if ((p.offerLock || 0) <= p.clauseUntil) p.offerLock = Math.min(p.offerLock || 0, absWeek());
+      msg(`Your old ${p.clauseKind === 'block' ? 'release' : 'loyalty'} clause is replaced by this new contract${o.clause || o.block ? ' and its own clause' : ''}.`);
+      p.clauseUntil = 0;
+      p.clauseKind = null;
+      p.inquiries = [];
+    }
     msg(`Signed a new ${o.years}-year deal at ${money(o.wage)}/week. No more salary talks for about six months.`, 'good');
     notify('good', 'New contract signed!', `${o.years} more years at ${club(o.club).name}, ${money(o.wage)} a week.`);
+    p.renewedAt = absWeek();
     p.negLock = absWeek() + NEG_LOCK_WEEKS;
     // Signing as a starter (or key player) keeps you in the team for about 15 games, like a
     // transfer's promised place, as long as the manager doesn't turn on you (affection 30+).
