@@ -2804,6 +2804,64 @@ function retire() {
   save();
 }
 
+// ---------- paused careers ----------
+// Careers you stepped away from without retiring. A whole save is about 2 MB, too big to keep
+// several in localStorage, so each one lives in IndexedDB; a small list for the start screen
+// stays in localStorage.
+const PAUSED_KEY = 'ptl_paused_v1', IDB_NAME = 'ptl', IDB_STORE = 'paused';
+function pausedList() { try { return JSON.parse(localStorage.getItem(PAUSED_KEY)) || []; } catch (e) { return []; } }
+function setPausedList(list) { try { localStorage.setItem(PAUSED_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ } }
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbDo(mode, fn) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, mode), req = fn(tx.objectStore(IDB_STORE));
+    tx.oncomplete = () => res(req && req.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+// Put the career in progress aside and clear the slot. Returns false if it could not be stored,
+// in which case nothing is deleted.
+async function pauseCurrent() {
+  if (!S || S.phase === 'retired') return true;
+  const p = S.player, id = p.careerId || (p.careerId = Date.now());
+  try { await idbDo('readwrite', st => st.put(JSON.stringify(S), id)); } catch (e) { return false; }
+  const row = {
+    id, name: p.name, pos: p.pos, nat: p.nat, age: ageOf(p.by), ovr: calcOVR(), season: seasonLabel(),
+    club: p.club ? myClub().name : 'Choosing a club', clubId: p.club || null, seasons: (p.career || []).length, paused: Date.now(),
+  };
+  setPausedList([row, ...pausedList().filter(r => r.id !== id)]);
+  wipe();
+  return true;
+}
+
+// Pick a paused career back up. The one you were playing (if any) is paused in its place.
+async function resumePaused(id) {
+  let raw;
+  try { raw = await idbDo('readonly', st => st.get(id)); } catch (e) { return false; }
+  if (!raw) return false;
+  if (S && S.phase !== 'retired' && !(await pauseCurrent())) return false;
+  S = JSON.parse(raw);
+  migrate();
+  save();
+  setPausedList(pausedList().filter(r => r.id !== id));
+  try { await idbDo('readwrite', st => st.delete(id)); } catch (e) { /* the list no longer points at it */ }
+  return true;
+}
+
+async function deletePaused(id) {
+  setPausedList(pausedList().filter(r => r.id !== id));
+  try { await idbDo('readwrite', st => st.delete(id)); } catch (e) { /* already gone */ }
+}
+
 // ---------- save ----------
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* storage unavailable */ } }
 function load() { try { const raw = localStorage.getItem(SAVE_KEY); if (raw) S = JSON.parse(raw); } catch (e) { S = null; } if (S && S.v !== 3) S = null;

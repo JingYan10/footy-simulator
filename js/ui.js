@@ -53,6 +53,14 @@ function savedCareerCard() {
     <button class="btn primary block" data-act="continue">Continue career</button></section>`;
 }
 
+// Careers put aside without retiring: pick any of them up again. The one you are playing is put
+// aside in its place.
+function pausedHtml() {
+  const list = pausedList();
+  if (!list.length) return '';
+  return `<section class="card"><h2>Careers in progress</h2><p class="small muted" style="margin:0">Careers you put aside without retiring.${S && S.phase !== 'retired' ? ` Continuing one puts ${esc(S.player.name)} aside in its place.` : ''}</p><div class="inbox">${list.map(r => `<div class="pastrow"><button class="house" data-act="resume" data-v="${r.id}"><span class="clubcell">${dbCrest(r.club)}<span><b>${esc(r.name)}</b> · ${r.pos} · OVR ${r.ovr}<br><span class="small muted">${esc(r.club)} · Age ${r.age} · ${esc(r.season)}</span></span></span><span class="small good">Continue</span></button><button class="btn danger sm" data-act="pausedDelAsk" data-v="${r.id}" aria-label="Delete ${esc(r.name)}">Delete</button></div>`).join('')}</div></section>`;
+}
+
 function renderLanding() {
   // A retired save is finished: it shows up with the past careers, not as one to continue.
   if (S && S.phase === 'retired') archiveCurrent();
@@ -63,6 +71,7 @@ function renderLanding() {
     ${active ? savedCareerCard() : '<section class="card"><p class="small muted" style="margin:0">No career in progress on this device.</p></section>'}
     <button class="btn ${active ? '' : 'primary'} block" data-act="landingNew">Start a new career</button>
     <button class="btn block" data-act="importAsk">Import a saved career</button>
+    ${pausedHtml()}
     ${past.length ? `<section class="card"><h2>Past careers</h2><div class="inbox">${past.map(r => {
       const t = careerTotals(r);
       return `<div class="pastrow"><button class="house" data-act="viewPast" data-v="${r.id}"><span><b>${esc(r.name)}</b> · ${r.pos} · Peak ${r.peak}<br><span class="small muted">${esc(r.lastClub)} · ${r.career.length} season${r.career.length !== 1 ? 's' : ''} · ${t.goals} goals · ${r.trophies.length} trophies</span>${tagHtml(legacyTags(r))}</span><span class="small flood">View</span></button><button class="btn danger sm" data-act="pastDelAsk" data-v="${r.id}" aria-label="Delete ${esc(r.name)}">Delete</button></div>`;
@@ -1045,7 +1054,8 @@ function dbCrest(name) {
     let found = null;
     for (const l of DB.leagues) {
       const row = l.clubs.find(c => c[0] === name);
-      if (row) { found = { id: `${l.id}-db`, name, short: row[1] }; break; }
+      // Top-flight rows from database.js carry the short code second; the other leagues put it last.
+      if (row) { found = { id: `${l.id}-db`, name, short: l.tier === 1 && row.length === 5 && typeof row[4] === 'string' ? row[1] : row[5] || shortName(name) }; break; }
     }
     dbClubCache[name] = found;
   }
@@ -1423,7 +1433,8 @@ document.addEventListener('click', e => {
     case 'pastDel': deleteArchived(+v); closeModal(); toast('Career deleted'); pastView = null; landing = true; render(); return;
     case 'freshStart': archiveCurrent(); wipe(); pastView = null; landing = false; draft.name = ''; render(); window.scrollTo(0, 0); return;
     case 'landingNew': if (!S || S.phase === 'retired') { archiveCurrent(); wipe(); landing = false; draft.name = ''; render(); window.scrollTo(0, 0); }
-      else confirmSheet('Start a new career?', `${esc(S.player.name)} has not retired yet, so this deletes that career on this device. Retire first to keep it in your past careers, or export it from the Career tab.`, 'newGame', 'Delete and start over');
+      else openModal(`<h3>Start a new career?</h3><p class="muted" style="margin:0">${esc(S.player.name)} has not retired yet. Put the career aside and pick it up any time from Careers in progress, or delete it for good.</p>
+        <div class="btns"><button class="btn primary" data-act="pauseNew">Put it aside</button><button class="btn danger" data-act="newGame">Delete it</button><button class="btn" data-act="close">Cancel</button></div>`);
       return;
     case 'menu': landing = true; pastView = null; closeModal(); render(); window.scrollTo(0, 0); return;
     case "listAsk": confirmSheet("Request a transfer?", "The manager (−15) and the board (−20) will be unhappy. Clubs will bid for you in the transfer windows.", "list", "Hand in request"); return;
@@ -1450,6 +1461,10 @@ document.addEventListener('click', e => {
     case 'retire': retire(); closeModal(); tab = 'home'; render(); return;
     case 'newAsk': confirmSheet('Start over?', 'This deletes your current career save on this device.', 'newGame', 'Delete and start over'); return;
     case 'newGame': wipe(); closeModal(); landing = false; draft.name = ''; render(); return;
+    case 'pauseNew': pauseCurrent().then(ok => { closeModal(); if (!ok) { toast('Could not put it aside on this device'); render(); return; } landing = false; draft.name = ''; render(); window.scrollTo(0, 0); toast('Career put aside'); }); return;
+    case 'resume': resumePaused(+v).then(ok => { if (!ok) { toast('Could not load that career'); render(); return; } landing = false; tab = 'home'; render(); window.scrollTo(0, 0); }); return;
+    case 'pausedDelAsk': { const r = pausedList().find(x => x.id === +v); if (r) confirmSheet(`Delete ${esc(r.name)}?`, `This unfinished career (${esc(r.club)}, ${esc(r.season)}) will be gone for good. This cannot be undone.`, 'pausedDel', 'Delete', v); return; }
+    case 'pausedDel': deletePaused(+v).then(() => { closeModal(); toast('Career deleted'); render(); }); return;
     case 'close': closeModal(); render(); return;
   }
 });
