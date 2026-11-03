@@ -570,6 +570,8 @@ function startChance() {
     if (promised) start = Math.max(start, .82);
     subShare = .5;
   }
+  // Three chances taken in a row at this club: +20 points for good.
+  if (chanceBoosted()) start += CHANCE_BOOST;
   // You asked the manager for a chance: he starts you most games (80%) for the next 10 league games.
   if (p.chance > 0) start = Math.max(start, CHANCE_START);
   // A loan club wants to see you play: at least a 40% start chance.
@@ -713,6 +715,7 @@ function objBand() { const r = objRate(); return r === null ? 'new' : ['elite', 
 
 function resolveObjective(o) {
   const p = S.player, ok = o.progress >= o.target, sp = OBJ_SPAN[o.span];
+  if (o.span === 'chance') settleChance(ok);
   p.objHist = [...(p.objHist || []), ok ? sp.weight : -sp.weight].slice(-16);
   const d = (ok ? sp.win : -sp.lose) + (o.span === 'chance' ? 0 : BANDS[objBand()].bonus);
   changeAff(d);
@@ -726,10 +729,15 @@ function resolveObjective(o) {
 // you 80% of the time for the next 10 league games, but sets a 3-month target 1.5× tougher than
 // usual. Hit it for +7 affection; miss it and he loses faith (−6).
 const CHANCE_START = .8, CHANCE_GAMES = 10, CHANCE_HARDER = 1.5;
+// After a chance is settled you wait 2 months to ask again. Hit three in a row at one club and the
+// manager trusts you for good there: +20 points on your start chance, permanently.
+const CHANCE_COOLDOWN = 8, CHANCE_STREAK = 3, CHANCE_BOOST = .2;
+const chanceBoosted = () => (S.player.boostClubs || []).includes(S.player.club);
+const chanceCooldown = () => Math.max(0, (S.player.chanceNext || 0) - absWeek());
 const chanceObjective = () => (S.player.objectives || []).find(o => o.span === 'chance');
 function canAskChance() {
   const p = S.player;
-  if (S.phase !== 'season' || p.loan || p.injured || p.needsContract || frozenOut() || p.chance > 0 || chanceObjective()) return false;
+  if (S.phase !== 'season' || p.loan || p.injured || p.needsContract || frozenOut() || p.chance > 0 || chanceObjective() || chanceCooldown()) return false;
   return startChance().start < .2 && gamesBetween(S.week, Math.min(SEASON_WEEKS, S.week + 11)) >= 3;
 }
 function askChance() {
@@ -743,6 +751,19 @@ function askChance() {
   notify('good', 'Your chance has come!', `${myClub().mgr} will start you in most of the next ${CHANCE_GAMES} league games. Prove him right: ${objText(o)} in 3 months, or affection −6.`);
   save();
   return true;
+}
+
+// A chance has been settled: start the cooldown and count the streak.
+function settleChance(ok) {
+  const p = S.player;
+  p.chanceNext = absWeek() + CHANCE_COOLDOWN;
+  p.chanceStreak = ok ? (p.chanceStreak || 0) + 1 : 0;
+  if (ok && p.chanceStreak >= CHANCE_STREAK && !chanceBoosted()) {
+    p.boostClubs = [...(p.boostClubs || []), p.club];
+    p.chanceStreak = 0;
+    msg(`Three chances taken in a row. ${myClub().mgr} trusts you completely now: +${Math.round(CHANCE_BOOST * 100)}% start chance for as long as you are at ${myClub().name}.`, 'good');
+    notify('good', 'He believes in you!', `You proved ${myClub().mgr} right three times in a row. Your start chance at ${myClub().name} is now ${Math.round(CHANCE_BOOST * 100)}% higher for good.`);
+  }
 }
 
 // After each week: settle objectives whose window has closed and set the next ones.
@@ -2265,6 +2286,8 @@ function acceptOffer(id) {
     p.objHist = [];
     p.objectives = [];
     p.chance = 0;
+    p.chanceStreak = 0;
+    p.chanceNext = 0;
     p.objHard = o.negotiated ? .1 : 0;
     p.promise = o.promised ? 15 : 0;
     p.negLock = 0;
@@ -2288,11 +2311,13 @@ function acceptOffer(id) {
       const end = clauseEnd(o.clause);
       p.clauseUntil = (end + 1) * SEASON_WEEKS + 1;
       p.clauseKind = 'loyal';
+      // A loyalty deal is the club's promise to build around you: +20% start chance here for good.
+      if (!chanceBoosted()) p.boostClubs = [...(p.boostClubs || []), p.club];
       p.loyalNext = 0;
       p.negLock = Math.max(p.negLock, p.clauseUntil);
       p.offerLock = Math.max(p.offerLock || 0, p.clauseUntil);
       p.listed = false;
-      msg(`"You won't regret this. We'll take care of everything else." Your loyalty clause runs until the end of ${seasonLabel(end)}: no bids from other clubs and no salary talks until then.`);
+      msg(`"You won't regret this. We'll take care of everything else." Your loyalty clause runs until the end of ${seasonLabel(end)}: no bids from other clubs and no salary talks until then. You are part of their plans now: +${Math.round(CHANCE_BOOST * 100)}% start chance at ${myClub().name} for good.`);
     }
     if (o.negotiated) {
       p.objHard = Math.min(.3, (p.objHard || 0) + .1);

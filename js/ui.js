@@ -310,7 +310,7 @@ function offersHtml() {
     const role = o.type === 'renew' ? squadStatus() : o.status, ROLE_RANK = { Reserve: 0, Rotation: 1, Starter: 2, 'Key Player': 3 }, dropped = o.type === 'renew' && ROLE_RANK[role] < ROLE_RANK[o.status];
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
-      : o.clause ? `<div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}.</div>`
+      : o.clause ? `<div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}.</div>${chanceBoosted() ? '' : `<div class="small good">Sign it and you are part of their plans: +${Math.round(CHANCE_BOOST * 100)}% start chance at ${esc(c.name)} for good.</div>`}`
       : o.talksOver ? '<div class="small bad">Talks broke down. You can still sign this offer or decline it, but not negotiate.</div>'
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
@@ -402,6 +402,8 @@ function managerCard() {
     ${p.promise > 0 ? `<div class="small good">Promised starting place: ${p.promise} more league games${effAff() < 30 ? ' (on hold while affection is under 30)' : ''}.</div>` : ''}
     ${objs}
     ${p.chance > 0 ? `<div class="small good">Your chance: he starts you in most games (${Math.round(CHANCE_START * 100)}%) for ${p.chance} more league game${p.chance !== 1 ? 's' : ''}.</div>` : ''}
+    ${chanceBoosted() ? `<div class="small good">He trusts you for good here: +${Math.round(CHANCE_BOOST * 100)}% start chance at ${esc(c.name)}.</div>` : (p.chanceStreak || 0) > 0 ? `<div class="small muted">Chances taken in a row: ${p.chanceStreak}/${CHANCE_STREAK}. Make it ${CHANCE_STREAK} and he trusts you for good (+${Math.round(CHANCE_BOOST * 100)}% start chance here).</div>` : ''}
+    ${!canAskChance() && chanceCooldown() && !p.chance && !chanceObjective() && startChance().start < .2 ? `<div class="small muted">You can ask ${esc(c.mgr)} for another chance in ${chanceCooldown()} week${chanceCooldown() !== 1 ? 's' : ''}.</div>` : ''}
     ${canAskChance() ? `<div class="chance-ask"><div class="small muted">Only a ${Math.round(startChance().start * 100)}% chance of starting. Ask ${esc(c.mgr)} to play you: you'll start ${Math.round(CHANCE_START * 100)}% of the next ${CHANCE_GAMES} league games, but he sets a 3-month target ${CHANCE_HARDER}× tougher than usual. Hit it and he warms to you (+7); miss it and affection drops by 6.</div><button class="btn sm primary" data-act="askChance">Ask for a chance</button></div>` : ''}</section>`;
 }
 
