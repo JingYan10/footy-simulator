@@ -570,6 +570,8 @@ function startChance() {
     if (promised) start = Math.max(start, .82);
     subShare = .5;
   }
+  // You asked the manager for a chance: he starts you most games (80%) for the next 10 league games.
+  if (p.chance > 0) start = Math.max(start, CHANCE_START);
   // A loan club wants to see you play: at least a 40% start chance.
   if (p.loan) start = Math.max(start, .4);
   if (p.energy < 25) start *= .4;
@@ -597,6 +599,8 @@ const OBJ_SPAN = {
   season: { weeks: SEASON_WEEKS, label: 'This season', win: 12, lose: 8, weight: 3 },
   // Off-the-ball tasks: what to work on in training, or keeping fresh for matchdays.
   drill: { weeks: 4, label: 'Training brief', win: 2, lose: 2, weight: .5 },
+  // Asked the manager for a chance: a tougher 3-month target. Miss it and he loses faith (−6).
+  chance: { weeks: 12, label: 'Prove yourself', win: 7, lose: 6, weight: 2 },
 };
 const OBJ_ORDER = ['month', 'quarter', 'season', 'drill'];
 const OBJ_RATE = { ST: .4, LW: .3, RW: .3, CAM: .35, CM: .2, CDM: .12 };
@@ -622,8 +626,10 @@ const BANDS = {
   new: { label: 'No track record yet', cap: 1, chance: 0, bonus: 0 },
 };
 
-// Wingers are judged on goals and assists together; other forwards on goals.
-const objKind = (pos = S.player.pos) => ['LW', 'RW'].includes(pos) ? 'ga' : ({ FWD: 'goals', MID: 'assists', DEF: 'tackles' }[POS_GROUP[pos]] || 'clean');
+// Wingers are judged on goals and assists together; other forwards on goals. Midfielders get goals +
+// assists 60% of the time and assists alone otherwise.
+const MID_GA = .6;
+const objKind = (pos = S.player.pos) => ['LW', 'RW'].includes(pos) ? 'ga' : POS_GROUP[pos] === 'MID' ? (Math.random() < MID_GA ? 'ga' : 'assists') : ({ FWD: 'goals', DEF: 'tackles' }[POS_GROUP[pos]] || 'clean');
 
 function gamesBetween(from, to) {
   const lid = myClub().league, id = S.player.club;
@@ -667,8 +673,8 @@ function makeObjective(span) {
     // What your Defending stat gives over 90 minutes (see matchTackles).
     perGame = Math.max(1, 2 + ((p.attrs.DEF || 40) - 50) * .2) * (TACKLE_ROLE[p.pos] || 1);
   } else if (kind === 'ga') {
-    // A winger's goals plus assists.
-    perGame = OBJ_RATE[p.pos] * clamp(Math.pow(calcOVR() / str, 3), .5, 1.6) + OBJ_AST_RATE[p.pos] * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
+    // A winger's (or midfielder's) goals plus assists.
+    perGame = (OBJ_RATE[p.pos] || .12) * clamp(Math.pow(calcOVR() / str, 3), .5, 1.6) + (OBJ_AST_RATE[p.pos] || .15) * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
   } else if (kind === 'assists') {
     perGame = (OBJ_AST_RATE[p.pos] || .15) * clamp(Math.pow(calcOVR() / str, 2), .5, 1.6);
   } else {
@@ -708,7 +714,7 @@ function objBand() { const r = objRate(); return r === null ? 'new' : ['elite', 
 function resolveObjective(o) {
   const p = S.player, ok = o.progress >= o.target, sp = OBJ_SPAN[o.span];
   p.objHist = [...(p.objHist || []), ok ? sp.weight : -sp.weight].slice(-16);
-  const d = (ok ? sp.win : -sp.lose) + BANDS[objBand()].bonus;
+  const d = (ok ? sp.win : -sp.lose) + (o.span === 'chance' ? 0 : BANDS[objBand()].bonus);
   changeAff(d);
   const what = `${objText(o)} (${sp.label.toLowerCase()})`;
   const sign = d >= 0 ? '+' : '−';
@@ -716,11 +722,36 @@ function resolveObjective(o) {
   notify(ok ? 'good' : 'bad', ok ? 'Objective complete!' : 'Objective missed', `${myClub().mgr} wanted ${what}. You got ${o.progress}. Affection ${sign}${Math.abs(Math.round(d))}.`);
 }
 
+// Ask for a chance: with under a 20% start chance you can ask the manager to play you. He starts
+// you 80% of the time for the next 10 league games, but sets a 3-month target 1.5× tougher than
+// usual. Hit it for +7 affection; miss it and he loses faith (−6).
+const CHANCE_START = .8, CHANCE_GAMES = 10, CHANCE_HARDER = 1.5;
+const chanceObjective = () => (S.player.objectives || []).find(o => o.span === 'chance');
+function canAskChance() {
+  const p = S.player;
+  if (S.phase !== 'season' || p.loan || p.injured || p.needsContract || frozenOut() || p.chance > 0 || chanceObjective()) return false;
+  return startChance().start < .2 && gamesBetween(S.week, Math.min(SEASON_WEEKS, S.week + 11)) >= 3;
+}
+function askChance() {
+  const p = S.player;
+  if (!canAskChance()) return false;
+  p.chance = CHANCE_GAMES;
+  const o = makeObjective('chance') || { span: 'chance', kind: objKind(), target: 1, progress: 0, endWeek: Math.min(SEASON_WEEKS, S.week + 11), games: gamesBetween(S.week, Math.min(SEASON_WEEKS, S.week + 11)) };
+  o.target = Math.max(2, Math.ceil(o.target * CHANCE_HARDER));
+  p.objectives = [...(p.objectives || []), o];
+  msg(`${myClub().mgr} agreed to give you a chance: you'll start most of the next ${CHANCE_GAMES} league games. In return he wants ${objText(o)} in the next 3 months.`, 'good');
+  notify('good', 'Your chance has come!', `${myClub().mgr} will start you in most of the next ${CHANCE_GAMES} league games. Prove him right: ${objText(o)} in 3 months, or affection −6.`);
+  save();
+  return true;
+}
+
 // After each week: settle objectives whose window has closed and set the next ones.
 function tickObjectives() {
   const p = S.player, ended = (p.objectives || []).filter(o => o.span !== 'season' && o.endWeek < S.week);
   ended.forEach(resolveObjective);
-  if (ended.length) setObjectives(ended.map(o => o.span));
+  p.objectives = p.objectives.filter(o => !(o.span === 'chance' && ended.includes(o)));
+  const next = ended.map(o => o.span).filter(s => s !== 'chance');
+  if (next.length) setObjectives(next);
 }
 
 // ---------- match instructions ----------
@@ -1553,6 +1584,7 @@ function advanceWeek() {
       }
     }
     if (p.promise > 0) p.promise--;
+    if (p.chance > 0) p.chance--;
     S.results.unshift(resultRow(res, fx.isHome, user, league(myClub().league).name, 'league'));
   }
   p.order = null;
@@ -2226,6 +2258,8 @@ function acceptOffer(id) {
     p.board = 50;
     p.listed = false;
     p.objHist = [];
+    p.objectives = [];
+    p.chance = 0;
     p.objHard = o.negotiated ? .1 : 0;
     p.promise = o.promised ? 15 : 0;
     p.negLock = 0;

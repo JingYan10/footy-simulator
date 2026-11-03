@@ -391,7 +391,9 @@ function managerCard() {
     <div class="small ${band === 'poor' || note !== BAND_NOTE[band] ? 'bad' : band === 'elite' || band === 'great' ? 'good' : 'muted'}">${note}</div>
     ${p.objHard ? `<div class="small muted">Targets are ${Math.round(p.objHard * 100)}% harder since your pay rise.</div>` : ''}
     ${p.promise > 0 ? `<div class="small good">Promised starting place: ${p.promise} more league games${effAff() < 30 ? ' (on hold while affection is under 30)' : ''}.</div>` : ''}
-    ${objs}</section>`;
+    ${objs}
+    ${p.chance > 0 ? `<div class="small good">Your chance: he starts you in most games (${Math.round(CHANCE_START * 100)}%) for ${p.chance} more league game${p.chance !== 1 ? 's' : ''}.</div>` : ''}
+    ${canAskChance() ? `<div class="chance-ask"><div class="small muted">Only a ${Math.round(startChance().start * 100)}% chance of starting. Ask ${esc(c.mgr)} to play you: you'll start ${Math.round(CHANCE_START * 100)}% of the next ${CHANCE_GAMES} league games, but he sets a 3-month target ${CHANCE_HARDER}× tougher than usual. Hit it and he warms to you (+7); miss it and affection drops by 6.</div><button class="btn sm primary" data-act="askChance">Ask for a chance</button></div>` : ''}</section>`;
 }
 
 function orderBox() {
@@ -1427,6 +1429,7 @@ document.addEventListener('click', e => {
     case "list": requestTransfer(); closeModal(); render(); return;
     case "unlist": withdrawTransferRequest(); render(); return;
     case 'house': if (setHouse(+v)) toast(HOUSING[+v].name); render(); return;
+    case 'askChance': if (askChance()) { toast('You got your chance!'); } render(); nextPopup(); return;
     case 'buyAsk': { const i = +v, nat = homeNat(); confirmSheet(`Buy a ${HOUSING[i].name.toLowerCase()}?`, `${money(housePrice(nat, i))} in ${natName(nat)}${ownedHomes()[nat] ? ` (your current home sells for ${money(Math.round(housePrice(nat, ownedHomes()[nat]) * SELL_BACK))}, so you pay ${money(buyCost(i))})` : ''}. No rent here again, just ${money(upkeepMonth(nat, i))} a month upkeep.${leaseLeft() && !ownedHere() ? ' Your current lease still has to be paid until it ends.' : ''}`, 'buyHouse', 'Buy it', v); return; }
     case 'buyHouse': if (buyHouse(+v)) toast('Home bought!'); closeModal(); render(); return;
     case 'sellAsk': { const i = ownedHomes()[v]; if (i) confirmSheet(`Sell your ${HOUSING[i].name.toLowerCase()}?`, `You get ${money(Math.round(housePrice(v, i) * SELL_BACK))} (90% of what it cost) and stop paying upkeep.${v === homeNat() ? ' You move back into a shared flat.' : ''}`, 'sellHouse', 'Sell', v); return; }

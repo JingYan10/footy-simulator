@@ -465,3 +465,7 @@ select.pick { width: 100%; margin: 8px 0; background: var(--surface); border: 1p
 .home-row { flex-wrap: wrap; }
 .home-acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .home-acts .btn { white-space: nowrap; }
+
+/* Asking the manager for a chance to start */
+.chance-ask { display: grid; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--flood); }
+.chance-ask .btn { justify-self: start; }
