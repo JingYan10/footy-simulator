@@ -1,0 +1,18 @@
+﻿Galatasaray.png
+Fenerbahçe.png
+Beşiktaş.png
+Trabzonspor.png
+Başakşehir.png
+Göztepe.png
+Samsunspor.png
+Eyüpspor.png
+Kasımpaşa.png
+Kocaelispor.png
+Antalyaspor.png
+Alanyaspor.png
+Konyaspor.png
+Kayserispor.png
+Gaziantep FK.png
+Çaykur Rizespor.png
+Gençlerbirliği.png
+Fatih Karagümrük.png

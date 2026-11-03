@@ -177,6 +177,9 @@ const logoState = {}; // club id -> index into LOGO_EXTS that works, or -1 when 
 
 function logoUrl(c, ext) {
   const dir = DB.leagues.find(l => l.id === c.id.split('-')[0]).name;
+  // Some crests are packed into one script (js/logos-tur.js) instead of separate files.
+  const packed = typeof LOGO_DATA !== 'undefined' && LOGO_DATA[`${dir}/${c.name}`];
+  if (packed) return packed;
   return `Club_logos/${encodeURIComponent(dir)}/${encodeURIComponent(c.name)}.${ext}`;
 }
 
@@ -293,6 +296,9 @@ function offersHtml() {
   const refresh = summer ? `<button class="btn block" data-act="refreshOffers" ${canRefreshOffers() ? '' : 'disabled'}>Wait for more offers (${S.offerRerolls} left)</button>` : '';
   return `<section class="card"><h2>Contract offers</h2>${S.offers.length ? '' : '<p class="small muted">No offers right now.</p>'}${S.offers.map(o => {
     const c = club(o.club), left = maxRounds(o) - o.rounds;
+    // At your own club the role is where you stand with the manager right now: negotiating costs
+    // affection, and that can cost you your place.
+    const role = o.type === 'renew' ? squadStatus() : o.status, ROLE_RANK = { Reserve: 0, Rotation: 1, Starter: 2, 'Key Player': 3 }, dropped = o.type === 'renew' && ROLE_RANK[role] < ROLE_RANK[o.status];
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
       : o.clause ? `<div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}.</div>`
@@ -301,8 +307,9 @@ function offersHtml() {
     return `<div class="offer">
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
       <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
-      <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b></div><div><small>Role</small><b class="${o.promised ? 'good' : ''}">${o.status}${o.promised ? ' (promised)' : ''}</b></div></div>
+      <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
+      ${dropped ? `<div class="small bad">Was offered as ${o.status.toLowerCase()}: your contract talks cost you affection with ${esc(c.mgr)}, and your place with it.</div>` : ''}
       ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again. You could never be a legend at either club.</div>` : ''}
       ${o.type === 'transfer' && leagueGrowth(c) < 1 ? '<div class="small flood">Big money, weaker league: your OVR will grow more slowly here.</div>' : ''}
       ${o.block ? `<div class="small flood"><b>Release clause:</b> for ${o.block} year${o.block > 1 ? 's' : ''} after you sign, ${esc(c.name)} block any move and salary talks. Breaking it costs ${money(o.blockFee)}.</div>` : ''}
@@ -322,7 +329,7 @@ function showNegotiate(id) {
   const o = S.offers.find(x => x.id === id), c = club(o.club), renew = o.type === 'renew', left = maxRounds(o) - o.rounds;
   const chanceLabel = ch => ch >= .7 ? 'Likely' : ch >= .4 ? 'Risky' : 'Long shot';
   const intro = renew
-    ? `${c.name} offer ${money(o.wage)}/week. Asking for more annoys ${c.mgr} whatever happens. Even if he agrees, his affection drops by a fifth, his objectives get a little harder and you can't talk salary again for about six months. ${left} attempt${left !== 1 ? 's' : ''} left.`
+    ? `${c.name} offer ${money(o.wage)}/week. Asking for more annoys ${c.mgr} whatever happens. Even if he agrees, his affection drops by a fifth, which can cost you your place in the team (you are ${squadStatus().toLowerCase()} now), his objectives get a little harder and you can't talk salary again for about six months. ${left} attempt${left !== 1 ? 's' : ''} left.`
     : `${c.name} offer ${money(o.wage)}/week. Their manager won't hold it against you; his affection only counts once you join.`;
   // Attempts left as dots, and what this club does if an ask fails.
   const dots = Array.from({ length: maxRounds(o) }, (_, k) => `<i class="${k < left ? 'on' : ''}"></i>`).join('');
@@ -466,7 +473,7 @@ function contractCard() {
     ${blockActive() ? `<div class="small flood"><b>Release clause</b> until about week ${lockWeekLabel(p.clauseUntil)}: other clubs can only reach you through your agent, and there are no salary talks. Breaking it costs ${money(p.clauseFee)}.</div>`
     : clauseActive() ? `<div class="small flood"><b>Loyalty clause</b> until the end of ${seasonLabel(Math.floor((p.clauseUntil - 1) / SEASON_WEEKS) - 1)}: no bids from other clubs, no salary talks and no transfer requests.</div>`
     : negLocked() ? `<div class="small muted">You just re-signed: no salary talks until about week ${lockWeekLabel()}.</div>` : ''}
-    ${leagueGrowth() < 1 ? '<div class="small muted">Weaker league: your OVR grows about 40% slower here than in Europe.</div>' : ''}
+    ${leagueGrowth() < 1 ? `<div class="small muted">Weaker league: your OVR grows about ${Math.round((1 - leagueGrowth()) * 100)}% slower here than in Europe.</div>` : ''}
     ${offerLocked() && !clauseActive() ? `<div class="small muted">Settling in: other clubs will not bid for you until about week ${lockWeekLabel(S.player.offerLock)}.</div>` : ''}
     ${p.listed ? `<div class="small flood">You are transfer-listed. ${inWindow() ? 'Clubs are bidding now.' : `Bids arrive when the window opens (week ${JAN_WINDOW[0]} or summer).`}</div>` : ''}
     ${p.renewTask ? `<div class="obj"><div class="row small"><span><b>Board's task</b> · ${renewTaskText(p.renewTask)} for a new contract</span><span class="num">${p.renewTask.progress}/${p.renewTask.target}</span></div><div class="bar"><i class="mid" style="width:${Math.min(100, Math.round(p.renewTask.progress / p.renewTask.target * 100))}%"></i></div><div class="small muted">Until about week ${lockWeekLabel(p.renewTask.until)} · hit it and the offer is guaranteed</div></div>` : ''}

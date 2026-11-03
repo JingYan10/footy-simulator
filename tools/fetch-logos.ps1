@@ -1,4 +1,4 @@
-# Downloads club logos from Wikipedia into Club_logos/<league>/<club>.png
+﻿# Downloads club logos from Wikipedia into Club_logos/<league>/<club>.png
 # Uses each folder's _logo_names.txt. Skips logos that already exist unless -Force.
 # Overrides in $titles pin the exact Wikipedia article when the search picks the wrong page.
 param([switch]$Force, [string]$Only)
@@ -17,6 +17,7 @@ $country = @{
   'Eredivisie' = 'Netherlands'; 'Eerste Divisie' = 'Netherlands'; 'Tweede Divisie' = 'Netherlands'
   'Saudi Pro League' = 'Saudi Arabia'; 'Saudi First Division League' = 'Saudi Arabia'; 'Saudi Second Division League' = 'Saudi Arabia'
   'MLS Eastern Conference' = 'MLS soccer'; 'MLS Western Conference' = 'MLS soccer'; 'USL Championship' = 'USL soccer'; 'USL League One' = 'USL soccer'
+  'Süper Lig' = 'Turkey'; '1. Lig' = 'Turkey'; '2. Lig' = 'Turkey'
 }
 $titles = @{}
 $overrideFile = Join-Path $PSScriptRoot 'logo-titles.txt'

@@ -1,6 +1,6 @@
 // Offline cache so the installed app works without a connection.
-const CACHE = 'ptl-v8';
-const FILES = ['./', 'index.html', 'css/style.css', 'js/database.js', 'js/lower-leagues.js', 'js/more-leagues.js', 'js/salaries.js', 'js/engine.js', 'js/tournaments.js', 'js/ui.js', 'manifest.json', 'icon.svg'];
+const CACHE = 'ptl-v9';
+const FILES = ['./', 'index.html', 'css/style.css', 'js/database.js', 'js/lower-leagues.js', 'js/more-leagues.js', 'js/salaries.js', 'js/logos-tur.js', 'js/engine.js', 'js/tournaments.js', 'js/ui.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))));

@@ -568,6 +568,8 @@ function startChance() {
     if (promised) start = Math.max(start, .82);
     subShare = .5;
   }
+  // A loan club wants to see you play: at least a 40% start chance.
+  if (p.loan) start = Math.max(start, .4);
   if (p.energy < 25) start *= .4;
   // Frozen out: you train with the reserves and only get the odd late cameo.
   if (frozenOut()) { start = 0; subShare = .1; }
@@ -914,7 +916,8 @@ function equipMult() { return EQUIP_TIERS[S.player.equip].mult; }
 // No hidden potential cap: the only ceiling is 91 OVR, and the last points come slowly.
 // Below 60 a young player levels up quicker; from 30 every point is harder to earn.
 // Saudi and US football is less competitive: the money is big, the development is slow.
-const SLOW_GROWTH = { KSA: .6, USA: .6 };
+// MLS a further 30% slower than that.
+const SLOW_GROWTH = { KSA: .6, USA: .42 };
 const GK_GROWTH = 1.25;
 const leagueGrowth = (c = myClub()) => SLOW_GROWTH[league(c.league).nat] || 1;
 function growthFactor(lowBoost = true) {
