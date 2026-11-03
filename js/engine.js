@@ -11,6 +11,7 @@ const PROMOTE = 3;
 const MAX_OVR = 91;
 const NEG_LOCK_WEEKS = 26; // about six months without salary talks after re-signing
 const RENEW_PROMISE = 15; // games your starting place is protected after re-signing as a starter
+const PACE_BRIEF = .4; // share of outfield training briefs that ask you to work on Pace
 const OFFER_LOCK_WEEKS = 26; // and no transfer offers for six months after joining a club
 const TIER_OVR = { 1: [58, 91], 2: [55, 80], 3: [48, 72] };
 const SQUAD_TARGET = { GK: 3, CB: 4, LB: 2, RB: 2, CDM: 2, CM: 3, CAM: 2, LM: 1, RM: 1, LW: 2, RW: 2, ST: 2 };
@@ -639,9 +640,10 @@ function makeDrill() {
   if (to - S.week < 2) return null;
   const games = gamesBetween(S.week, to);
   if (Math.random() < .55 || games < 3) {
-    // Usually a stat that matters for your position, sometimes your weakest one.
+    // Managers love pace: 40% of outfield training briefs are Pace. Otherwise usually a stat that
+    // matters for your position, sometimes your weakest one.
     const keys = attrKeys(p.pos), w = WEIGHTS[p.pos];
-    const attr = Math.random() < .65 ? weightedPick(keys, k => w[k] + .01) : keys.slice().sort((a, b) => p.attrs[a] - p.attrs[b])[0];
+    const attr = keys.includes('PAC') && Math.random() < PACE_BRIEF ? 'PAC' : Math.random() < .65 ? weightedPick(keys, k => w[k] + .01) : keys.slice().sort((a, b) => p.attrs[a] - p.attrs[b])[0];
     return { span: 'drill', kind: 'train', attr, target: randi(4, 6) + ((p.objHard || 0) >= .2 ? 1 : 0), progress: 0, endWeek: to, games };
   }
   return { span: 'drill', kind: 'energy', min: 60, target: games - 1, progress: 0, endWeek: to, games };
