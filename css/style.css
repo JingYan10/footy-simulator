@@ -160,6 +160,7 @@ table.grp.lp td:last-child, table.grp.lp th:last-child { padding: 5px 4px 5px 5p
 .seg { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
 .seg button { flex: 1; border: 0; background: transparent; padding: 8px; border-radius: 7px; font-weight: 600; font-size: 13px; color: var(--muted); }
 .seg button.on { background: var(--surface-2); color: var(--chalk); }
+.md-tabs { margin-bottom: 10px; }
 
 /* inbox */
 .inbox { display: grid; gap: 8px; }
@@ -469,3 +470,70 @@ select.pick { width: 100%; margin: 8px 0; background: var(--surface); border: 1p
 /* Asking the manager for a chance to start */
 .chance-ask { display: grid; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--flood); }
 .chance-ask .btn { justify-self: start; }
+
+/* Extra positions beside your main one, like the little chips on a player card */
+.altpos { display: flex; flex-direction: column; gap: 3px; margin-left: auto; }
+.altpos span { font: 700 11px/1 var(--display); letter-spacing: .04em; padding: 3px 6px; border-radius: 6px; background: var(--surface-2); color: var(--muted); text-align: center; }
+.altpos span.next { color: var(--flood); box-shadow: inset 0 0 0 1px var(--flood); background: transparent; }
+/* Career history: the season's main position stands out; secondaries are smaller and outlined */
+.posline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+.pos-main { font: 800 12px/1 var(--display); letter-spacing: .04em; padding: 4px 8px; border-radius: 6px; background: var(--flood); color: var(--flood-ink); }
+.pos-also { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-left: 2px; }
+.pos-alt { font: 700 10px/1 var(--display); letter-spacing: .04em; padding: 3px 6px; border-radius: 6px; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Matchday team sheets */
+.sheet-tabs { display: grid; gap: 12px; }
+.sheet-tabs h4 { margin: 0 0 6px; font: 800 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pitch { display: grid; gap: 8px; padding: 10px 6px; border-radius: 12px; background: linear-gradient(#1f5a37, #17492c); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .12); }
+.lp-row { display: flex; justify-content: space-around; gap: 4px; }
+.lp-chip { display: grid; justify-items: center; gap: 1px; min-width: 0; flex: 1; max-width: 72px; }
+.lp-chip b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #eef2f7; color: #0c1524; font-size: 12px; }
+.lp-chip span { font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.lp-chip small { font-size: 9px; color: rgba(255, 255, 255, .7); }
+.lp-chip.me b { background: var(--flood); box-shadow: 0 0 0 3px rgba(255, 181, 71, .35); }
+.lp-chip.me span { color: var(--flood); }
+.lp-bench { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 12px; }
+.lp-bench b { width: 100%; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.lp-bench small { color: var(--muted); }
+.lp-bench .me { color: var(--flood); font-weight: 700; }
+
+/* A position the club's formation has no place for */
+.pos-tag.off { opacity: .55; text-decoration: line-through; }
+
+/* Investments */
+.stocks { display: grid; gap: 8px; }
+.stock { display: grid; gap: 6px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.stock .btns { flex-wrap: wrap; }
+.spark polyline { stroke: var(--muted); }
+.spark.up polyline { stroke: var(--good); }
+.spark.down polyline { stroke: var(--bad); }
+.mid { color: var(--flood); }
+
+/* Showroom: three boxes a row, each with a photo */
+.lux-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lux-card { position: relative; display: grid; align-content: start; gap: 2px; padding: 6px 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--chalk); text-align: left; min-width: 0; cursor: pointer; }
+.lux-card:disabled { opacity: .5; cursor: not-allowed; }
+.lux-card:not(:disabled):hover { border-color: var(--flood); }
+.lux-pic { display: grid; place-items: center; aspect-ratio: 4 / 3; border-radius: 7px; overflow: hidden; background: #e9edf3; margin-bottom: 4px; }
+.lux-pic img { width: 100%; height: 100%; object-fit: cover; }
+.lux-pic.icon { background: var(--surface); color: var(--muted); }
+.lux-pic.icon svg { width: 46%; height: 46%; }
+.lux-brand { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lux-name { font-size: 12px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
+.lux-price { font-size: 13px; color: var(--flood); }
+.lux-owned { position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 999px; background: var(--good); color: #062014; }
+
+/* Week calendar and the midweek game on the home card */
+.week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.wd { display: grid; justify-items: center; align-content: start; gap: 2px; padding: 6px 0; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }
+.wd small { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.wd b { font-size: 15px; font-weight: 700; }
+.wd span { font-size: 9px; font-weight: 700; color: var(--muted); }
+.wd .crest.mini { width: 18px; height: 18px; }
+.wd.game { border-color: var(--flood); }
+.wd.game span { color: var(--flood); }
+.wd.today { background: var(--surface-2); border-color: var(--chalk); }
+.wd.today small { color: var(--chalk); }
+.wd.past { opacity: .5; }
+.midweek { border: 1px solid var(--flood); border-radius: 12px; padding: 12px; display: grid; gap: 8px; background: rgba(255, 181, 71, .06); }
+.midweek .mw-title { color: var(--flood); margin: 0; }

@@ -6,7 +6,7 @@ let tab = 'home';
 let clubView = 'table';
 let viewLeague = null;
 let honTab = 'ind';
-const draft = { name: '', nat: 'ENG', pos: 'ST' };
+const draft = { name: '', nat: 'ENG', pos: 'ST', birth: '2010-01-01', foot: 'R' };
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avgRating = st => st.apps ? (st.rsum / st.apps).toFixed(2) : '–';
@@ -44,10 +44,10 @@ function savedCareerCard() {
     <button class="btn primary block" data-act="continue">Continue career</button></section>`;
   const c = myClub(), ovr = calcOVR(), t = careerTotals();
   const live = S.phase === 'season' ? p.st : { apps: 0, goals: 0, assists: 0 };
-  const where = S.phase === 'retired' ? 'Retired' : `${seasonLabel()} · ${S.phase === 'season' ? `Week ${S.week}` : 'Summer'}`;
+  const where = S.phase === 'retired' ? 'Retired' : S.phase === 'season' ? `${seasonLabel()} · ${fmtDate(weekDate())}` : `${seasonLabel()} · Summer`;
   return `<section class="card hero"><h2>Saved career</h2>
     <div class="idrow"><div class="ovr card-${cardTier(ovr).toLowerCase()}"><b class="num">${ovr}</b><span>${p.pos}</span></div>
-      <div class="who"><h1>${esc(p.name)}</h1><p>${c.name}${p.loan ? ' (loan)' : ''} · Age ${ageOf(p.by)}</p></div>${crest(c.id, 'small')}</div>
+      <div class="who"><h1>${esc(p.name)}</h1><p>${c.name}${p.loan ? ' (loan)' : ''} · Age ${realAge()}</p></div>${crest(c.id, 'small')}</div>
     <div class="kv"><div><small>Apps</small><b>${t.apps + live.apps}</b></div><div><small>Goals</small><b>${t.goals + live.goals}</b></div><div><small>Trophies</small><b>${p.trophies.length}</b></div></div>
     <div class="small muted">${where} · ${money(p.money)} in the bank</div>
     <button class="btn primary block" data-act="continue">Continue career</button></section>`;
@@ -90,7 +90,9 @@ function renderCreate() {
     <p class="lede">You're 16 and five clubs want to sign you. Win over the manager, spend your wages wisely and earn a move to the biggest clubs in Europe.</p>
     <div class="field"><label for="f-name">Player name</label><input id="f-name" maxlength="28" placeholder="Your name" value="${esc(draft.name)}" autocomplete="off" required></div>
     <div class="field"><label for="f-nat">Nationality</label><select id="f-nat">${natOpts}</select></div>
+    <div class="field"><label for="f-birth">Date of birth</label><input id="f-birth" type="date" min="1960-01-01" max="2015-12-31" value="${draft.birth}" required><span class="small muted">Your career starts in the summer of ${+draft.birth.slice(0, 4) + START_AGE}, the year you turn ${START_AGE}.</span></div>
     <div class="field"><label>Position</label><div class="posgrid">${posBtns}</div><span class="small muted">${POS_NAMES[draft.pos]}</span></div>
+    <div class="field"><label>Strong foot</label><div class="seg">${[['R', 'Right'], ['L', 'Left']].map(([k, l]) => `<button type="button" class="${draft.foot === k ? 'on' : ''}" data-act="foot" data-v="${k}">${l}</button>`).join('')}</div><span class="small muted">On your strong side you cross more; on your weaker side you cut inside and shoot more.</span></div>
     <button class="btn primary block" type="submit">See club offers</button>
     <button class="btn block" type="button" data-act="menu">Back</button>
     <p class="small muted">${DB.leagues.length} leagues across ${[...new Set(DB.leagues.map(l => l.country))].join(', ').replace(/, ([^,]+)$/, ' and $1')}. Squads and managers are based on the 2025-26 season. Ratings are game estimates.</p>
@@ -99,6 +101,7 @@ function renderCreate() {
   form.addEventListener('input', e => {
     if (e.target.id === 'f-name') draft.name = e.target.value;
     if (e.target.id === 'f-nat') draft.nat = e.target.value;
+    if (e.target.id === 'f-birth' && e.target.value) { draft.birth = e.target.value; renderCreate(); document.getElementById('f-birth').focus(); }
   });
   form.addEventListener('submit', e => {
     e.preventDefault();
@@ -126,7 +129,7 @@ function renderChoose() {
   }).join('');
   app.innerHTML = `<div class="create wrap">
     <h1 class="brand" style="font-size:36px">Pick your <em>club</em></h1>
-    <p class="lede">${esc(S.player.name)}, ${POS_NAMES[S.player.pos].toLowerCase()}, age ${START_AGE}, OVR <b style="color:var(--chalk)">${ovr}</b>. Five clubs have offered a 3-year youth contract.</p>
+    <p class="lede">${esc(S.player.name)}, ${POS_NAMES[S.player.pos].toLowerCase()}, age ${realAge()}, OVR <b style="color:var(--chalk)">${ovr}</b>. Five clubs have offered a 3-year youth contract.</p>
     <button class="btn block" data-act="refresh" ${S.rerolls > 0 ? "" : "disabled"}>Refresh offers (${S.rerolls} left)</button>
     ${cards}
   </div>`;
@@ -146,11 +149,15 @@ function topbar() {
         <h1>${esc(p.name)}</h1>
         <p>${c.name} · ${status}${p.loan ? ` · On loan from ${club(p.loan.parent).short}` : ''}</p>
       </div>
+      ${altPositions().length || p.nextPos ? `<div class="altpos">${altPositions().map(x => x === p.nextPos
+        // A position you can already play that becomes your main one next season: marked on its own chip.
+        ? `<span class="next" title="You play here now; it becomes your main position next season" data-act="altInfo" data-v="next">→${x}</span>`
+        : `<span title="You can also play ${POS_NAMES[x]} (${x})" data-act="altInfo" data-v="${x}">${x}</span>`).join('')}${p.nextPos && !altPositions().includes(p.nextPos) ? `<span class="next" title="You play here now; it becomes your main position next season" data-act="altInfo" data-v="next">→${p.nextPos}</span>` : ''}</div>` : ''}
     </div>
     <div class="chips">
-      <span class="chip">Age <b>${ageOf(p.by)}</b></span>
+      <span class="chip">Age <b>${realAge()}</b></span>
       <span class="chip flood"><b class="num">${money(p.money)}</b></span>
-      <span class="chip">${seasonLabel()} · <b>${S.phase === 'season' ? `Wk ${S.week}` : S.phase === 'offseason' ? 'Summer' : 'End'}</b></span>
+      <span class="chip">${S.phase === 'season' ? `${DAY_NAMES[todayDate().getUTCDay()]} ${fmtDate(todayDate())} · <b>Wk ${S.week}</b>` : `${seasonLabel()} · <b>${S.phase === 'offseason' ? 'Summer' : 'End'}</b>`}</span>
       ${p.injured ? `<span class="chip bad">Injured ${p.injured}w</span>` : p.rust > 0 ? `<span class="chip flood">Rusty ${p.rust}w</span>` : ''}
     </div>
     ${S.phase === 'season' ? `<div class="energy"><span>Energy</span><div class="bar"><i class="${eClass}" style="width:${e}%"></i></div><b class="num">${e}</b></div>` : ''}
@@ -302,7 +309,7 @@ function offerPitch(o, c) {
 function offersHtml() {
   const summer = S.phase === 'offseason' && (S.offerRerolls || 0) > 0;
   if (!S.offers.length && !summer) return '';
-  const refresh = summer ? `<button class="btn block" data-act="refreshOffers" ${canRefreshOffers() ? '' : 'disabled'}>Wait for more offers (${S.offerRerolls} left)</button>` : '';
+  const refresh = summer && canRefreshOffers() ? `<button class="btn block" data-act="refreshOffers">Wait for more offers (${S.offerRerolls} left)</button>` : '';
   return `<section class="card"><h2>Contract offers</h2>${S.offers.length ? '' : '<p class="small muted">No offers right now.</p>'}${S.offers.map(o => {
     const c = club(o.club), left = maxRounds(o) - o.rounds;
     // At your own club the role is where you stand with the manager right now: negotiating costs
@@ -389,7 +396,7 @@ function managerCard() {
     const hint = o.kind === 'train' ? 'Train it in the Train tab' : o.kind === 'energy' ? `Rest when needed: under ${o.min} energy on matchday doesn't count` : `${o.games} games`;
     return `<div class="obj"><div class="row small"><span><b>${OBJ_SPAN[o.span].label}</b> · ${objText(o)}</span><span class="num ${o.progress >= o.target ? 'good' : ''}">${o.progress}/${o.target}</span></div>
       <div class="bar"><i class="${o.progress >= o.target ? '' : 'mid'}" style="width:${pct}%"></i></div>
-      <div class="small muted">${o.span === 'season' ? 'Ends with the season' : `Until week ${o.endWeek}`} · ${hint}</div></div>`;
+      <div class="small muted">${o.span === 'season' ? 'Ends with the season' : `Until week ${o.endWeek}`} · ${hint}${o.oop ? ` · <span class="flood">lowered for ${o.oop} game${o.oop > 1 ? 's' : ''} out of position</span>` : ''}</div></div>`;
   }).join('') || '<p class="small muted" style="margin:0">No objectives right now.</p>';
   return `<section class="card"><div class="row"><h2>Manager</h2><span class="small">${c.mgr}</span></div>
     <div class="energy" style="margin:0"><span>${mood}</span><div class="bar"><i class="${cls}" style="width:${eff}%"></i></div><b class="num">${eff}</b></div>
@@ -401,6 +408,7 @@ function managerCard() {
     ${p.objHard ? `<div class="small muted">Targets are ${Math.round(p.objHard * 100)}% harder since your pay rise.</div>` : ''}
     ${p.promise > 0 ? `<div class="small good">Promised starting place: ${p.promise} more league games${effAff() < 30 ? ' (on hold while affection is under 30)' : ''}.</div>` : ''}
     ${objs}
+    ${adjusting() ? `<div class="small flood">Adjusting to ${POS_NAMES[matchPos()].toLowerCase()}: you are a little worse in matches for now, and his targets are 15% easier (until about week ${lockWeekLabel(p.adjustUntil)}).</div>` : ''}
     ${p.chance > 0 ? `<div class="small good">Your chance: he starts you in most games (${Math.round(CHANCE_START * 100)}%) for ${p.chance} more league game${p.chance !== 1 ? 's' : ''}.</div>` : ''}
     ${chanceBoosted() ? `<div class="small good">He trusts you for good here: +${Math.round(CHANCE_BOOST * 100)}% start chance at ${esc(c.name)}.</div>` : (p.chanceStreak || 0) > 0 ? `<div class="small muted">Chances taken in a row: ${p.chanceStreak}/${CHANCE_STREAK}. Make it ${CHANCE_STREAK} and he trusts you for good (+${Math.round(CHANCE_BOOST * 100)}% start chance here).</div>` : ''}
     ${!canAskChance() && chanceCooldown() && !p.chance && !chanceObjective() && startChance().start < .2 ? `<div class="small muted">You can ask ${esc(c.mgr)} for another chance in ${chanceCooldown()} week${chanceCooldown() !== 1 ? 's' : ''}.</div>` : ''}
@@ -508,13 +516,16 @@ function viewHome() {
   if (S.phase === 'offseason') return viewOffseason();
   if (S.phase === 'retired') return viewRetired();
   if (S.player.needsContract) return freeAgentView();
-  const p = S.player, fx = nextFixture();
+  const p = S.player, fx = leagueDone() ? null : nextFixture();
   let matchCard;
+  // The week's team sheet (and any one-week position change) is settled when the week comes up.
+  if (fx && !p.injured && S.phase === 'season') matchdaySelection(fx);
   if (fx) {
     const opp = club(fx.opp);
-    const sel = p.injured ? '<span class="bad">Injured, you will miss this match</span>' : `Role: <b>${squadStatus()}</b> · Start chance <b>${Math.round(Math.max(startChance().start, rotationStart(false, fx.opp)) * 100)}%</b>${rotationStart(false, fx.opp) > startChance().start ? ' <span class="good">(weak opponent: the manager rotates)</span>' : ''}`;
+    const sel = p.injured ? '<span class="bad">Injured, you will miss this match</span>' : `Role: <b>${squadStatus()}</b>${matchPos() !== p.pos ? ` at <b>${matchPos()}</b>` : ''} · Start chance <b>${Math.round(Math.max(startChance().start, rotationStart(false, fx.opp)) * 100)}%</b>${rotationStart(false, fx.opp) > startChance().start ? ' <span class="good">(weak opponent: the manager rotates)</span>' : ''}`;
     matchCard = `<section class="card hero">
       <div class="row"><h2>Matchday ${S.week}</h2><span class="small muted">${league(myClub().league).name}</span></div>
+      ${weekStrip()}
       ${derbyName(fx.home, fx.away) ? `<div class="derby">${derbyName(fx.home, fx.away)}</div>` : ''}
       <div class="fixture">
         <div class="team">${crest(fx.home)}<b>${club(fx.home).name}</b><span>${Math.round(teamStrength(club(fx.home)))} rated</span></div>
@@ -525,28 +536,54 @@ function viewHome() {
       ${p.slots > 0 && !p.injured ? `<div class="small flood" style="text-align:center">${p.slots} training session${p.slots > 1 ? 's' : ''} left this week</div>` : ''}
       ${euroLine()}
       ${orderBox()}
-      <button class="btn primary block" data-act="advance">Play matchday</button>
+      <button class="btn primary block" data-act="matchday">To matchday</button>
     </section>`;
   } else {
-    matchCard = `<section class="card hero"><h2>Week ${S.week}</h2><p class="muted" style="margin:0">No league match this week. Rest, train and get ready.</p>
+    matchCard = `<section class="card hero"><h2>Week ${S.week}</h2>${weekStrip()}<p class="muted" style="margin:0">${leagueDone() ? 'The league game is done. Next up: the midweek game.' : 'No league match this week. Rest, train and get ready.'}</p>
+      ${S.phase === 'season' && !p.injured ? (p.slots > 0 ? `<div class="small flood" style="text-align:center">${p.slots} training session${p.slots > 1 ? 's' : ''} left this week</div>` : '<div class="small bad" style="text-align:center">You have already trained this week: no sessions left until next week.</div>') : ''}
       ${euroLine()}
-      <button class="btn primary block" data-act="advance">${midweekFixture() ? 'Play cup game' : 'Next week'}</button></section>`;
+      ${midweekFixture() ? '<button class="btn primary block" data-act="matchday">To matchday</button>' : '<button class="btn primary block" data-act="advance">Next week</button>'}</section>`;
   }
   const form = p.form.length ? `<section class="card"><div class="row"><h2>Form</h2><span class="small muted">Season avg ${avgRating(p.st)}</span></div><div class="form">${p.form.map(r => `<span class="${ratingClass(r)}">${r.toFixed(1)}</span>`).join('')}</div>
-    <div class="small muted">${p.st.apps} apps · ${p.st.goals} goals · ${p.st.assists} assists</div></section>` : '';
+    <div class="small muted">${p.st.apps} apps · ${p.pos === 'GK' ? `${p.st.saves || 0} saves · ${p.st.cleanAll || 0} clean sheet${p.st.cleanAll === 1 ? '' : 's'}` : `${p.st.goals} goals · ${p.st.assists} assists${TACKLERS.includes(p.pos) ? ` · ${p.st.tackles || 0} tackles` : ''}`}</div></section>` : '';
   const tbl = leagueTable(myClub().league), myPos = tbl.findIndex(r => r.id === p.club) + 1;
   const money_ = `<section class="card"><div class="row"><h2>This week</h2><span class="small">Table: <b>${S.table[p.club].p ? myPos + ordinal(myPos) : "–"}</b></span></div>
     <div class="row small"><span class="muted">Wage + sponsors − rent</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${weeklyNet() >= 0 ? '+' : ''}${money(weeklyNet())}</b></div></section>`;
   return matchCard + offersBanner() + managerCard() + form + money_ + inboxHtml();
 }
 
-// The midweek cup game (European or domestic), played straight after the league match.
+// ---------- calendar ----------
+// A game week runs Saturday to Friday: the league game on Saturday, then the midweek game.
+// Champions League ties are split over Tuesday and Wednesday, the Europa and Conference League play
+// on Thursday, and domestic cups on Tuesday or Wednesday.
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const compShort = name => /Champions/.test(name) ? 'UCL' : /Europa/.test(name) ? 'UEL' : /Conference/.test(name) ? 'UECL' : 'Cup';
+function midweekOffset(e) {
+  if (/Europa|Conference/.test(e.t.name)) return 5;
+  return [...(e.home + e.away)].reduce((s, ch) => s + ch.charCodeAt(0), 0) % 2 ? 3 : 4;
+}
+const dayAfter = n => new Date(weekDate().getTime() + n * DAY);
+// The game's day: Saturday, or the midweek game's day once the league game is played.
+const todayDate = () => leagueDone() && midweekFixture() ? dayAfter(midweekOffset(midweekFixture())) : weekDate();
+const dayLabel = d => `${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+// This week, day by day: today is the Saturday, games marked with the opponent's crest.
+function weekStrip() {
+  const fx = nextFixture(), e = midweekFixture(), mo = e ? midweekOffset(e) : -1, today = leagueDone() ? mo : 0;
+  return `<div class="week-strip">${[0, 1, 2, 3, 4, 5, 6].map(i => {
+    const d = dayAfter(i), game = i === 0 && fx ? { opp: fx.opp, tag: leagueDone() ? 'Played' : 'League' } : i === mo ? { opp: e.opp, tag: compShort(e.t.name) } : null;
+    return `<div class="wd${i === today ? ' today' : ''}${game ? ' game' : ''}${i < today ? ' past' : ''}"><small>${i === today ? 'Today' : DAY_NAMES[d.getUTCDay()]}</small><b>${d.getUTCDate()}</b>${game ? `${crest(game.opp, 'mini')}<span>${game.tag}</span>` : '<span class="rest">–</span>'}</div>`;
+  }).join('')}</div>`;
+}
+
+// The midweek cup game (European or domestic), shown like the league game.
 function euroLine() {
   const e = midweekFixture();
   if (!e) return '';
-  return `<div class="order"><div class="small flood"><b>Midweek · ${esc(e.t.name)}</b> · ${e.stage}</div>
-    <div class="clubcell">${crest(e.opp, 'small')}<span>${e.isHome ? 'vs' : 'at'} <b>${club(e.opp).name}</b> <span class="muted small">${Math.round(teamStrength(club(e.opp)))} rated</span></span></div>
-    <div class="small ${S.player.energy < TWO_GAME_ENERGY ? 'bad' : 'muted'}">Two games this week: you need ${TWO_GAME_ENERGY}+ energy to play both${S.player.energy < TWO_GAME_ENERGY ? `. You have ${Math.round(S.player.energy)}, so if you play the league game you will be rested for this one` : ''}.</div></div>`;
+  const tired = S.player.energy < TWO_GAME_ENERGY, side = id => `<div class="team">${crest(id)}<b>${club(id).name}</b><span>${Math.round(teamStrength(club(id)))} rated</span></div>`;
+  return `<div class="midweek"><div class="row"><h2 class="mw-title">${esc(e.t.name.replace(/ \d{4}$/, ''))}</h2><span class="small muted">${dayLabel(dayAfter(midweekOffset(e)))}</span></div>
+    <div class="small muted" style="text-align:center">${e.stage}</div>
+    <div class="fixture">${side(e.home)}<div class="vs">VS</div>${side(e.away)}</div>
+    ${nextFixture() && !leagueDone() ? `<div class="small ${tired ? 'bad' : 'muted'}" style="text-align:center">Two games this week: you need ${TWO_GAME_ENERGY}+ energy to play both${tired ? `. You have ${Math.round(S.player.energy)}, so if you play the league game you will be rested for this one` : ''}.</div>` : ''}</div>`;
 }
 
 function viewOffseason() {
@@ -583,11 +620,8 @@ function ovrBreakdown(sum) {
   const sign = v => `${v > 0 ? '+' : ''}${v}`, cls = v => v > 0 ? 'good' : v < 0 ? 'bad' : '';
   const rows = [];
   if (sum.seasonGain != null) rows.push(`Matches and training: <b class="${cls(sum.seasonGain)}">${sign(sum.seasonGain)}</b>`);
-  if (sum.review) rows.push(`Performance review: <b class="${cls(sum.review.change)}">${sign(sum.review.change)}</b>${!sum.review.change && sum.ovrPreAge >= MAX_OVR ? ` <span class="flood">already at the ${MAX_OVR} maximum</span>` : ''}${sum.review.notes.length ? ` (${esc(sum.review.notes.join(', '))})` : ''}`);
+  if (sum.review) rows.push(`Performance review: <b class="${cls(sum.review.change)}">${sign(sum.review.change)}</b>${sum.review.notes.length ? ` (${esc(sum.review.notes.join(', '))})` : ''}`);
   if (sum.ageLoss > 0) rows.push(`Ageing, turning ${sum.ageTo}: <b class="bad">−${sum.ageLoss}</b>. From 34 your body slows down a little more every birthday.`);
-  // Attributes can sit above the 91 cap, which hides small gains and losses for a while.
-  if (sum.rawEnd > MAX_OVR) rows.push(`Your attributes are still above the ${MAX_OVR} cap (${sum.rawEnd}), so ${sum.ageLoss > 0 ? 'the ageing loss' : 'changes'} won't show in your OVR until they drop below it.`);
-  else if (sum.ovrPreAge >= MAX_OVR && sum.review && sum.review.change > 0) rows.push(`You're at the ${MAX_OVR} maximum, so gains can't take you higher.`);
   return rows.map(r => `<div class="small muted">${r}</div>`).join('');
 }
 
@@ -697,7 +731,9 @@ function viewRetired() { return retiredHtml(retiredRecord()); }
 function renderPast() {
   const rec = loadArchive().find(r => r.id === pastView);
   if (!rec) { pastView = null; landing = true; render(); return; }
-  app.innerHTML = `<div class="create wrap">${retiredHtml(rec, 'freshStart')}<button class="btn block" data-act="pastBack">Back</button></div>`;
+  // Seasons are labelled from the year that career started.
+  labelBase = rec.startYear || START_YEAR;
+  try { app.innerHTML = `<div class="create wrap">${retiredHtml(rec, 'freshStart')}<button class="btn block" data-act="pastBack">Back</button></div>`; } finally { labelBase = null; }
 }
 
 // ---------- train ----------
@@ -705,11 +741,11 @@ function viewTrain() {
   const p = S.player, keys = attrKeys(p.pos), w = WEIGHTS[p.pos];
   const can = S.phase === 'season' && p.slots > 0 && !p.injured;
   const head = `<section class="card"><div class="row"><h2>Training</h2><span class="small"><b>${p.slots}</b>/${TRAIN_SLOTS} sessions left</span></div>
-    <p class="small muted" style="margin:0">Each session uses ${TRAIN_ENERGY} energy. Your ${EQUIP_TIERS[p.equip].name.toLowerCase()} equipment gives ×${EQUIP_TIERS[p.equip].mult} XP; upgrade it in the Shop. A third of the extra XP is only earned on the pitch that week: none on the bench, more for goals and assists. Gains slow with age (a lot from 34) and as you get close to the maximum of ${MAX_OVR} OVR. Match ratings, goals, assists and awards also move your OVR up or down. Your OVR is weighted the way EA rates a ${POS_NAMES[p.pos].toLowerCase()}.</p>
+    <p class="small muted" style="margin:0">Each session uses ${TRAIN_ENERGY} energy. Your ${EQUIP_TIERS[p.equip].name.toLowerCase()} equipment gives ×${EQUIP_TIERS[p.equip].mult} XP; upgrade it in the Shop. A third of the extra XP is only earned on the pitch that week: none on the bench, more for goals and assists. Gains slow with age (a lot from 34). Match ratings, goals, assists and awards also move your OVR up or down.</p>
     <p class="small" style="margin:6px 0 0">Physicality ${Math.round(physOf())}: injury risk <b class="${injuryMult() <= 1 ? 'good' : 'bad'}">×${injuryMult().toFixed(2)}</b>, and ${Math.round(seriousChance() * 100)}% of injuries are serious. More Physicality means fewer and milder injuries.${youngBody() ? ' Includes the teenage bonus (until 19): fewer and milder injuries.' : ''}</p>
-    ${calcOVR() >= MAX_OVR ? `<p class="small good" style="margin:0">You are at the maximum ${MAX_OVR} OVR. Training now just keeps you sharp.</p>` : ''}
     ${p.injured ? '<p class="bad small" style="margin:0">You are injured and cannot train.</p>' : ''}
     ${S.phase !== 'season' ? '<p class="small muted" style="margin:0">Training resumes when the season starts.</p>' : ''}
+    ${S.phase === 'season' && !p.injured && p.slots <= 0 ? `<p class="bad small" style="margin:0">You have already trained ${TRAIN_SLOTS} times this week. Training opens again next week${leagueDone() ? ', after the midweek game' : ''}.</p>` : ''}
   </section>`;
   const cards = keys.map(k => {
     const v = p.attrs[k], gain = trainGain(k), held = trainGain(k, 'pitch');
@@ -743,18 +779,87 @@ function commitmentsView() {
   const rowsAll = owned + rows;
   const kit = kitTier() ? `<div class="commit"><div><b>${EQUIP_TIERS[kitTier()].name} training kit</b><div class="small muted">${kitTier() > p.equip ? `You trained with it this week, so this week is charged at its rate` : 'Running costs, until you switch back to Normal'}</div></div><b class="num bad">−${money(kitFee())}/wk</b></div>` : '';
   const ag = p.agent ? `<div class="commit"><div><b>${agent().name}</b><div class="small muted">${Math.round(agent().cut * 100)}% of your wage</div></div><b class="num bad">−${money(agentCut())}/wk</b></div>` : '';
+  const cars = carUpkeep() ? `<div class="commit"><div><b>Cars (${collection().filter(c => luxItem(c.id).cat === 'car').length})</b><div class="small muted">Insurance and upkeep, until you sell them</div></div><b class="num bad">−${money(carUpkeep())}/wk</b></div>` : '';
   return `<section class="card"><h2>Commitments</h2>
     <p class="small muted" style="margin:0">Leases follow the country you play in. Move abroad before one ends and you keep paying it until it runs out, on top of your new home. Homes you own cost a little upkeep wherever you are, and are waiting for you when you come back.</p>
-    <div class="commits">${rowsAll}${kit}${ag}</div>
+    <div class="commits">${rowsAll}${kit}${ag}${cars}</div>
     <div class="row"><span>Total per week</span><b class="num bad">−${money(weeklyCosts())}</b></div></section>`;
+}
+
+// A photo of the item (packed into js/lux-img.js), or a drawn icon when there is none.
+const LUX_ICON = {
+  car: '<svg viewBox="0 0 48 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 22v-5l5-2 6-6h14l7 6 7 2v5z"/><circle cx="13" cy="23" r="4"/><circle cx="36" cy="23" r="4"/><path d="M17 10l-3 5h21"/></svg>',
+  watch: '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M18 4h12l2 9H16zM16 35h16l-2 9H18z"/><circle cx="24" cy="24" r="11"/><path d="M24 17v7l5 3"/></svg>',
+  jewel: '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 8h24l8 10-20 24L4 18z"/><path d="M4 18h40M18 8l-4 10 10 24 10-24-4-10"/></svg>',
+};
+function luxPic(it) {
+  const src = typeof LUX_IMG !== 'undefined' && LUX_IMG[it.id];
+  return `<span class="lux-pic ${src ? '' : 'icon'}">${src ? `<img src="${src}" alt="" loading="lazy">` : LUX_ICON[it.cat]}</span>`;
+}
+// Luxury: your collection, then everything you can buy, by category.
+let luxCat = 'car';
+const luxName = it => `${it.brand === 'Custom' ? '' : `${it.brand} `}${it.name}`;
+function luxuryView() {
+  const p = S.player, mine = collection();
+  const owned = mine.length ? `<div class="commits">${mine.map(c => {
+    const it = luxItem(c.id);
+    return `<div class="commit"><div><b>${esc(luxName(it))}</b> <span class="chip">${LUX_CATS[it.cat]}</span>
+      <div class="small muted">Bought ${seasonLabel(c.season)} · worth ${money(Math.round(it.price * SELL_BACK_LUX[it.cat]))} if sold${it.cat === 'car' ? ` · upkeep ${money(Math.round(it.price * CAR_UPKEEP))}/wk` : ''}</div>
+      <div class="btns"><button class="btn sm" data-act="luxSellAsk" data-v="${c.uid}">Sell</button></div></div></div>`;
+  }).join('')}</div>` : '<p class="small muted" style="margin:0">Nothing yet. Treat yourself.</p>';
+  const head = `<section class="card hero"><div class="row"><h2>Your collection</h2><span class="chip">${mine.length} item${mine.length !== 1 ? 's' : ''}</span></div>
+    <div class="kv"><div><small>Worth</small><b class="num">${money(collectionValue())}</b></div><div><small>Car upkeep</small><b class="num bad">${money(carUpkeep())}/wk</b></div><div><small>Bank</small><b class="num">${money(p.money)}</b></div></div>
+    <p class="small muted" style="margin:0">Big purchases get you talked about (a little reputation). Cars cost insurance and upkeep every week; sell cars back for 75%, watches and jewellery for 85%.</p>${owned}</section>`;
+  const chips = `<div class="seg">${Object.entries(LUX_CATS).map(([k, l]) => `<button class="${luxCat === k ? 'on' : ''}" data-act="luxCat" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const items = LUXURY.filter(x => x.cat === luxCat).sort((a, b) => a.price - b.price).map(it => {
+    const n = mine.filter(c => c.id === it.id).length;
+    return `<button class="lux-card" data-act="luxAsk" data-v="${it.id}" ${p.money < it.price ? 'disabled' : ''}>${luxPic(it)}${n ? `<span class="lux-owned">Owned${n > 1 ? ` ×${n}` : ''}</span>` : ''}
+      <span class="lux-brand">${esc(it.brand === 'Custom' ? 'Custom piece' : it.brand)}</span><span class="lux-name">${esc(it.name)}</span><b class="num lux-price">${money(it.price)}</b></button>`;
+  }).join('');
+  return head + `<section class="card"><h2>Showroom</h2>${chips}<div class="lux-grid">${items}</div><p class="small muted" style="margin:0">${luxCat === 'car' ? `Cars cost ${(CAR_UPKEEP * 100).toFixed(2)}% of their price a week in insurance and upkeep.` : 'No upkeep.'} Photos from Wikipedia and Wikimedia Commons.</p></section>`;
+}
+
+// A 26-week price line for a stock.
+function sparkline(hist) {
+  if (hist.length < 2) return '';
+  const lo = Math.min(...hist), hi = Math.max(...hist), w = 84, h = 26, span = hi - lo || 1;
+  const pts = hist.map((v, i) => `${(i / (hist.length - 1) * w).toFixed(1)},${(h - 2 - (v - lo) / span * (h - 4)).toFixed(1)}`).join(' ');
+  return `<svg class="spark ${hist.at(-1) >= hist[0] ? 'up' : 'down'}" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+const pctTxt = x => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}%`;
+const riskOf = s => s.sigma >= .06 ? ['High risk', 'bad'] : s.sigma >= .035 ? ['Medium risk', 'mid'] : ['Low risk', 'good'];
+const BUY_STEPS = [10000, 100000, 1000000, 10000000];
+
+// Investments: what you hold, then the whole market.
+function investView() {
+  const p = S.player, m = market(), port = portfolio(), held = Object.entries(port);
+  const value = portfolioValue(), cost = held.reduce((s, [, h]) => s + h.cost, 0);
+  const holdings = held.length ? `<div class="commits">${held.map(([sym, h]) => {
+    const v = h.shares * sharePrice(sym), pl = h.cost ? v / h.cost - 1 : 0;
+    return `<div class="commit"><div><b>${sym}</b> <span class="small muted">${esc(stock(sym).name)}</span>
+      <div class="small muted">${h.shares.toLocaleString()} shares · worth ${money(Math.round(v))} · <span class="${pl >= 0 ? 'good' : 'bad'}">${pctTxt(pl)}</span></div>
+      <div class="btns"><button class="btn sm" data-act="sellStock" data-v="${sym}|.25">Sell 25%</button><button class="btn sm" data-act="sellStock" data-v="${sym}|1">Sell all</button></div></div></div>`;
+  }).join('')}</div>` : '<p class="small muted" style="margin:0">No shares yet. Pick a company below.</p>';
+  const head = `<section class="card hero"><div class="row"><h2>Portfolio</h2><span class="chip ${value >= cost ? 'good' : 'bad'}">${cost ? pctTxt(value / cost - 1) : '–'}</span></div>
+    <div class="kv"><div><small>Worth</small><b class="num">${money(Math.round(value))}</b></div><div><small>Paid in</small><b class="num">${money(cost)}</b></div><div><small>Bank</small><b class="num">${money(p.money)}</b></div></div>
+    <p class="small muted" style="margin:0">Prices move every game week (and through the summer). Riskier companies can soar or halve; dividend payers pay out every quarter. Each trade costs 0.5%.</p>${holdings}</section>`;
+  const rows = STOCKS.map(s => {
+    const hist = m.hist[s.sym], price = sharePrice(s.sym), wk = hist.length > 1 ? price / hist.at(-2) - 1 : 0, [risk, rc] = riskOf(s);
+    return `<div class="stock"><div class="row"><div><b>${s.sym}</b> <span class="small muted">${esc(s.name)} · ${s.sector}</span></div>${sparkline(hist)}</div>
+      <div class="row small"><span><b class="num">€${price.toFixed(2)}</b> <span class="${wk >= 0 ? 'good' : 'bad'}">${pctTxt(wk)} this week</span></span><span><span class="${rc}">${risk}</span>${s.div ? ` · ${(s.div * 100).toFixed(1)}% dividend` : ''}</span></div>
+      <div class="btns">${BUY_STEPS.map(a => `<button class="btn sm" data-act="buyStock" data-v="${s.sym}|${a}" ${p.money < price * (1 + TRADE_FEE) ? 'disabled' : ''}>Buy ${money(a)}</button>`).join('')}</div></div>`;
+  }).join('');
+  return head + `<section class="card"><h2>Market</h2><div class="stocks">${rows}</div></section>`;
 }
 
 let shopView = 'shop';
 function viewShop() {
   const p = S.player;
   syncHousing();
-  const seg = `<div class="seg">${[['shop', 'Kit & home'], ['commit', 'Commitments']].map(([k, l]) => `<button class="${shopView === k ? 'on' : ''}" data-act="shopView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="seg">${[['shop', 'Kit & home'], ['lux', 'Luxury'], ['invest', 'Invest'], ['commit', 'Commitments']].map(([k, l]) => `<button class="${shopView === k ? 'on' : ''}" data-act="shopView" data-v="${k}">${l}</button>`).join('')}</div>`;
   if (shopView === 'commit') return seg + commitmentsView();
+  if (shopView === 'lux') return seg + luxuryView();
+  if (shopView === 'invest') return seg + investView();
   const nat = homeNat(), away = oldLeases();
   const fin = `<section class="card"><h2>Finances</h2>
     <div class="row small"><span class="muted">Wage</span><b class="num">${money(p.wage)}/wk</b></div>
@@ -762,9 +867,11 @@ function viewShop() {
     <div class="row small"><span class="muted">Rent${away.length ? ` (incl. ${away.length} lease${away.length > 1 ? 's' : ''} abroad)` : ''}</span><b class="num bad">−${money(rentNow())}/wk</b></div>
     ${upkeepNow() ? `<div class="row small"><span class="muted">Home upkeep (${Object.keys(ownedHomes()).length} owned)</span><b class="num bad">−${money(upkeepNow())}/wk</b></div>` : ''}
     <div class="row small"><span class="muted">Equipment${kitTier() > p.equip ? ` (${EQUIP_TIERS[kitTier()].name}: you trained with it this week)` : ''}</span><b class="num bad">−${money(kitFee())}/wk</b></div>
+    ${carUpkeep() ? `<div class="row small"><span class="muted">Car upkeep</span><b class="num bad">−${money(carUpkeep())}/wk</b></div>` : ''}
     ${p.agent ? `<div class="row small"><span class="muted">Agent (${Math.round(agent().cut * 100)}% of wage)</span><b class="num bad">−${money(agentCut())}/wk</b></div>` : ''}
     <div class="row"><span>Net per week</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${money(weeklyNet())}</b></div>
-    <div class="row small"><span class="muted">Bank</span><b class="num">${money(p.money)}</b></div></section>`;
+    <div class="row small"><span class="muted">Bank</span><b class="num">${money(p.money)}</b></div>
+    ${portfolioValue() || collection().length ? `<div class="row small"><span class="muted">Shares · collection</span><b class="num">${money(Math.round(portfolioValue()))} · ${money(collectionValue())}</b></div><div class="row"><span>Net worth</span><b class="num">${money(Math.round(netWorth()))}</b></div>` : ''}</section>`;
   const tiers = EQUIP_TIERS.map((t, i) => {
     const cost = equipCost(i), owned = i && !cost;
     return `<button class="house tier-${t.name.toLowerCase()} ${p.equip === i ? 'on' : ''}" data-act="equip" data-v="${i}" ${i && p.equip !== i && p.money < cost ? 'disabled' : ''}>
@@ -795,7 +902,6 @@ function sponsorsView() {
   const terms = d => `${money(d.weekly)}/wk${d.goalBonus ? ` + ${money(d.goalBonus)}/goal` : ''}`;
   const head = `<section class="card hero"><div class="row"><h2>Sponsors</h2><span class="chip">${deals.length}/${slots} slots</span></div>
     <div class="kv"><div><small>From deals</small><b class="num">${money(deals.reduce((s, d) => s + d.weekly, 0))}/wk</b></div><div><small>Image rights</small><b class="num">${money(imageRights())}/wk</b></div><div><small>Level</small><b>${SPONSOR_LEVELS[sponsorLevel()].name}</b></div></div>
-    ${sponsorGross() > SPONSOR_CAP ? `<div class="small flood">Sponsor income is capped at ${money(SPONSOR_CAP)} a week: you get ${money(SPONSOR_CAP)} of your ${money(sponsorGross())}.</div>` : `<div class="small muted">Sponsors and image rights pay at most ${money(SPONSOR_CAP)} a week in total.</div>`}
     <div class="small muted">Reputation ${Math.round(p.rep)} decides which brands will talk to you${sponsorLevel() < SPONSOR_LEVELS.length - 1 ? ` (${SPONSOR_LEVELS[sponsorLevel() + 1].name} brands from ${SPONSOR_LEVELS[sponsorLevel() + 1].minRep})` : ''}. ${p.agent ? `Your ${agent().name.toLowerCase()} gets you ${Math.round((sponsorAgentMult() - 1) * 100)}% bigger fees${p.agent >= 3 ? ', an extra slot' : ''} and brands calling from reputation ${sponsorReqRep()}.` : `An agent gets bigger fees, more slots and brands calling sooner. Brands start calling you at reputation ${sponsorReqRep()}.`}</div></section>`;
   const mine = `<section class="card"><h2>Your deals</h2>${deals.length ? `<div class="commits">${deals.map(d => `<div class="commit"><div><b>${esc(d.brand)}</b> <span class="chip">${cat(d.cat)}</span><div class="small muted">${d.level} · ${d.weeks} week${d.weeks !== 1 ? 's' : ''} left</div></div><b class="num good">${terms(d)}</b></div>`).join('')}</div>` : '<p class="small muted" style="margin:0">No sponsors yet. Sign one below.</p>'}</section>`;
   const reqHtml = reqs.length ? `<section class="card"><h2>Requests</h2><p class="small muted" style="margin:0">Brands that came to you pay a quarter more. They wait 4 weeks for an answer.</p>${reqs.map(r => `<div class="offer"><div class="row"><div><b>${esc(r.brand)}</b> <span class="chip flood">${cat(r.cat)}</span><div class="small muted">${r.level} · ${r.weeks / SEASON_WEEKS} season${r.weeks > SEASON_WEEKS ? 's' : ''} · answer within ${r.expires} week${r.expires !== 1 ? 's' : ''}</div></div><b class="num good">${terms(r)}</b></div>
@@ -822,7 +928,7 @@ function agentMain() {
   const status = !w ? '' : p.wishPending
     ? `<div class="row"><span class="clubcell">${crest(p.wish, 'mini')}<b>${esc(w.name)}</b></span><span class="chip flood">Waiting</span></div><div class="small muted">They decide at the transfer window. Chance: ${wishOdds(p.wish).toLowerCase()}.</div>`
     : `<div class="row"><span class="clubcell">${crest(p.wish, 'mini')}<b>${esc(w.name)}</b></span>${p.wishResult === 'offer' ? '<span class="chip good">Offered</span>' : p.wishResult === 'no' ? '<span class="chip bad">No bid</span>' : `<span class="small muted">${seasonLabel(p.wishSeason)}</span>`}</div>`;
-  const why = !cur ? 'You need an agent to do this.' : p.loan ? 'Not while you are on loan.' : p.wishSeason === S.season ? 'You can name a dream club once per season.' : '';
+  const why = !cur ? 'You need an agent to do this.' : p.loan ? 'Not while you are on loan.' : newClub() ? `You only just joined ${esc(myClub().name)}: talking about a dream move in your first season would wreck your start here. Wait until next season.` : justRenewed() ? `You only just signed a new contract with ${esc(myClub().name)}. Announcing a dream move now would look terrible: wait until about week ${lockWeekLabel(p.renewedAt + NEG_LOCK_WEEKS)}.` : p.wishSeason === S.season ? 'You can name a dream club once per season.' : '';
   const dream = `<section class="card"><h2>Dream club</h2><p class="small muted" style="margin:0">Name any club in the game. ${esc(myClub().mgr)} and the board will not like it (manager −10, board −12). The club still decides for itself: going public makes them a bit more likely to bid, but nothing is guaranteed. If they bid, it is a normal offer you can negotiate.</p>
     ${status}<div class="btns"><button class="btn primary sm" data-act="wishAsk" ${canAnnounce() ? '' : 'disabled'}>Announce dream club</button></div>${why ? `<div class="small muted">${why}</div>` : ''}</section>`;
   const log = (p.agentLog || []).slice().reverse().slice(0, 12);
@@ -860,10 +966,10 @@ function viewClub() {
   const lgSel = ['table', 'scorers', 'assists'].includes(clubView) ?`<select class="btn block" data-act="league" aria-label="League">${countries.map(ct => `<optgroup label="${ct}">${S.leagues.filter(l => l.country === ct).sort((a, b) => a.tier - b.tier).map(l => `<option value="${l.id}" ${l.id === lid ? 'selected' : ''}>${l.name}</option>`).join('')}</optgroup>`).join('')}</select>` : '';
   let body = '';
   if (clubView === 'rivals') {
-    const order = peckingOrder(), slots = GROUP_SLOTS[POS_GROUP[S.player.pos]];
-    body = `<section class="card"><h2>Pecking order</h2><p class="small muted" style="margin:0">Everyone fighting for the ${slots} ${{ GK: 'goalkeeper', DEF: 'defence', MID: 'midfield', FWD: 'attack' }[POS_GROUP[S.player.pos]]} spot${slots > 1 ? 's' : ''}. The manager picks on ability, affection and form. Above the line start.</p>
+    const order = peckingOrder(), slots = formationSlots(myClub(), POS_GROUP[S.player.pos]);
+    body = `<section class="card"><h2>Pecking order</h2><p class="small muted" style="margin:0">Everyone fighting for the ${slots} ${{ GK: 'goalkeeper', DEF: 'defence', MID: 'midfield', FWD: 'attack' }[POS_GROUP[S.player.pos]]} spot${slots > 1 ? 's' : ''} in ${esc(myClub().mgr)}'s <b>${formationOf(myClub())}</b>. The manager picks on ability, affection and form; players whose position the shape has no place for are picked less. Above the line start.</p>
       <div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th>Pos</th><th class="r">OVR</th><th class="r">Affection</th></tr></thead><tbody>
-      ${order.map((r, i) => `<tr class="${r.me ? 'me' : ''}" ${i === slots - 1 ? 'style="border-bottom:2px solid var(--flood)"' : ''}><td>${i + 1}</td><td class="clubname">${esc(r.n)}${r.inj ? ` <span class="bad small">injured ${r.inj}w</span>` : ''}</td><td><span class="pos-tag">${r.pos}</span></td><td class="r">${r.r}</td><td class="r">${Math.round(r.a)}</td></tr>`).join('')}
+      ${order.map((r, i) => `<tr class="${r.me ? 'me' : ''}" ${i === slots - 1 ? 'style="border-bottom:2px solid var(--flood)"' : ''}><td>${i + 1}</td><td class="clubname">${esc(r.n)}${r.inj ? ` <span class="bad small">injured ${r.inj}w</span>` : ''}</td><td><span class="pos-tag ${fitsFormation(r.pos, myClub()) ? '' : 'off'}" title="${fitsFormation(r.pos, myClub()) ? '' : 'No natural place in this formation'}">${r.pos}</span></td><td class="r">${r.r}</td><td class="r">${Math.round(r.a)}</td></tr>`).join('')}
       </tbody></table></div></section>`;
   } else if (clubView === 'table') {
     const tbl = leagueTable(lid), n = tbl.length, tier = league(lid).tier;
@@ -1028,7 +1134,7 @@ function cupsView() {
   // Default to a competition you are in.
   const cur = comps.find(c => c.key === cupTab) || comps.find(c => c.mine) || comps[0];
   const chips = `<div class="cuptabs">${comps.map(c => `<button class="${c === cur ? 'on' : ''} ${c.mine ? 'mine' : ''}" data-act="cupTab" data-v="${c.key}">${esc(c.name.replace(/ \d{4}$/, ''))}</button>`).join('')}</div>`;
-  const year = START_YEAR + S.season + 1;
+  const year = baseYear() + S.season + 1;
   const nextSummer = SUMMER_EVENTS.map(ev => { const y = nextEventYear(ev, year); return [y, `${ev.name} ${y}`]; }).sort((a, b) => a[0] - b[0]).map(x => x[1]).slice(0, 3).join(' · ');
   return chips + cur.html() + `<p class="small muted" style="margin:0 4px">Cup games are midweek. European places come from the league table. Next summer tournaments: ${nextSummer}.</p>`;
 }
@@ -1080,7 +1186,7 @@ function careerHistory(p = S.player) {
   const ORDER = { league: 0, cup: 1, euro: 2 };
   const seasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a).map(s => {
     const spells = bySeason[s];
-    const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><b class="club">${esc(r.club)}</b><div class="small muted">${esc(r.league)}</div></div></div>
+    const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><b class="club">${esc(r.club)}</b><div class="small muted">${esc(r.league)}</div>${r.pos ? `<div class="posline"><span class="pos-main" title="Main position">${r.pos}</span>${(r.alts || []).length ? `<span class="pos-also">also</span>${r.alts.map(x => `<span class="pos-alt" title="Secondary position">${x}</span>`).join('')}` : ''}</div>` : ''}</div></div>
       <div class="spellstats"><span><b>${r.apps}</b> apps</span><span><b>${r.goals}</b> G</span><span><b>${r.assists}</b> A</span>${gkSpans(p.pos, r.saves, r.cleanAll)}<span><b>${r.apps ? r.avg.toFixed(2) : '–'}</b></span></div></div>`).join('');
     const clubParts = spells.map(r => {
       const list = Object.entries(r.comps || {}).filter(([, c]) => c.kind !== 'nat').sort((a, b) => ORDER[a[1].kind] - ORDER[b[1].kind]);
@@ -1119,7 +1225,7 @@ function honoursCardTabs(p = S.player) {
   // Club and Country read like a Wikipedia honours list: the team as a heading, then
   // "Competition: season, season" under it.
   // National tournaments are played in the summer after the season, so they show a single year.
-  const label = honTab === 'nat' ? s => String(START_YEAR + s + 1) : seasonLabel;
+  const label = honTab === 'nat' ? s => String(baseYear() + s + 1) : seasonLabel;
   const hline = h => `<div class="honline"><b>${esc(h.name)}</b>: ${h.seasons.slice().sort((a, b) => a - b).map(label).join(', ')}</div>`;
   const teamBlock = (name, items, crestHtml = '', sub = '') => `<div class="honteam"><div class="clubcell">${crestHtml}<span><b class="honhead">${esc(name)}</b>${sub ? `<div class="small muted">${sub}</div>` : ''}</span></div>${items.map(hline).join('')}</div>`;
   let body;
@@ -1139,11 +1245,11 @@ function viewCareer() {
   const p = S.player, t = careerTotals();
   // In the summer this season is already in the career rows.
   const live = S.phase === 'season' ? p.st : { apps: 0, goals: 0, assists: 0 };
-  const value = Math.round(marketWage(calcOVR(), myClub()) * 52 * Math.max(1, 30 - ageOf(p.by)) / 3 / 1e4) * 1e4;
+  const value = playerValue();
   return `<section class="card hero"><h2>Profile</h2>
       <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div><div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${calledUp() ? 'In squad' : 'Not picked'}</b></div>
-      <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div><small>Value</small><b>${money(value)}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b></div></div>
-      <div class="small muted">${nationNote()} Max OVR is ${MAX_OVR}.</div></section>
+      <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div title="Transfer value: OVR, position, age, reputation, contract, league and this season's form"><small>Value</small><b>${value ? money(value) : 'Free agent'}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b></div></div>
+      <div class="small muted">${nationNote()}</div></section>
     <section class="card"><h2>This season</h2><div class="${statGrid(p.pos)}"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div>${gkCells(p.pos, p.st.saves, p.st.cleanAll)}<div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
       ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Cups: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}
       ${(p.seasonSpells || []).length ? `<div class="small muted">These are your numbers at ${esc(myClub().name)}. Earlier spells this season have their own rows in your career history.</div>` : ''}
@@ -1310,21 +1416,88 @@ function startFx(canvas, kind, lvl = 0) {
 
 function showDecision() {
   const d = S.decision;
-  const opts = d.type === 'recall'
+  const opts = d.type === 'position'
+    ? [['accept', `Play as ${d.to}`, d.early ? `Your main position from next season (manager +3)` : `Added beside your main position (manager +3)`], ['refuse', `Stay a ${S.player.pos}`, 'He will be unhappy (−5) and play you a little less this season']]
+    : d.type === 'recall'
     ? [['return', 'Go back now', 'Your loan ends and you rejoin the squad straight away'], ['stay', 'Ask to stay on loan', `${club(d.club).mgr} will be disappointed (−8 when you return)`]]
     : d.type === 'rumour'
     ? [['deny', 'Deny it publicly', 'The manager likes loyalty (+3)'], ['silent', 'Say nothing', 'He wonders why you stayed quiet (−1)']]
     : [['reject', 'Reject them', `Show you are committed (+${d.rival ? 8 : 4}${d.rival ? ', rivals!' : ''})`], ['listen', 'Tell your agent to listen', 'They may bid in the window (−2)']];
-  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
+  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
     <div class="inbox">${opts.map(([v, l, s]) => `<button class="house" data-act="decide" data-v="${v}"><span><b>${l}</b><br><span class="small muted">${s}</span></span></button>`).join('')}</div>`);
+}
+
+// Matchday: both team sheets in each club's formation, with the bench, and where you fit in. Fit players only.
+const LINE_ORDER = { GK: 0, LB: 1, CB: 2, RB: 3, LM: 4, CDM: 5, CM: 6, CAM: 7, RM: 8, LW: 9, ST: 10, RW: 11 };
+function teamSheet(c, me) {
+  const shape = FORMATIONS[formationOf(c)], ROLES = { GK: ['GK'], DEF: shape.DEF, MID: shape.MID, FWD: shape.FWD };
+  const avail = c.players.filter(pl => !pl.inj).map(pl => ({ n: pl.n, pos: pl.pos, r: pl.r }));
+  // Fill the shape by role where the squad allows, then the best of the rest in that line.
+  const xi = {}, taken = new Set();
+  for (const g of Object.keys(ROLES)) {
+    const line = avail.filter(pl => POS_GROUP[pl.pos] === g).sort((a, b) => b.r - a.r);
+    xi[g] = ROLES[g].map(role => { const pl = line.find(x => !taken.has(x) && (!role || x.pos === role)); if (pl) taken.add(pl); return pl; });
+    xi[g] = xi[g].map(pl => pl || (() => { const x = line.find(y => !taken.has(y)); if (x) taken.add(x); return x; })()).filter(Boolean);
+  }
+  // You take the slot of your role in the shape (your position, or the one you fill), else the
+  // weakest in that line.
+  if (me && me.start) {
+    const role = shapeRole(me.pos, c), g = role === 'GK' ? 'GK' : ['DEF', 'MID', 'FWD'].find(l => shape[l].includes(role)) || POS_GROUP[me.pos], row = xi[g];
+    let i = row.findIndex(pl => pl.pos === role);
+    if (i < 0) i = row.findIndex(pl => (ROLE_FIT[role] || []).includes(pl.pos));
+    if (i < 0) i = row.reduce((lo, pl, k) => pl.r < row[lo].r ? k : lo, 0);
+    row[i] = me;
+  }
+  Object.values(xi).forEach(row => row.sort((a, b) => LINE_ORDER[a.pos] - LINE_ORDER[b.pos]));
+  const used = new Set(Object.values(xi).flat());
+  const rest = avail.filter(pl => !used.has(pl)).sort((a, b) => b.r - a.r);
+  const bench = [...rest.filter(pl => pl.pos === 'GK').slice(0, 1), ...rest.filter(pl => pl.pos !== 'GK').slice(0, me && !me.start ? 5 : 6)];
+  if (me && !me.start && me.squad) bench.push(me);
+  return { xi, bench };
+}
+// How you fit a role your position is not: a full-back wide in midfield is a wing-back.
+const roleText = (pos, role) => (pos === 'LB' || pos === 'RB') && (role === 'LM' || role === 'RM') ? `as a ${role === 'LM' ? 'left' : 'right'} wing-back` : `in the ${POS_NAMES[role].toLowerCase()} role`;
+const shortN = n => { const w = n.split(' '); return w.length > 1 ? w.slice(1).join(' ') : n; };
+function pitchHtml(sheet) {
+  const chip = pl => `<div class="lp-chip ${pl.me ? 'me' : ''}"><b class="num">${pl.r}</b><span>${esc(shortN(pl.n))}</span><small>${pl.pos}</small></div>`;
+  return `<div class="pitch">${['FWD', 'MID', 'DEF', 'GK'].map(g => `<div class="lp-row">${sheet.xi[g].map(chip).join('')}</div>`).join('')}</div>`;
+}
+// Today's game: the league game, or the midweek game once the league game is done (or with no
+// league game this week).
+function showMatchday() {
+  const p = S.player, lfx = leagueDone() ? null : nextFixture(), efx = midweekFixture();
+  if (!lfx && !efx) return;
+  const cup = !lfx, fx = cup ? efx : lfx, half = S.weekHalf;
+  // Too tired to play twice: you sit the midweek game out if you played the league game.
+  const leagueSel = lfx && !p.injured ? matchdaySelection(lfx) : null;
+  const rested = cup && leagueDone() && half.user && half.user.mins && half.weekEnergy < TWO_GAME_ENERGY;
+  const sel = p.injured || rested ? { mins: 0, start: false } : cup ? cupSelection(efx) : leagueSel;
+  const me = { n: p.name, pos: matchPos(), r: calcOVR(), me: true, start: !!sel.start, squad: !p.injured };
+  const mine = teamSheet(myClub(), me), opp = teamSheet(club(fx.opp), null);
+  const where = p.injured ? '<span class="bad">You are injured and miss this one.</span>'
+    : rested ? `<span class="bad">You need ${TWO_GAME_ENERGY}+ energy to play twice this week, so you rest for this one.</span>`
+    : sel.start ? `<span class="good">You start ${shapeRole(matchPos(), myClub()) !== matchPos() ? `${roleText(matchPos(), shapeRole(matchPos(), myClub()))} in ${esc(myClub().mgr)}'s ${formationOf(myClub())}` : `as ${POS_NAMES[matchPos()].toLowerCase()}`}.</span>`
+    : sel.mins ? '<span class="flood">You start on the bench, but should get on.</span>' : '<span class="muted">You are on the bench.</span>';
+  const benchHtml = s => s.bench.map(pl => `<span class="${pl.me ? 'me' : ''}">${esc(shortN(pl.n))} <small>${pl.pos} ${pl.r}</small></span>`).join('');
+  const home = fx.isHome ? myClub() : club(fx.opp), away = fx.isHome ? club(fx.opp) : myClub();
+  const cupName = efx && efx.t.name.replace(/ \d{4}$/, '');
+  const title = cup ? `${esc(cupName)} · ${efx.stage}` : `Matchday ${S.week}`;
+  // Home side first, like the fixture above.
+  const sheet = (c, s) => `<div><h4>${esc(c.short)} · ${formationOf(c)}</h4>${pitchHtml(s)}<div class="lp-bench"><b>Bench</b>${benchHtml(s)}</div></div>`;
+  const sheets = fx.isHome ? sheet(myClub(), mine) + sheet(club(fx.opp), opp) : sheet(club(fx.opp), opp) + sheet(myClub(), mine);
+  openModal(`<div class="row"><h3 style="margin:0">${title}</h3><span class="small muted">${dayLabel(cup ? dayAfter(midweekOffset(efx)) : weekDate())}</span></div>
+    <div class="fixture"><div class="team">${crest(home.id)}<b>${esc(home.name)}</b></div><div class="vs">VS</div><div class="team">${crest(away.id)}<b>${esc(away.name)}</b></div></div>
+    <p class="small" style="margin:0;text-align:center">${where}</p>
+    <div class="sheet-tabs">${sheets}</div>
+    <div class="btns"><button class="btn primary block" data-act="kickoff">Kick off</button><button class="btn block" data-act="close">Back</button></div>`);
 }
 
 function showOrderSheet() {
   const o = S.player.order;
   openModal(`<h3>Manager's plan</h3><p style="margin:0">Before the game, ${myClub().mgr} pulls you aside: “${esc(o.text)}”</p>
     <div class="inbox">
-      <button class="house" data-act="orderGo" data-v="follow"><span><b>Follow the plan</b><br><span class="small muted">Slightly better chance of winning, same scoring chance. Affection +2 if you play.</span></span></button>
-      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning. Goal or assist in a win: +2. Goal or assist without winning: −2. Neither, but a win: −2. Neither and no win: −6.</span></span></button>
+      <button class="house" data-act="orderGo" data-v="follow"><span><b>Follow the plan</b><br><span class="small muted">Slightly better chance of winning, same scoring chance${TACKLERS.includes(matchPos()) ? '; a slightly better chance of a clean sheet, but a few fewer tackles' : ''}. Affection +2 if you play.</span></span></button>
+      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning${TACKLERS.includes(matchPos()) ? '; a few more tackles, but a slightly worse chance of a clean sheet' : ''}. ${TACKLERS.includes(matchPos()) ? `Clean sheet and ${DECENT_TACKLES[matchPos()]}+ tackles: +2. Only one of them: −2. Neither: −6.` : 'Goal or assist in a win: +2. Goal or assist without winning: −2. Neither, but a win: −2. Neither and no win: −6.'}</span></span></button>
     </div>`);
 }
 
@@ -1361,7 +1534,7 @@ function matchBlock(m, title, injured) {
     ${m.agg ? `<div class="small muted" style="text-align:center">Aggregate ${m.agg[0]}–${m.agg[1]}: <b>${esc(teamName(m.winner))}</b> go through</div>` : ''}
     ${sc ? `<div class="scorers">${sc}</div>` : ''}
     ${u && u.mins ? `<div class="${statGrid(S.player.pos)}"><div><b>${u.rating.toFixed(1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div>${S.player.pos === 'GK' ? `<div><b>${u.saves || 0}</b><small>Saves</small></div><div><b>${u.clean ? 'Yes' : 'No'}</b><small>Clean sheet</small></div>` : ''}</div>${u.tackles ? `<div class="small muted" style="text-align:center">${u.tackles} tackle${u.tackles !== 1 ? 's' : ''}</div>` : ''}`
-      : `<p class="muted" style="margin:0">${injured ? 'You were out injured.' : u && u.rested ? `Rested: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week.` : 'You stayed on the bench.'}</p>`}`;
+      : `<p class="muted" style="margin:0">${injured ? 'You were out injured.' : u && u.free ? 'Your contract has run out, so you are not part of the squad. Re-sign to play again.' : u && u.rested ? `Rested: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week.` : 'You stayed on the bench.'}</p>`}`;
 }
 
 function showMatchReport(rep) {
@@ -1373,7 +1546,8 @@ function showMatchReport(rep) {
   else if (!rep.cup) html += `<h3>Week ${rep.week} done</h3><p class="muted" style="margin:0">No match this week.</p>`;
   if (rep.cup) html += matchBlock(rep.cup, `${rep.cup.comp} · ${rep.cup.stage}`, injured);
   html += rep.events.map(e => `<div class="award">${esc(e)}</div>`).join('');
-  html += `<div class="row small"><span class="muted">Weekly income</span><b class="num ${rep.net >= 0 ? 'good' : 'bad'}">${rep.net >= 0 ? '+' : ''}${money(rep.net)}</b></div>`;
+  if (rep.net != null) html += `<div class="row small"><span class="muted">Weekly income</span><b class="num ${rep.net >= 0 ? 'good' : 'bad'}">${rep.net >= 0 ? '+' : ''}${money(rep.net)}</b></div>`;
+  else if (leagueDone()) { const e = midweekFixture(); html += `<div class="award">Next: ${esc(e.t.name.replace(/ \d{4}$/, ''))} ${e.isHome ? 'vs' : 'at'} ${esc(club(e.opp).name)} on ${dayLabel(dayAfter(midweekOffset(e)))}</div>`; }
   html += `<button class="btn primary block" data-act="close">${S.phase === 'offseason' ? 'See season review' : 'Continue'}</button>`;
   openModal(html);
 }
@@ -1394,16 +1568,27 @@ document.addEventListener('click', e => {
   const act = b.dataset.act, v = b.dataset.v;
   switch (act) {
     case 'pos': draft.pos = v; renderCreate(); return;
+    case 'foot': draft.foot = v; renderCreate(); return;
     case 'tab': tab = v; window.scrollTo(0, 0); render(); return;
     case 'clubView': clubView = v; render(); return;
     case 'cupTab': cupTab = v; cupPart = null; render(); return;
     case 'shopView': shopView = v; render(); return;
+    case 'luxCat': luxCat = v; render(); return;
+    case 'luxAsk': { const it = luxItem(v); confirmSheet(`Buy the ${esc(luxName(it))}?`, `${money(it.price)}.${it.cat === 'car' ? ` Insurance and upkeep: ${money(Math.round(it.price * CAR_UPKEEP))} a week.` : ''} You can sell it back later for ${Math.round(SELL_BACK_LUX[it.cat] * 100)}%.`, 'luxBuy', 'Buy it', v); return; }
+    case 'luxBuy': if (buyLuxury(v)) toast('Enjoy it!'); closeModal(); render(); return;
+    case 'luxSellAsk': { const c = collection().find(x => x.uid === v), it = c && luxItem(c.id); if (it) confirmSheet(`Sell the ${esc(luxName(it))}?`, `You get ${money(Math.round(it.price * SELL_BACK_LUX[it.cat]))} back.`, 'luxSell', 'Sell', v); return; }
+    case 'luxSell': if (sellLuxury(v)) toast('Sold'); closeModal(); render(); return;
+    case 'buyStock': { const [sym, amt] = v.split('|'), n = buyShares(sym, +amt); toast(n ? `Bought ${n.toLocaleString()} ${sym}` : 'Not enough money'); render(); return; }
+    case 'sellStock': { const [sym, fr] = v.split('|'), got = sellShares(sym, +fr); toast(got ? `Sold for ${money(got)}` : 'Nothing to sell'); render(); return; }
     case 'agentView': agentView = v; render(); return;
     case 'sponsorSign': if (signSponsor(v)) toast('Sponsor signed'); render(); return;
     case 'sponsorNo': declineSponsorReq(v); render(); return;
     case 'cupPart': cupPart = v; render(); return;
     case 'train': { const g = train(v); if (g != null) toast(g ? `${ATTR_NAMES[v]} +${g.toFixed(2)}` : `${ATTR_NAMES[v]} session done`); render(); return; }
     case 'rest': rest(); toast('Rested: +8 energy'); render(); return;
+    case 'altInfo': toast(v === 'next' ? `You play ${S.player.nextPos} now; it becomes your main position next season` : `You can also play ${POS_NAMES[v]} (${v})`); return;
+    case 'matchday': showMatchday(); return;
+    case 'kickoff': closeModal(); if (S.player.order && !S.player.order.choice) showOrderSheet(); else doAdvance(); return;
     case 'advance': if (S.player.order && !S.player.order.choice) showOrderSheet(); else doAdvance(); return;
     case 'order': setOrderChoice(v); render(); return;
     case 'orderGo': setOrderChoice(v); closeModal(); doAdvance(); return;
@@ -1439,7 +1624,7 @@ document.addEventListener('click', e => {
         <div class="btns"><button class="btn primary" data-act="pauseNew">Put it aside</button><button class="btn danger" data-act="newGame">Delete it</button><button class="btn" data-act="close">Cancel</button></div>`);
       return;
     case 'menu': landing = true; pastView = null; closeModal(); render(); window.scrollTo(0, 0); return;
-    case "listAsk": confirmSheet("Request a transfer?", "The manager (−15) and the board (−20) will be unhappy. Clubs will bid for you in the transfer windows.", "list", "Hand in request"); return;
+    case "listAsk": confirmSheet("Request a transfer?", "The manager will freeze you out straight away, and the board will be unhappy (−20). Clubs will bid for you in the transfer windows.", "list", "Hand in request"); return;
     case "list": requestTransfer(); closeModal(); render(); return;
     case "unlist": withdrawTransferRequest(); render(); return;
     case 'house': if (setHouse(+v)) toast(HOUSING[+v].name); render(); return;

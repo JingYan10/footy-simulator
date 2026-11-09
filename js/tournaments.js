@@ -84,7 +84,8 @@ const SUMMER_EVENTS = [
   { key: 'ASIA', name: 'AFC Asian Cup', every: 4, first: 2027, confed: ['AFC'] },
   { key: 'AFCON', name: 'Africa Cup of Nations', every: 4, first: 2028, also: [2027], confed: ['CAF'] },
 ];
-const eventOn = (ev, year) => (ev.also || []).includes(year) || (year >= ev.first && (year - ev.first) % ev.every === 0);
+// Cycles run both ways from the first listed year, so a career that starts earlier still gets them.
+const eventOn = (ev, year) => (ev.also || []).includes(year) || ((year - ev.first) % ev.every + ev.every) % ev.every === 0;
 function nextEventYear(ev, from) { let y = from; while (!eventOn(ev, y)) y++; return y; }
 
 // ---------- teams ----------
@@ -632,7 +633,7 @@ function summerTeams(ev) {
 // Called at the end of a season: set up the tournaments of the coming summer.
 // Tournaments you are not part of are played straight away.
 function buildSummer() {
-  const year = START_YEAR + S.season + 1, p = S.player;
+  const year = baseYear() + S.season + 1, p = S.player;
   S.summer = [];
   SUMMER_EVENTS.filter(ev => eventOn(ev, year)).forEach(ev => {
     const teams = summerTeams(ev);
@@ -722,7 +723,10 @@ function playSummerStage() {
   return report;
 }
 
+// Out of contract, you are not your old club's player: it plays its summer games without you until
+// you re-sign (or join another club in the tournament).
 function summerSelection(me) {
+  if (isClub(me) && S.player.needsContract) return { mins: 0, start: false, free: true };
   if (isClub(me)) return selection();
   const ovr = calcOVR(), str = NATION_STR[me.slice(2)] || 60;
   const start = ovr >= str + 2 ? .9 : ovr >= str - 2 ? .65 : ovr >= str - 5 ? .35 : .15;
