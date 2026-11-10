@@ -200,6 +200,9 @@ function logoUrl(c, ext) {
 }
 
 function crest(id, size = '') {
+  // National teams show their flag (js/flags.js), or their code if there is none.
+  const flag = isNation(id) && typeof FLAG_DATA !== 'undefined' && FLAG_DATA[id.slice(2)];
+  if (flag) return `<div class="crest ${size} nation hasflag"><img src="${flag}" alt=""><span>${teamCode(id).slice(0, 4)}</span></div>`;
   if (!isClub(id)) return `<div class="crest ${size} ${isNation(id) ? 'nation' : ''}"><span>${teamCode(id).slice(0, 4)}</span></div>`;
   const c = club(id), st = logoState[id] ?? 0;
   const img = st >= 0 ? `<img src="${logoUrl(c, LOGO_EXTS[st])}" alt="" data-club="${id}" data-ext="${st}">` : '';
@@ -207,6 +210,18 @@ function crest(id, size = '') {
 }
 
 // Try the next file type, then give up and show the short name.
+// In the league table, results, cups and career history every crest gets about the same visible area, like Google's standings: a tall
+// crest (Juventus) is drawn a little smaller and a wide one (Lazio) a little bigger, within a 22px square.
+const LGT_BOX = 22, LGT_AREA = 16 * 16;
+document.addEventListener('load', e => {
+  const img = e.target;
+  if (img.tagName !== 'IMG' || !img.closest('table.lgt, .lgcrest, .spell, .stint') || img.closest('.nation') || !img.naturalWidth) return;
+  const r = img.naturalWidth / img.naturalHeight;
+  let w = Math.sqrt(LGT_AREA * r), h = Math.sqrt(LGT_AREA / r);
+  const k = Math.min(1, LGT_BOX / w, LGT_BOX / h);
+  img.style.width = `${Math.round(w * k)}px`; img.style.height = `${Math.round(h * k)}px`;
+}, true);
+
 document.addEventListener('error', e => {
   const img = e.target;
   if (img.tagName !== 'IMG' || !img.dataset.club) return;
@@ -704,16 +719,22 @@ function iconCardHtml(rec) {
   const nums = gk ? [[t.apps, 'APP'], [t.cleanAll || 0, 'CS'], [t.saves || 0, 'SV'], [rec.trophies.length, 'TTL']]
     : [[t.apps, 'APP'], [t.goals, 'GOL'], [t.assists, 'AST'], [rec.trophies.length, 'TTL']];
   const why = ic.prime ? `average of your ${ic.prime} season${ic.prime > 1 ? 's' : ''} aged 25 to 33` : 'your peak, as you retired before 25';
+  // Like an EA card: six stats in two columns, averaged the same way as the OVR. Old careers saved
+  // without stats show career numbers instead.
+  const order = ic.stats && ('DIV' in ic.stats ? ['DIV', 'HAN', 'KIC', 'REF', 'PHY', 'POS'] : ['PAC', 'SHO', 'PAS', 'DRI', 'DEF', 'PHY']);
+  const label = k => 'DIV' in (ic.stats || {}) && k === 'PHY' ? 'SPD' : k;
+  const statsHtml = order ? `<div class="ic-stats">${[order.slice(0, 3), order.slice(3)].map(col => `<div>${col.map(k => `<div><b>${ic.stats[k]}</b><small>${label(k)}</small></div>`).join('')}</div>`).join('')}</div>` : '';
+  const totals = gk ? `${t.apps} apps · ${t.cleanAll || 0} clean sheets · ${t.saves || 0} saves · ${rec.trophies.length} troph${rec.trophies.length === 1 ? 'y' : 'ies'}` : `${t.apps} apps · ${t.goals} goals · ${t.assists} assists · ${rec.trophies.length} troph${rec.trophies.length === 1 ? 'y' : 'ies'}`;
   return `<section class="card"><h2>Icon card</h2>
     <div class="icon-card">
       <div class="ic-top"><div class="ic-ovr"><b>${ic.ovr}</b><span>${ic.pos}</span>${ic.alts.map(a => `<i>${a}</i>`).join('')}</div>
         <div class="ic-side">${top ? rowCrest(top) : ''}<span class="ic-tag">ICON</span></div></div>
       <svg class="ic-man" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="34" r="20"/><path d="M12 100c0-24 17-38 38-38s38 14 38 38z"/></svg>
       <div class="ic-name">${esc(rec.name)}</div>
-      <div class="ic-nums">${nums.map(([v, k]) => `<div><b>${v}</b><small>${k}</small></div>`).join('')}</div>
-      <div class="ic-nat">${esc(natName(rec.nat))}</div>
+      ${statsHtml || `<div class="ic-nums">${nums.map(([v, k]) => `<div><b>${v}</b><small>${k}</small></div>`).join('')}</div>`}
+      <div class="ic-nat">${typeof FLAG_DATA !== 'undefined' && FLAG_DATA[rec.nat] ? `<img src="${FLAG_DATA[rec.nat]}" alt="">` : ''}${esc(natName(rec.nat))}</div>
     </div>
-    <p class="small muted" style="margin:0;text-align:center">OVR ${ic.ovr}: ${why}.<br>Most games: ${ic.apps.map(([k, n]) => `${k} ${n}`).join(' · ')}</p></section>`;
+    <p class="small muted" style="margin:0;text-align:center">OVR ${ic.ovr}${statsHtml ? ' and card stats' : ''}: ${why}.<br>${statsHtml ? `${totals}<br>` : ''}Most games: ${ic.apps.map(([k, n]) => `${k} ${n}`).join(' · ')}</p></section>`;
 }
 
 // Short tags for a finished career: legend status, Ballon d'Ors, and the main clubs' numbers.
@@ -998,6 +1019,12 @@ function showWishSheet() {
 }
 
 // ---------- club ----------
+// The last five league results as dots, oldest first, the latest one ringed (like Google's table).
+// Only games already played are shown.
+const formDots = (f = '') => `<span class="fmrow">${[...f].map((x, i, a) => `<i class="fm ${x === 'W' ? 'w' : x === 'L' ? 'l' : 'd'}${i === a.length - 1 ? ' last' : ''}"></i>`).join('')}</span>`;
+// A small flag for a nationality, or its code when the game has no flag for it.
+const natFlag = nat => typeof FLAG_DATA !== 'undefined' && FLAG_DATA[nat] ? `<img class="natflag" src="${FLAG_DATA[nat]}" alt="${esc(nat)}" title="${esc(natName(nat))}">` : `<span class="muted">${esc(nat)}</span>`;
+
 function viewClub() {
   const c = myClub();
   const lid = viewLeague || c.league;
@@ -1015,8 +1042,8 @@ function viewClub() {
       </tbody></table></div></section>`;
   } else if (clubView === 'table') {
     const tbl = leagueTable(lid), n = tbl.length, tier = league(lid).tier;
-    body = `<section class="card"><div class="tablewrap"><table><thead><tr><th>#</th><th>Club</th><th class="r">P</th><th class="r">W</th><th class="r">D</th><th class="r">L</th><th class="r">GD</th><th class="r">Pts</th></tr></thead><tbody>
-      ${tbl.map((r, i) => `<tr class="${r.id === S.player.club ? 'me' : ''} ${i < (tier === 1 ? 4 : PROMOTE) ? 'zone-cl' : i >= n - PROMOTE && tier < 3 ? 'zone-rel' : ''}"><td>${i + 1}</td><td class="clubname"><span class="clubcell">${crest(r.id, "mini")}${club(r.id).name}</span></td><td class="r">${r.p}</td><td class="r">${r.w}</td><td class="r">${r.d}</td><td class="r">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r"><b>${r.pts}</b></td></tr>`).join('')}
+    body = `<section class="card"><div class="tablewrap"><table class="lgt"><thead><tr><th>#</th><th>Club</th><th class="r">P</th><th class="r wdl">W</th><th class="r wdl">D</th><th class="r wdl">L</th><th class="r">GD</th><th class="r pts">Pts</th><th class="l5">Last 5</th></tr></thead><tbody>
+      ${tbl.map((r, i) => `<tr class="${r.id === S.player.club ? 'me' : ''} ${i < (tier === 1 ? 4 : PROMOTE) ? 'zone-cl' : i >= n - PROMOTE && tier < 3 ? 'zone-rel' : ''}"><td>${i + 1}</td><td class="clubname"><span class="clubcell">${crest(r.id, "mini")}${club(r.id).name}</span></td><td class="r">${r.p}</td><td class="r wdl">${r.w}</td><td class="r wdl">${r.d}</td><td class="r wdl">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r pts"><b>${r.pts}</b></td><td class="l5">${formDots(r.f)}</td></tr>`).join('')}
       </tbody></table></div></section>`;
   } else if (clubView === 'squad') {
     const p = S.player;
@@ -1024,17 +1051,17 @@ function viewClub() {
     rows.push({ n: p.name, pos: p.pos, age: ageOf(p.by), nat: p.nat, r: calcOVR(), me: true });
     rows.sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos) || b.r - a.r);
     body = `<section class="card"><div class="tablewrap"><table><thead><tr><th>Pos</th><th>Player</th><th>Nat</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
-      ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.n)}</td><td class="muted">${r.nat}</td><td class="r">${r.age}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
+      ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.n)}</td><td class="natcell">${natFlag(r.nat)}</td><td class="r">${r.age}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
       </tbody></table></div></section>`;
   } else if (clubView === 'results') {
-    body = resultsView();
+    body = `<div class="lgcrest">${resultsView()}</div>`;
   } else if (clubView === 'cups') {
-    body = cupsView();
+    body = `<div class="lgcrest">${cupsView()}</div>`;
   } else {
     const assists = clubView === 'assists', list = assists ? topAssists(lid, 15) : topScorers(lid, 15);
-    body = `<section class="card"><div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th>Club</th><th class="r">${assists ? 'Assists' : 'Goals'}</th></tr></thead><tbody>
-      ${list.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td class="clubname">${esc(r.n)}</td><td class="muted">${club(r.club).short}</td><td class="r"><b>${r.g}</b></td></tr>`).join('') || `<tr><td colspan="4" class="muted">No ${assists ? 'assists' : 'goals'} yet this season.</td></tr>`}
-      </tbody></table></div></section>`;
+    body = `<div class="lgcrest"><section class="card"><div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th class="clubcrest">Club</th><th class="r">${assists ? 'Assists' : 'Goals'}</th></tr></thead><tbody>
+      ${list.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td class="clubname">${esc(r.n)}</td><td class="clubcrest" title="${esc(club(r.club).name)}">${crest(r.club, 'mini')}</td><td class="r"><b>${r.g}</b></td></tr>`).join('') || `<tr><td colspan="4" class="muted">No ${assists ? 'assists' : 'goals'} yet this season.</td></tr>`}
+      </tbody></table></div></section></div>`;
   }
   return head + seg + lgSel + body;
 }
@@ -1277,10 +1304,10 @@ function honoursCardTabs(p = S.player) {
     // Clubs in the order you first won something there.
     body = [...teams.entries()].sort((a, b) => Math.min(...a[1].flatMap(h => h.seasons)) - Math.min(...b[1].flatMap(h => h.seasons)))
       .map(([name, items]) => { const c = S && S.clubs ? clubByName(name) : null; return teamBlock(name, items, c ? crest(c.id, 'mini') : ''); }).join('');
-  } else if (honTab === 'nat') body = teamBlock(natName(p.nat), list, '', `${p.caps || 0} caps · ${p.intlGoals || 0} goals`);
+  } else if (honTab === 'nat') body = teamBlock(natName(p.nat), list, '', `${p.caps || 0} caps · ${p.intlGoals || 0} goals · ${intlAssists(p)} assist${intlAssists(p) === 1 ? '' : 's'}`);
   else body = `<div class="honteam">${list.map(hline).join('')}</div>`;
   return `<section class="card"><h2>Honours</h2><div class="seg">${tabs.map(([k, l]) => `<button class="${honTab === k ? 'on' : ''}" data-act="honTab" data-v="${k}">${l} (${grouped(groups[k]).reduce((n, g) => n + g.seasons.length, 0)})</button>`).join('')}</div>
-    ${list.length ? body : honTab === 'nat' ? teamBlock(natName(p.nat), [], '', `${p.caps || 0} caps · ${p.intlGoals || 0} goals · nothing won yet`) : `<span class="small muted">${empty}</span>`}</section>`;
+    ${list.length ? body : honTab === 'nat' ? teamBlock(natName(p.nat), [], '', `${p.caps || 0} caps · ${p.intlGoals || 0} goals · ${intlAssists(p)} assist${intlAssists(p) === 1 ? '' : 's'} · nothing won yet`) : `<span class="small muted">${empty}</span>`}</section>`;
 }
 
 function viewCareer() {

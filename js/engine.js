@@ -164,7 +164,7 @@ const HOUSING = [
 ];
 // Weekly rent in euros for each home, by country: roughly what a room, a city flat, a family
 // home, a villa and a footballer's mansion cost to rent around the big clubs (London and
-// Manchester, Madrid and Barcelona, Milan, Munich, Paris, Lisbon, Amsterdam, LA and Miami, Riyadh).
+// Manchester, Madrid and Barcelona, Milan, Munich, Paris, Lisbon, Amsterdam, Brussels, LA and Miami, Riyadh).
 const HOUSE_RENT = {
   ENG: [250, 800, 3500, 12000, 35000],
   ESP: [180, 550, 2200, 7000, 22000],
@@ -174,6 +174,7 @@ const HOUSE_RENT = {
   POR: [130, 400, 1300, 4000, 12000],
   TUR: [150, 450, 1500, 5000, 15000],
   NED: [200, 650, 2000, 5500, 15000],
+  BEL: [180, 600, 1800, 5000, 14000],
   USA: [280, 900, 3200, 10000, 30000],
   KSA: [150, 550, 1800, 6000, 20000],
 };
@@ -195,6 +196,7 @@ const RIVALRIES = [
   ['Paris Saint-Germain', 'Marseille'], ['Lyon', 'Saint-Étienne'], ['Lens', 'Lille'], ['Nice', 'Monaco'],
   ['Benfica', 'Sporting CP'], ['Benfica', 'Porto'], ['Porto', 'Sporting CP'], ['Braga', 'Vitória SC'],
   ['Ajax', 'Feyenoord'], ['Ajax', 'PSV'], ['PSV', 'Feyenoord'],
+  ['Club Brugge', 'Anderlecht'], ['Anderlecht', 'Standard Liège'], ['Club Brugge', 'Cercle Brugge'], ['Antwerp', 'Beerschot'], ['Club Brugge', 'Antwerp'], ['Anderlecht', 'Union SG'],
   ['Galatasaray', 'Fenerbahçe'], ['Galatasaray', 'Beşiktaş'], ['Fenerbahçe', 'Beşiktaş'], ['Trabzonspor', 'Fenerbahçe'],
   ['Al Hilal', 'Al Nassr'], ['Al Ittihad', 'Al Ahli'], ['Al Hilal', 'Al Ittihad'], ['Al Nassr', 'Al Shabab'],
   ['LA Galaxy', 'LAFC'], ['Seattle Sounders', 'Portland Timbers'], ['New York City FC', 'New York Red Bulls'], ['Inter Miami', 'Orlando City'], ['Columbus Crew', 'FC Cincinnati'],
@@ -211,6 +213,7 @@ const DERBY_NAMES = {
   'Paris Saint-Germain|Marseille': 'Le Classique', 'Lyon|Saint-Étienne': 'Derby du Rhône', 'Lens|Lille': 'Derby du Nord', 'Nice|Monaco': "Derby de la Côte d'Azur",
   'Benfica|Sporting CP': 'Lisbon derby', 'Benfica|Porto': 'O Clássico', 'Porto|Sporting CP': 'O Clássico', 'Braga|Vitória SC': 'Minho derby',
   'Ajax|Feyenoord': 'De Klassieker', 'Ajax|PSV': 'De Topper', 'PSV|Feyenoord': 'Dutch derby',
+  'Club Brugge|Anderlecht': 'De Topper', 'Anderlecht|Standard Liège': 'Le Clasico', 'Club Brugge|Cercle Brugge': 'Bruges derby', 'Antwerp|Beerschot': 'Antwerp derby', 'Club Brugge|Antwerp': 'Belgian derby', 'Anderlecht|Union SG': 'Brussels derby',
   'Galatasaray|Fenerbahçe': 'Intercontinental Derby', 'Galatasaray|Beşiktaş': 'Istanbul derby', 'Fenerbahçe|Beşiktaş': 'Istanbul derby', 'Trabzonspor|Fenerbahçe': 'Black Sea rivalry',
   'Al Hilal|Al Nassr': 'Riyadh derby', 'Al Ittihad|Al Ahli': 'Jeddah derby', 'Al Hilal|Al Ittihad': 'Saudi Clásico', 'Al Nassr|Al Shabab': 'Riyadh derby',
   'LA Galaxy|LAFC': 'El Tráfico', 'Seattle Sounders|Portland Timbers': 'Cascadia derby', 'New York City FC|New York Red Bulls': 'Hudson River derby', 'Inter Miami|Orlando City': 'Florida derby', 'Columbus Crew|FC Cincinnati': 'Hell is Real',
@@ -390,6 +393,8 @@ function makeSeason() {
 function newStats() { return { apps: 0, starts: 0, goals: 0, assists: 0, rsum: 0, motm: 0, clean: 0, cleanAll: 0, tackles: 0, saves: 0, missed: 0, cup: { apps: 0, goals: 0, assists: 0, rsum: 0 }, comps: {} }; }
 
 // kind: 'league', 'cup', 'euro' or 'nat'.
+// Assists for your country, from every season's competitions (qualifiers, friendlies and tournaments).
+const intlAssists = (p = S.player) => (p.career || []).reduce((s, r) => s + Object.values(r.comps || {}).reduce((t, c) => t + (c.kind === 'nat' ? c.assists || 0 : 0), 0), 0);
 function addComp(comps, name, kind, apps, goals, assists, rsum) {
   const c = comps[name] = comps[name] || { kind, apps: 0, goals: 0, assists: 0, rsum: 0 };
   c.apps += apps; c.goals += goals; c.assists += assists; c.rsum += rsum;
@@ -406,9 +411,11 @@ function closeSpell() {
   p.st = newStats();
 }
 
+// Card stats rounded for the season record (the Icon card averages them over your prime).
+const roundAttrs = a => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, Math.round(v)]));
 function careerRow(st, c) {
   const p = S.player;
-  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, league: league(c.league).name, apps: st.apps + st.cup.apps, tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.seasonPos || p.pos, alts: [...altPositions()], posApps: { ...(st.posApps || {}) }, comps: JSON.parse(JSON.stringify(st.comps || {})) };
+  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, league: league(c.league).name, apps: st.apps + st.cup.apps, tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.seasonPos || p.pos, alts: [...altPositions()], posApps: { ...(st.posApps || {}) }, comps: JSON.parse(JSON.stringify(st.comps || {})), attrs: roundAttrs(p.attrs) };
 }
 
 function seasonTotals() {
@@ -567,6 +574,16 @@ function declineFactor(age = ageOf(S.player.by)) { return age > VET_AGE ? 1.2 + 
 const vetLeagueEase = () => S.player.club && richLeague(myClub()) ? .4 : 1;
 // OVR lost at each birthday from 34 (before kit and league): a steady fade that quickens a little each year.
 const BIRTHDAY_DROP = { 34: 1.5, 35: 2.5, 36: 3.5, 37: 4, 38: 5, 39: 6 };
+
+// The card stats a player of this position and OVR typically has (initAttrs without the random
+// spread). Used for Icon cards of old careers that were saved without any stats.
+function typicalAttrs(pos, target) {
+  const w = WEIGHTS[pos] || WEIGHTS.ST, keys = attrKeys(pos), avgW = 1 / keys.length, attrs = {};
+  keys.forEach(k => { attrs[k] = POS_PROFILE[pos] ? profileAttr(k, pos, target) : target + (w[k] - avgW) * 45; });
+  const diff = target - rawOVR({ pos, attrs });
+  keys.forEach(k => { attrs[k] = clamp(Math.round(attrs[k] + diff), 25, 99); });
+  return attrs;
+}
 
 function initAttrs(pos, target) {
   const w = WEIGHTS[pos], keys = attrKeys(pos), avgW = 1 / keys.length;
@@ -1606,7 +1623,7 @@ const ownedHere = () => S.player.house > 0 && ownedHomes()[homeNat()] === S.play
 const rentNow = () => (ownedHere() ? 0 : houseRent(homeNat(), S.player.house)) + oldLeases().reduce((s, l) => s + houseRent(l.nat, l.house), 0);
 
 // What a home costs to buy outright (euros), by country: a flat, a family house, a villa and a
-// footballer's mansion around the big clubs (London, Madrid, Milan, Munich, Paris, Lisbon, Amsterdam,
+// footballer's mansion around the big clubs (London, Madrid, Milan, Munich, Paris, Lisbon, Amsterdam, Brussels,
 // LA and Miami, Riyadh, Istanbul). Upkeep is about 1% of the price a year, paid monthly.
 const HOUSE_PRICE = {
   ENG: [0, 450000, 1400000, 4000000, 12000000],
@@ -1616,6 +1633,7 @@ const HOUSE_PRICE = {
   FRA: [0, 450000, 1300000, 3500000, 9000000],
   POR: [0, 250000, 650000, 1600000, 4000000],
   NED: [0, 400000, 1000000, 2400000, 5000000],
+  BEL: [0, 350000, 900000, 2200000, 4500000],
   USA: [0, 550000, 1500000, 4000000, 12000000],
   KSA: [0, 300000, 900000, 2500000, 8000000],
   TUR: [0, 200000, 600000, 1800000, 5000000],
@@ -1809,6 +1827,10 @@ function recordResult(h, a, gh, ga) {
   const th = S.table[h], ta = S.table[a];
   th.p++; ta.p++; th.gf += gh; th.ga += ga; ta.gf += ga; ta.ga += gh;
   if (gh > ga) { th.w++; ta.l++; th.pts += 3; } else if (gh < ga) { ta.w++; th.l++; ta.pts += 3; } else { th.d++; ta.d++; th.pts++; ta.pts++; }
+  // Last five league results, oldest first ('W', 'D' or 'L'), for the table's form column.
+  const rh = gh > ga ? 'W' : gh < ga ? 'L' : 'D';
+  th.f = ((th.f || '') + rh).slice(-5);
+  ta.f = ((ta.f || '') + (rh === 'W' ? 'L' : rh === 'L' ? 'W' : 'D')).slice(-5);
 }
 
 function playFixture(h, a, user) {
@@ -3080,7 +3102,7 @@ function performanceReview(st, avg, awards) {
 // ---------- individual accolades ----------
 // The Ballon d'Or and friends are decided against the best players in the world (the AI
 // squads), on rating, goals, assists and team success.
-const GOLDEN_SHOE_COEF = { ENG: 2, ESP: 2, ITA: 2, GER: 2, FRA: 2, POR: 1.5, NED: 1.5, TUR: 1.5 };
+const GOLDEN_SHOE_COEF = { ENG: 2, ESP: 2, ITA: 2, GER: 2, FRA: 2, POR: 1.5, NED: 1.5, BEL: 1.5, TUR: 1.5 };
 const BIG_TROPHY = [[/World Cup$/, 12], [/Champions League/, 10], [/European Championship|Copa América|Africa Cup|Asian Cup/, 6], [/champion$/, 6], [/Cup|Copa|Coppa|Coupe|Pokal|Taça|Shield|Super/, 2]];
 
 // Goals in a weaker league impress the voters less.
@@ -3901,7 +3923,7 @@ function retiredRecord() {
   return {
     startYear: baseYear(),
     id: p.careerId || (p.careerId = Date.now()), name: p.name, nat: p.nat, pos: p.pos, career: p.career, trophies: p.trophies, awards: p.awards,
-    caps: p.caps, intlGoals: p.intlGoals || 0, money: p.money, by: p.by, lastClub: p.club ? myClub().name : '–', retiredAge: ageOf(p.by),
+    caps: p.caps, intlGoals: p.intlGoals || 0, attrs: roundAttrs(p.attrs), money: p.money, by: p.by, lastClub: p.club ? myClub().name : '–', retiredAge: ageOf(p.by),
     peak: Math.max(calcOVR(), ...p.career.map(r => r.ovr)),
   };
 }
@@ -3923,7 +3945,27 @@ function iconCard(rec) {
     for (const k in pa) apps[k] = (apps[k] || 0) + pa[k];
   });
   const order = Object.entries(apps).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
-  return { ovr, prime: prime.length, pos: order.length ? order[0][0] : rec.pos, alts: order.slice(1, 3).map(([k]) => k), apps: order.slice(0, 3) };
+  const pos = order.length ? order[0][0] : rec.pos;
+  // Old careers saved without stats get the typical stats of their position and card OVR.
+  return { ovr, prime: prime.length, pos, alts: order.slice(1, 3).map(([k]) => k), apps: order.slice(0, 3), stats: iconStats(rec, rows, ageAt) || typicalAttrs(pos, ovr) };
+}
+// The card's six stats, like an EA card: each one averaged over the same seasons as the OVR (aged
+// 25 to 33, or your best season if you retired younger). Seasons saved before stats were recorded
+// are estimated from your stats at retirement, moved by that season's OVR (every stat rises and
+// falls together as OVR changes). null for old careers saved without any stats.
+function iconStats(rec, rows, ageAt) {
+  const end = rec.attrs, endRow = rows.reduce((a, r) => !a || r.season > a.season ? r : a, null);
+  const keys = end ? Object.keys(end) : rows.find(r => r.attrs) ? Object.keys(rows.find(r => r.attrs).attrs) : null;
+  if (!keys) return null;
+  const of = r => r.attrs && keys.every(k => r.attrs[k] != null) ? r.attrs
+    : end && endRow ? Object.fromEntries(keys.map(k => [k, end[k] + (r.ovr - endRow.ovr)])) : null;
+  // One entry per season (a season split between two clubs keeps the later one).
+  const seasons = Object.values(Object.fromEntries(rows.map(r => [r.season, r])));
+  let pool = seasons.filter(r => { const a = ageAt(r.season); return a >= 25 && a <= 33; });
+  if (!pool.length && rows.length) pool = [rows.reduce((a, r) => r.ovr > a.ovr ? r : a)];
+  const sets = pool.map(of).filter(Boolean);
+  if (!sets.length) return end ? Object.fromEntries(keys.map(k => [k, Math.round(end[k])])) : null;
+  return Object.fromEntries(keys.map(k => [k, clamp(Math.round(sets.reduce((s, a) => s + a[k], 0) / sets.length), 1, 99)]));
 }
 function archiveCurrent() {
   if (!S || S.phase !== 'retired') return;

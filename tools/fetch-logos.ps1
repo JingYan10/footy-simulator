@@ -18,6 +18,7 @@ $country = @{
   'Saudi Pro League' = 'Saudi Arabia'; 'Saudi First Division League' = 'Saudi Arabia'; 'Saudi Second Division League' = 'Saudi Arabia'
   'MLS Eastern Conference' = 'MLS soccer'; 'MLS Western Conference' = 'MLS soccer'; 'USL Championship' = 'USL soccer'; 'USL League One' = 'USL soccer'
   'Süper Lig' = 'Turkey'; '1. Lig' = 'Turkey'; '2. Lig' = 'Turkey'
+  'Belgian Pro League' = 'Belgium'; 'Challenger Pro League' = 'Belgium'; 'Belgian Division 1' = 'Belgium'
 }
 $titles = @{}
 $overrideFile = Join-Path $PSScriptRoot 'logo-titles.txt'

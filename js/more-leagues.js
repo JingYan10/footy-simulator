@@ -251,3 +251,47 @@ DB.leagues.push(
 Object.assign(NAME_POOLS, {
   TUR: [['Emre', 'Mert', 'Burak', 'Arda', 'Kerem', 'Can', 'Efe', 'Yusuf', 'Ozan', 'Kaan', 'Berk', 'Hakan', 'Cenk', 'Oğuz'], ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Aydın', 'Öztürk', 'Arslan', 'Doğan', 'Kılıç', 'Aslan', 'Koç', 'Kurt']],
 });
+
+// ---------- Belgium ----------
+// Pro League, Challenger Pro League and Division 1 (2025-26, best effort). Same row format as above.
+// Division 1 is split into a Flemish and a French-speaking section; the game plays one combined
+// league of their senior clubs. U23 sides of the big clubs play in the second tier, as in reality.
+DB.leagues.push(
+  {
+    id: 'BEL', name: 'Belgian Pro League', country: 'Belgium', nat: 'BEL', tier: 1,
+    clubs: [
+      ['Club Brugge', 'Ivan Leko', 'CRO', 'Simon Mignolet,GK,1988,BEL,77;Joel Ordóñez,CB,2004,ECU,77;Brandon Mechele,CB,1993,BEL,75;Kyriani Sabbe,RB,2005,BEL,72;Joaquin Seys,LB,2005,BEL,72;Raphael Onyedika,CDM,2001,NGA,77;Aleksandar Stanković,CM,2005,SRB,74;Hugo Vetlesen,CM,2000,NOR,75;Hans Vanaken,CAM,1992,BEL,78;Christos Tzolis,LW,2002,GRE,79;Carlos Forbs,RW,2004,POR,76;Nicolò Tresoldi,ST,2004,GER,73;Romeo Vermant,ST,2004,BEL,72', 72, 'CLU'],
+      ['Union SG', 'David Hubert', 'BEL', 'Kjell Scherpen,GK,2000,NED,74;Christian Burgess,CB,1991,ENG,74;Kevin Mac Allister,CB,1997,ARG,74;Ross Sykes,CB,1999,ENG,72;Anan Khalaili,RB,2004,ISR,74;Kamiel Van de Perre,CM,2004,BEL,73;Anouar Ait El Hadj,CAM,2002,BEL,73;Promise David,ST,2001,CAN,74;Kevin Rodríguez,ST,2000,ECU,73', 70, 'USG'],
+      ['Anderlecht', 'Jérémy Taravel', 'FRA', 'Colin Coosemans,GK,1992,BEL,74;Jan-Carlo Simić,CB,2005,SRB,74;Killian Sardella,RB,2002,BEL,72;Moussa N\'Diaye,LB,2002,SEN,72;Nathan De Cat,CM,2008,BEL,70;Yari Verschaeren,CAM,2001,BEL,74;Mario Stroeykens,CAM,2004,BEL,73;Thorgan Hazard,LW,1993,BEL,73;Tristan Degreef,RW,2005,BEL,70;Luis Vázquez,ST,2001,ARG,72', 69, 'AND'],
+      ['Genk', 'Nicky Hayen', 'BEL', 'Hendrik Van Crombrugge,GK,1993,BEL,73;Matte Smets,CB,2004,BEL,72;Zakaria El Ouahdi,RB,2001,MAR,74;Bryan Heynen,CM,1997,BEL,74;Patrik Hrošovský,CM,1992,SVK,72;Jarne Steuckers,CAM,2002,BEL,72;Junya Ito,RW,1993,JPN,75;Oh Hyeon-gyu,ST,2001,KOR,72', 69, 'GNK'],
+      ['Gent', 'Rik De Mil', 'BEL', 'Davy Roef,GK,1994,BEL,72;Tsuyoshi Watanabe,CB,1997,JPN,72;Omri Gandelman,CM,2000,ISR,73;Momodou Sonko,RW,2005,SWE,70;Max Dean,ST,2004,ENG,70', 67, 'GNT'],
+      ['Antwerp', 'Faris Haroun', 'BEL', 'Dennis Praet,CM,1994,BEL,72;Gyrano Kerk,RW,1995,NED,72;Vincent Janssen,ST,1994,NED,73', 67, 'ANT'],
+      ['Standard Liège', 'Vincent Euvrard', 'BEL', 'Matthieu Epolo,GK,2005,BEL,70;Ibe Hautekiet,CB,2002,BEL,70;Marlon Fossey,RB,1998,USA,71;Timothé Nkada,ST,1999,FRA,69', 66, 'STA'],
+      ['Mechelen', 'Frederik Vanderbiest', 'BEL', '', 65, 'MEC'], ['Sint-Truiden', 'Wouter Vrancken', 'BEL', '', 65, 'STV'], ['Westerlo', 'Issame Charaï', 'BEL', '', 65, 'WES'],
+      ['Charleroi', 'Mario Kohnen', 'BEL', '', 65, 'CHA'], ['OH Leuven', 'Felice Mazzù', 'BEL', '', 64, 'OHL'], ['Cercle Brugge', 'Lars Friis', 'DEN', '', 64, 'CER'],
+      ['Dender EH', 'Yannick Ferrera', 'BEL', '', 63, 'DEN'], ['Zulte Waregem', 'Steve Colpaert', 'BEL', '', 63, 'ZWA'], ['La Louvière', 'Frédéric Taquin', 'BEL', '', 62, 'RAAL'],
+    ],
+  },
+  {
+    id: 'BEL2', name: 'Challenger Pro League', country: 'Belgium', nat: 'BEL', tier: 2,
+    clubs: [
+      ['Beerschot', '', '', '', 61, 'BEE'], ['Kortrijk', '', '', '', 61, 'KVK'], ['RWDM Brussels', '', '', '', 60, 'RWDM'], ['Lommel', '', '', '', 60, 'LOM'],
+      ['Beveren', '', '', '', 60, 'BEV'], ['Eupen', '', '', '', 59, 'EUP'], ['Patro Eisden Maasmechelen', '', '', '', 59, 'PAT'], ['Lierse', '', '', '', 59, 'LIE'],
+      ['Francs Borains', '', '', '', 58, 'FBO'], ['Lokeren', '', '', '', 58, 'LOK'], ['RFC Liège', '', '', '', 58, 'RFCL'], ['Seraing', '', '', '', 58, 'SER'],
+      ['Olympic Charleroi', '', '', '', 57, 'OLY'], ['Club NXT', '', '', '', 58, 'NXT'], ['Jong Genk', '', '', '', 57, 'JGNK'], ['Jong KAA Gent', '', '', '', 56, 'JGNT'],
+      ['RSCA Futures', '', '', '', 57, 'RSCA'],
+    ],
+  },
+  {
+    id: 'BEL3', name: 'Belgian Division 1', country: 'Belgium', nat: 'BEL', tier: 3,
+    clubs: [
+      ['Roeselare', '', '', '', 54, 'ROE'], ['Knokke', '', '', '', 54, 'KNO'], ['Dessel', '', '', '', 54, 'DES'], ['Hasselt', '', '', '', 53, 'HAS'],
+      ['Tienen', '', '', '', 53, 'TIE'], ['Belisia Bilzen', '', '', '', 53, 'BEL'], ['Lyra-Lierse', '', '', '', 53, 'LYR'], ['Thes Sport', '', '', '', 52, 'THE'],
+      ['Houtvenne', '', '', '', 52, 'HOU'], ['Ninove', '', '', '', 52, 'NIN'], ['Merelbeke', '', '', '', 52, 'MER'], ['Virton', '', '', '', 54, 'VIR'],
+      ['RAEC Mons', '', '', '', 54, 'MON'], ['Union Namur', '', '', '', 53, 'NAM'], ['Tubize-Braine', '', '', '', 52, 'TUB'], ['Crossing Schaerbeek', '', '', '', 52, 'CRO'],
+    ],
+  },
+);
+Object.assign(NAME_POOLS, {
+  BEL: [['Lucas', 'Arthur', 'Louis', 'Noah', 'Jules', 'Victor', 'Wout', 'Senne', 'Arne', 'Maxime', 'Thibault', 'Jens', 'Robbe', 'Mathis'], ['Peeters', 'Janssens', 'Maes', 'Jacobs', 'Mertens', 'Willems', 'Claes', 'Goossens', 'Wouters', 'Dubois', 'Lambert', 'Dupont', 'Martin', 'Leroy']],
+});

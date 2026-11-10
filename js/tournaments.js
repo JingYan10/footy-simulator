@@ -55,7 +55,8 @@ const EURO_WEEKS = [3, 5, 7, 11, 13, 16, 19, 24, 28, 30, 31, 34, 35, 36, 37, 38,
 // The old 16-team group format, for competitions already under way in older saves.
 const OLD_EURO_WEEKS = [5, 8, 11, 14, 17, 20, 30, 36, 44];
 const euroWeeks = t => t.weeks || OLD_EURO_WEEKS;
-const EURO_NATS = ['ENG', 'ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED', 'TUR']; // UEFA ranking order
+const EURO_NATS = ['ENG', 'ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED', 'BEL', 'TUR']; // UEFA ranking order
+const EURO_WEIGHT = { ENG: 1.25, ESP: 1.25, ITA: 1.25, GER: 1.25, FRA: 1 }; // the rest .75
 
 // Domestic cups, one midweek round at a time. Weeks never clash with Europe or each other:
 // main = the big knockout cup (FA Cup, Copa del Rey...), league = league cup, super = super cup
@@ -69,6 +70,7 @@ const DOMESTIC = {
   FRA: [{ key: 'CDF', name: 'Coupe de France', type: 'main', tiers: 3 }, { key: 'TDC', name: 'Trophée des Champions', type: 'super2' }],
   POR: [{ key: 'TDP', name: 'Taça de Portugal', type: 'main', tiers: 3 }, { key: 'TDL', name: 'Taça da Liga', type: 'league', tiers: 2 }, { key: 'STP', name: 'Supertaça', type: 'super2' }],
   NED: [{ key: 'KNVB', name: 'KNVB Cup', type: 'main', tiers: 3 }, { key: 'JCS', name: 'Johan Cruyff Shield', type: 'super2' }],
+  BEL: [{ key: 'BCUP', name: 'Belgian Cup', type: 'main', tiers: 3 }, { key: 'BSC', name: 'Belgian Super Cup', type: 'super2' }],
   TUR: [{ key: 'TFFC', name: 'Turkish Cup', type: 'main', tiers: 3 }, { key: 'TSC', name: 'Turkish Super Cup', type: 'super4' }],
   KSA: [{ key: 'KC', name: 'King\'s Cup', type: 'main', tiers: 2 }, { key: 'SSC', name: 'Saudi Super Cup', type: 'super4' }],
   USA: [{ key: 'USOC', name: 'U.S. Open Cup', type: 'main', tiers: 3 }, { key: 'MLSC', name: 'MLS Cup', type: 'playoff' }],
@@ -551,7 +553,7 @@ function scorerName(id) {
 // ---------- European competitions ----------
 // Qualification from last season's final tables (squad strength in the first season).
 // All top-flight clubs are queued by league position, the bigger leagues first on a tie,
-// then the queue is cut into 16 for each competition.
+// then the queue is cut into 36 for each competition.
 function buildEuro() {
   // European leagues only (Saudi and US clubs play elsewhere).
   const order = EURO_NATS;
@@ -562,8 +564,11 @@ function buildEuro() {
     const rest = l.clubs.filter(id => !ids.includes(id)).sort((a, b) => teamStrength(club(b)) - teamStrength(club(a)));
     return ids.concat(rest);
   });
-  const queue = [];
-  for (let pos = 0; pos < 20; pos++) ranked.forEach(r => { if (r[pos]) queue.push(r[pos]); });
+  // The big leagues send more clubs: each place is weighted by the league's UEFA standing, so the
+  // Champions League takes 5 each from England, Spain, Italy and Germany, 4 from France and 3 from
+  // Portugal, the Netherlands, Belgium and Turkey (36). Ties go to the higher-ranked league.
+  const queue = ranked.flatMap((r, i) => r.slice(0, 20).map((id, pos) => ({ id, i, key: pos / (EURO_WEIGHT[tops[i].nat] || .75) })))
+    .sort((a, b) => a.key - b.key || a.i - b.i).map(x => x.id);
   const out = {};
   EURO_COMPS.forEach((c, i) => {
     const teams = queue.slice(i * EURO_TEAMS, (i + 1) * EURO_TEAMS);
