@@ -111,7 +111,8 @@ function natRivals() {
   return list;
 }
 const calledUp = () => calcOVR() >= callUpFloor(S.player.nat) && natRivals().length < 2;
-const myTeams = () => [S.player.club, ...(calledUp() ? ['N:' + S.player.nat] : [])];
+// Out of contract you belong to no club, so its summer tournament goes on without you.
+const myTeams = () => [...(S.player.needsContract ? [] : [S.player.club]), ...(calledUp() ? ['N:' + S.player.nat] : [])];
 
 // ---------- generic tournament ----------
 function blankRow() { return { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }; }

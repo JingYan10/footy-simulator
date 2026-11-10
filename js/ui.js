@@ -314,16 +314,17 @@ function offersHtml() {
     const c = club(o.club), left = maxRounds(o) - o.rounds;
     // At your own club the role is where you stand with the manager right now: negotiating costs
     // affection, and that can cost you your place.
-    const role = o.type === 'renew' ? squadStatus() : o.status, ROLE_RANK = { Reserve: 0, Rotation: 1, Starter: 2, 'Key Player': 3 }, dropped = o.type === 'renew' && ROLE_RANK[role] < ROLE_RANK[o.status];
+    const role = o.type === 'renew' && !o.roleCap ? squadStatus() : o.status, dropped = o.type === 'renew' && ROLE_RANK[role] < ROLE_RANK[o.status];
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
       : o.clause ? `<div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}.</div>${chanceBoosted() ? '' : `<div class="small good">Sign it and you are part of their plans: +${Math.round(CHANCE_BOOST * 100)}% start chance at ${esc(c.name)} for good.</div>`}`
+      : o.type === 'renew' && S.phase === 'season' && !negLocked() && !o.talksOver ? '<div class="small muted">Starts next season: you finish this season on your current deal.</div>'
       : o.talksOver ? '<div class="small bad">Talks broke down. You can still sign this offer or decline it, but not negotiate.</div>'
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
       <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
-      <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
+      <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b><small>until end of ${seasonLabel(offerEnds(o))}</small></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
       ${o.type === 'renew' && ROLE_RANK[role] >= 2 ? `<div class="small good">Sign as ${role.toLowerCase()} and your starting place is protected for ${RENEW_PROMISE} games.</div>` : ''}
       ${dropped ? `<div class="small bad">Was offered as ${o.status.toLowerCase()}: your contract talks cost you affection with ${esc(c.mgr)}, and your place with it.</div>` : ''}
@@ -403,6 +404,7 @@ function managerCard() {
     ${p.affPen >= 1 ? `<div class="small bad">−${Math.round(p.affPen)} from contract talks, fading each week</div>` : ''}
     ${eff <= FROZEN_AFF + 5 ? `<div class="small bad"><b>Warning:</b> at ${FROZEN_AFF} he freezes you out, and at ${SACK_AFF} he tears up your contract.</div>` : ''}
     <div class="energy" style="margin:0"><span>Board</span><div class="bar"><i class="${p.board >= 60 ? '' : p.board >= 40 ? 'mid' : 'low'}" style="width:${p.board}%"></i></div><b class="num">${Math.round(p.board)}</b></div>
+    <div class="small muted">${boardPerks()}</div>
     <div class="row small"><span class="muted">Objectives hit</span><b>${rate === null ? '–' : Math.round(rate * 100) + '%'} <span class="muted">(${(p.objHist || []).length} so far)</span></b></div>
     <div class="small ${negLocked() && note !== BAND_NOTE[band] && eff > FROZEN_AFF && !(eff < 45 && ['elite', 'great', 'good'].includes(band)) ? 'muted' : band === 'poor' || note !== BAND_NOTE[band] ? 'bad' : band === 'elite' || band === 'great' ? 'good' : 'muted'}">${note}</div>
     ${p.objHard ? `<div class="small muted">Targets are ${Math.round(p.objHard * 100)}% harder since your pay rise.</div>` : ''}
@@ -452,7 +454,7 @@ function contractDetails() {
   const pct = Math.round((p.wage / Math.max(1, mkt) - 1) * 100);
   return `<section class="card hero"><div class="row"><div class="clubcell">${crest(home.id, 'small')}<div><div class="club">${home.name}</div><div class="small muted">${league(home.league).name}</div></div></div>
       <span class="chip">${p.years > 0 ? `${p.years} yr${p.years !== 1 ? 's' : ''} left` : 'Expiring'}</span></div>
-    <div class="kv"><div><small>Wage</small><b class="num">${money(p.wage)}/wk</b></div><div><small>Per year</small><b class="num">${money(p.wage * 52)}</b></div><div><small>Expires</small><b>End of ${seasonLabel(ends)}</b></div></div>
+    <div class="kv"><div><small>Wage</small><b class="num">${money(p.wage)}/wk</b>${p.nextWage ? `<small class="good">${money(p.nextWage)}/wk from ${seasonLabel(S.season + 1)}</small>` : ''}</div><div><small>Per year</small><b class="num">${money(p.wage * 52)}</b></div><div><small>Expires</small><b>End of ${seasonLabel(ends)}</b></div></div>
     <div class="kv"><div><small>Role</small><b class="${p.promise > 0 ? 'good' : ''}">${squadStatus()}${p.promise > 0 ? ' (promised)' : ''}</b></div><div><small>Market value</small><b class="num">${money(mkt)}/wk</b></div><div><small>vs market</small><b class="${pct >= 0 ? 'good' : 'bad'}">${pct >= 0 ? '+' : ''}${pct}%</b></div></div>
     ${p.loan ? `<div class="small flood">On loan at ${myClub().name} until the end of the season. ${home.name} still pay your wage.</div>` : ''}
     <div class="small muted">Agent: ${a.name}${agentCut() ? ` · takes ${money(agentCut())}/wk` : ''}</div>
@@ -464,7 +466,7 @@ function contractDetails() {
 function inquiriesHtml() {
   const list = inquiries();
   if (!blockActive() || !list.length) return '';
-  const fee = S.player.clauseFee || 0, half = Math.round(fee / 2), cash = S.player.money;
+  const fee = clauseFeeNow(), half = Math.round(fee / 2), cash = S.player.money;
   const pctClass = x => x >= .7 ? 'good' : x >= .4 ? 'mid' : 'bad';
   return `<section class="card"><h2>Agent: clubs asking about you</h2>
     <p class="small muted" style="margin:0">Your release clause blocks official bids, so these clubs came to your agent first. They wait about 6 weeks.</p>
@@ -492,7 +494,7 @@ function contractCard() {
   const { breakout, rising } = scoutBuzz();
   return `<section class="card"><h2>Your options</h2>
     ${breakout ? '<div class="small flood">Breakout season (+8 OVR): top-flight scouts are watching.</div>' : rising ? '<div class="small flood">Rising season (+6 OVR): smaller top-flight and second-division clubs are watching.</div>' : ''}
-    ${blockActive() ? `<div class="small flood"><b>Release clause</b> until about week ${lockWeekLabel(p.clauseUntil)}: other clubs can only reach you through your agent, and there are no salary talks. Breaking it costs ${money(p.clauseFee)}.</div>`
+    ${blockActive() ? `<div class="small flood"><b>Release clause</b> until about week ${lockWeekLabel(p.clauseUntil)}: other clubs can only reach you through your agent, and there are no salary talks. Breaking it costs ${money(clauseFeeNow())}${clauseFeeNow() !== (p.clauseFee || 0) ? ` (${p.board >= 75 ? 'the board knocks 25% off' : 'the board adds 25%'})` : ''}.</div>`
     : clauseActive() ? `<div class="small flood"><b>Loyalty clause</b> until the end of ${seasonLabel(Math.floor((p.clauseUntil - 1) / SEASON_WEEKS) - 1)}: no bids from other clubs, no salary talks and no transfer requests.</div>`
     : negLocked() ? `<div class="small muted">You just re-signed: no salary talks until about week ${lockWeekLabel()}.</div>` : ''}
     ${leagueGrowth() < 1 ? `<div class="small muted">Weaker league: your OVR grows about ${Math.round((1 - leagueGrowth()) * 100)}% slower here than in Europe.</div>` : ''}
@@ -502,9 +504,21 @@ function contractCard() {
     ${p.renewTask ? `<div class="obj"><div class="row small"><span><b>Board's task</b> · ${renewTaskText(p.renewTask)} for a new contract</span><span class="num">${p.renewTask.progress}/${p.renewTask.target}</span></div><div class="bar"><i class="mid" style="width:${Math.min(100, Math.round(p.renewTask.progress / p.renewTask.target * 100))}%"></i></div><div class="small muted">Until about week ${lockWeekLabel(p.renewTask.until)} · hit it and the offer is guaranteed</div></div>` : ''}
     <div class="btns">
       <button class="btn sm" data-act="askContract" ${newClub() ? 'disabled' : ''}>Ask for new contract</button>
-      ${blockActive() ? `<button class="btn sm" data-act="soundOut" ${canSoundOut() ? '' : 'disabled'}>${newClub() ? 'Ask agent to sound out clubs' : inWindow() ? (S.player.soundedAt === windowKey() ? 'Agent already asked around' : 'Ask agent to sound out clubs') : 'Agent can ask around in a window'}</button>` : ''}
+      ${blockActive() ? `<button class="btn sm" data-act="soundOut" ${canSoundOut() ? '' : 'disabled'}>${justSigned() ? 'You just signed: your agent won\x27t ask around yet' : inWindow() ? (S.player.soundedAt === windowKey() ? 'Agent already asked around' : 'Ask agent to sound out clubs') : 'Agent can ask around in a window'}</button>` : ''}
       ${p.listed ? '<button class="btn sm" data-act="unlist">Withdraw request</button>' : `<button class="btn sm danger" data-act="listAsk" ${clauseActive() ? 'disabled' : ''}>Request transfer</button>`}
     </div></section>`;
+}
+
+// What the board's trust is doing for you right now.
+function boardPerks() {
+  const p = S.player, b = p.board, out = [];
+  out.push(b >= 40 ? 'Will talk about a new contract' : "Won't talk about a new contract below 40");
+  if (boardRoom()) out.push(boardRoom() > 0 ? `backs a pay rise up to ${Math.round(boardRoom() * 100)}% bigger` : 'pay rises 5% smaller');
+  if (b >= 75) out.push('release clause 25% cheaper to break');
+  else if (b < 30) out.push('release clause 25% dearer to break');
+  const yrs = S.season - (p.joinedSeason || 0);
+  out.push(testimonialDue() ? 'a testimonial when you leave or retire' : `testimonial after ${TESTIMONIAL_SEASONS} seasons with the board at ${TESTIMONIAL_BOARD}+ (${Math.min(yrs, TESTIMONIAL_SEASONS)}/${TESTIMONIAL_SEASONS} seasons)`);
+  return out.join(' · ');
 }
 
 function inboxHtml() {
@@ -522,7 +536,7 @@ function viewHome() {
   if (fx && !p.injured && S.phase === 'season') matchdaySelection(fx);
   if (fx) {
     const opp = club(fx.opp);
-    const sel = p.injured ? '<span class="bad">Injured, you will miss this match</span>' : `Role: <b>${squadStatus()}</b>${matchPos() !== p.pos ? ` at <b>${matchPos()}</b>` : ''} · Start chance <b>${Math.round(Math.max(startChance().start, rotationStart(false, fx.opp)) * 100)}%</b>${rotationStart(false, fx.opp) > startChance().start ? ' <span class="good">(weak opponent: the manager rotates)</span>' : ''}`;
+    const sel = p.injured ? '<span class="bad">Injured, you will miss this match</span>' : `Role: <b>${squadStatus()}</b>${matchPos() !== p.pos && weekPosTold() ? ` at <b>${matchPos()}</b>` : ''} · Start chance <b>${Math.round(Math.max(startChance().start, rotationStart(false, fx.opp)) * 100)}%</b>${rotationStart(false, fx.opp) > startChance().start ? ' <span class="good">(weak opponent: the manager rotates)</span>' : ''}`;
     matchCard = `<section class="card hero">
       <div class="row"><h2>Matchday ${S.week}</h2><span class="small muted">${league(myClub().league).name}</span></div>
       ${weekStrip()}
@@ -533,14 +547,14 @@ function viewHome() {
         <div class="team">${crest(fx.away)}<b>${club(fx.away).name}</b><span>${Math.round(teamStrength(club(fx.away)))} rated</span></div>
       </div>
       <div class="small muted" style="text-align:center">${sel} · ${opp.mgr}'s ${opp.name} ${fx.isHome ? 'visit you' : 'host you'}</div>
-      ${p.slots > 0 && !p.injured ? `<div class="small flood" style="text-align:center">${p.slots} training session${p.slots > 1 ? 's' : ''} left this week</div>` : ''}
+      ${p.slots > 0 && !p.injured ? `<div class="small flood" style="text-align:center">${p.slots} training session${p.slots > 1 ? 's' : ''} left this week</div>` + tiredNote('div') : ''}
       ${euroLine()}
       ${orderBox()}
       <button class="btn primary block" data-act="matchday">To matchday</button>
     </section>`;
   } else {
     matchCard = `<section class="card hero"><h2>Week ${S.week}</h2>${weekStrip()}<p class="muted" style="margin:0">${leagueDone() ? 'The league game is done. Next up: the midweek game.' : 'No league match this week. Rest, train and get ready.'}</p>
-      ${S.phase === 'season' && !p.injured ? (p.slots > 0 ? `<div class="small flood" style="text-align:center">${p.slots} training session${p.slots > 1 ? 's' : ''} left this week</div>` : '<div class="small bad" style="text-align:center">You have already trained this week: no sessions left until next week.</div>') : ''}
+      ${S.phase === 'season' && !p.injured ? (p.slots > 0 ? `<div class="small flood" style="text-align:center">${p.slots} training session${p.slots > 1 ? 's' : ''} left this week</div>` + tiredNote('div') : '<div class="small bad" style="text-align:center">You have already trained this week: no sessions left until next week.</div>') : ''}
       ${euroLine()}
       ${midweekFixture() ? '<button class="btn primary block" data-act="matchday">To matchday</button>' : '<button class="btn primary block" data-act="advance">Next week</button>'}</section>`;
   }
@@ -564,6 +578,14 @@ function midweekOffset(e) {
 }
 const dayAfter = n => new Date(weekDate().getTime() + n * DAY);
 // The game's day: Saturday, or the midweek game's day once the league game is played.
+// Red warning when training would leave you tired at the end of the week (higher injury risk).
+function tiredNote(tag) {
+  const now = weekEndEnergy(), next = weekEndEnergy(S.player.energy - TRAIN_ENERGY);
+  const two = midweekFixture() && !leagueDone() && nextFixture() ? "this week's two games" : "this week's game";
+  const text = now < TIRED_ENERGY ? `After ${two} you will be on about ${now} energy. Under ${TIRED_ENERGY} makes injuries more likely, so skip training.`
+    : next < TIRED_ENERGY ? `Careful: another session leaves you on about ${next} energy after ${two}. Ending the week under ${TIRED_ENERGY} makes injuries more likely.` : '';
+  return text ? (tag === 'div' ? `<div class="small bad" style="text-align:center">${text}</div>` : `<p class="bad small" style="margin:0">${text}</p>`) : '';
+}
 const todayDate = () => leagueDone() && midweekFixture() ? dayAfter(midweekOffset(midweekFixture())) : weekDate();
 const dayLabel = d => `${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 // This week, day by day: today is the Saturday, games marked with the opponent's crest.
@@ -580,10 +602,11 @@ function euroLine() {
   const e = midweekFixture();
   if (!e) return '';
   const tired = S.player.energy < TWO_GAME_ENERGY, side = id => `<div class="team">${crest(id)}<b>${club(id).name}</b><span>${Math.round(teamStrength(club(id)))} rated</span></div>`;
+  // League day: only today's game is shown; the midweek game gets its own card on its day.
+  if (nextFixture() && !leagueDone()) return `<div class="small ${tired ? 'bad' : 'muted'}" style="text-align:center">${esc(e.t.name.replace(/ \d{4}$/, ''))} on ${dayLabel(dayAfter(midweekOffset(e)))}: you need ${TWO_GAME_ENERGY}+ energy to play both games${tired ? `. You have ${Math.round(S.player.energy)}, so if you play today you will be rested for that one` : ''}.</div>`;
   return `<div class="midweek"><div class="row"><h2 class="mw-title">${esc(e.t.name.replace(/ \d{4}$/, ''))}</h2><span class="small muted">${dayLabel(dayAfter(midweekOffset(e)))}</span></div>
     <div class="small muted" style="text-align:center">${e.stage}</div>
-    <div class="fixture">${side(e.home)}<div class="vs">VS</div>${side(e.away)}</div>
-    ${nextFixture() && !leagueDone() ? `<div class="small ${tired ? 'bad' : 'muted'}" style="text-align:center">Two games this week: you need ${TWO_GAME_ENERGY}+ energy to play both${tired ? `. You have ${Math.round(S.player.energy)}, so if you play the league game you will be rested for this one` : ''}.</div>` : ''}</div>`;
+    <div class="fixture">${side(e.home)}<div class="vs">VS</div>${side(e.away)}</div></div>`;
 }
 
 function viewOffseason() {
@@ -672,7 +695,25 @@ function retiredHtml(rec, newAct = 'menu') {
     <div class="small muted">${POS_NAMES[rec.pos]} · ${esc(natName(rec.nat))} · Last club ${esc(rec.lastClub)} · Retired at ${rec.retiredAge}</div>
     <div class="${statGrid(rec.pos)}"><div><b>${t.apps}</b><small>Apps</small></div><div><b>${t.goals}</b><small>Goals</small></div><div><b>${t.assists}</b><small>Assists</small></div>${gkCells(rec.pos, t.saves, t.cleanAll)}<div><b>${rec.trophies.length}</b><small>Titles</small></div></div>
     <div class="small muted">Peak OVR ${rec.peak} · ${rec.caps} international caps · Earned ${money(rec.money)} in the bank</div>
-    <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + legacyCard(rec) + clubStints(rec) + careerTables(rec);
+    <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + iconCardHtml(rec) + legacyCard(rec) + clubStints(rec) + careerTables(rec);
+}
+
+// The retirement Icon card: prime OVR, the three positions you played most, and your main club.
+function iconCardHtml(rec) {
+  const ic = iconCard(rec), t = careerTotals(rec), top = clubLegacy(rec)[0], gk = ic.pos === 'GK';
+  const nums = gk ? [[t.apps, 'APP'], [t.cleanAll || 0, 'CS'], [t.saves || 0, 'SV'], [rec.trophies.length, 'TTL']]
+    : [[t.apps, 'APP'], [t.goals, 'GOL'], [t.assists, 'AST'], [rec.trophies.length, 'TTL']];
+  const why = ic.prime ? `average of your ${ic.prime} season${ic.prime > 1 ? 's' : ''} aged 25 to 33` : 'your peak, as you retired before 25';
+  return `<section class="card"><h2>Icon card</h2>
+    <div class="icon-card">
+      <div class="ic-top"><div class="ic-ovr"><b>${ic.ovr}</b><span>${ic.pos}</span>${ic.alts.map(a => `<i>${a}</i>`).join('')}</div>
+        <div class="ic-side">${top ? rowCrest(top) : ''}<span class="ic-tag">ICON</span></div></div>
+      <svg class="ic-man" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="34" r="20"/><path d="M12 100c0-24 17-38 38-38s38 14 38 38z"/></svg>
+      <div class="ic-name">${esc(rec.name)}</div>
+      <div class="ic-nums">${nums.map(([v, k]) => `<div><b>${v}</b><small>${k}</small></div>`).join('')}</div>
+      <div class="ic-nat">${esc(natName(rec.nat))}</div>
+    </div>
+    <p class="small muted" style="margin:0;text-align:center">OVR ${ic.ovr}: ${why}.<br>Most games: ${ic.apps.map(([k, n]) => `${k} ${n}`).join(' · ')}</p></section>`;
 }
 
 // Short tags for a finished career: legend status, Ballon d'Ors, and the main clubs' numbers.
@@ -743,6 +784,7 @@ function viewTrain() {
   const head = `<section class="card"><div class="row"><h2>Training</h2><span class="small"><b>${p.slots}</b>/${TRAIN_SLOTS} sessions left</span></div>
     <p class="small muted" style="margin:0">Each session uses ${TRAIN_ENERGY} energy. Your ${EQUIP_TIERS[p.equip].name.toLowerCase()} equipment gives ×${EQUIP_TIERS[p.equip].mult} XP; upgrade it in the Shop. A third of the extra XP is only earned on the pitch that week: none on the bench, more for goals and assists. Gains slow with age (a lot from 34). Match ratings, goals, assists and awards also move your OVR up or down.</p>
     <p class="small" style="margin:6px 0 0">Physicality ${Math.round(physOf())}: injury risk <b class="${injuryMult() <= 1 ? 'good' : 'bad'}">×${injuryMult().toFixed(2)}</b>, and ${Math.round(seriousChance() * 100)}% of injuries are serious. More Physicality means fewer and milder injuries.${youngBody() ? ' Includes the teenage bonus (until 19): fewer and milder injuries.' : ''}</p>
+    ${can ? tiredNote('p') : ''}
     ${p.injured ? '<p class="bad small" style="margin:0">You are injured and cannot train.</p>' : ''}
     ${S.phase !== 'season' ? '<p class="small muted" style="margin:0">Training resumes when the season starts.</p>' : ''}
     ${S.phase === 'season' && !p.injured && p.slots <= 0 ? `<p class="bad small" style="margin:0">You have already trained ${TRAIN_SLOTS} times this week. Training opens again next week${leagueDone() ? ', after the midweek game' : ''}.</p>` : ''}
@@ -751,7 +793,7 @@ function viewTrain() {
     const v = p.attrs[k], gain = trainGain(k), held = trainGain(k, 'pitch');
     const brief = (p.objectives || []).find(o => o.kind === 'train' && o.attr === k && o.progress < o.target);
     return `<div class="attr">
-      <div><span class="name">${ATTR_NAMES[k]}</span>${w[k] >= .2 ? '<span class="key">key</span>' : ''}${brief ? `<span class="key brief">Manager ${brief.progress}/${brief.target}</span>` : ''}<div class="meta">${gain ? `+${gain.toFixed(2)} per session${held ? ` · up to +${held.toFixed(2)} on the pitch` : ''}` : 'Max OVR'} · ${Math.round(w[k] * 100)}% of your OVR</div></div>
+      <div><span class="name">${ATTR_NAMES[k]}</span>${w[k] >= .2 ? '<span class="key">key</span>' : ''}${brief ? `<span class="key brief">Manager ${brief.progress}/${brief.target}</span>` : ''}<div class="meta">${gain ? `+${gain.toFixed(2)} per session${held ? ` · up to +${held.toFixed(2)} on the pitch` : ''}` : 'At your peak'} · ${Math.round(w[k] * 100)}% of your OVR</div></div>
       <div class="val num">${Math.floor(v)}<small class="dec">.${Math.floor((v % 1) * 10)}</small></div>
       <div class="bar"><i style="width:${v}%"></i></div>
       <button class="btn sm" style="grid-column:1/-1" data-act="train" data-v="${k}" ${can && p.energy >= TRAIN_ENERGY ? '' : 'disabled'}>Train ${ATTR_NAMES[k]}</button>
@@ -1349,10 +1391,12 @@ function showPopup(pop) {
   startFx(fxLayer.querySelector('canvas'), fx);
 }
 
+let matchdayNext = false;
 function closePopup() {
   cancelAnimationFrame(fxFrame);
   fxLayer.hidden = true;
   fxLayer.innerHTML = '';
+  if (matchdayNext && !POPUPS.length) { matchdayNext = false; showMatchday(); return; }
   nextPopup();
 }
 
@@ -1470,6 +1514,8 @@ function showMatchday() {
   const cup = !lfx, fx = cup ? efx : lfx, half = S.weekHalf;
   // Too tired to play twice: you sit the midweek game out if you played the league game.
   const leagueSel = lfx && !p.injured ? matchdaySelection(lfx) : null;
+  // The manager tells you about a one-week position here, on matchday.
+  if (leagueSel) tellWeekPos();
   const rested = cup && leagueDone() && half.user && half.user.mins && half.weekEnergy < TWO_GAME_ENERGY;
   const sel = p.injured || rested ? { mins: 0, start: false } : cup ? cupSelection(efx) : leagueSel;
   const me = { n: p.name, pos: matchPos(), r: calcOVR(), me: true, start: !!sel.start, squad: !p.injured };
@@ -1587,7 +1633,8 @@ document.addEventListener('click', e => {
     case 'train': { const g = train(v); if (g != null) toast(g ? `${ATTR_NAMES[v]} +${g.toFixed(2)}` : `${ATTR_NAMES[v]} session done`); render(); return; }
     case 'rest': rest(); toast('Rested: +8 energy'); render(); return;
     case 'altInfo': toast(v === 'next' ? `You play ${S.player.nextPos} now; it becomes your main position next season` : `You can also play ${POS_NAMES[v]} (${v})`); return;
-    case 'matchday': showMatchday(); return;
+    // A one-week position comes first, as its own alert; the team sheet opens when you close it.
+    case 'matchday': if (!weekPosTold()) { tellWeekPos(); if (POPUPS.length) { matchdayNext = true; nextPopup(); return; } } showMatchday(); return;
     case 'kickoff': closeModal(); if (S.player.order && !S.player.order.choice) showOrderSheet(); else doAdvance(); return;
     case 'advance': if (S.player.order && !S.player.order.choice) showOrderSheet(); else doAdvance(); return;
     case 'order': setOrderChoice(v); render(); return;

@@ -537,3 +537,28 @@ select.pick { width: 100%; margin: 8px 0; background: var(--surface); border: 1p
 .wd.past { opacity: .5; }
 .midweek { border: 1px solid var(--flood); border-radius: 12px; padding: 12px; display: grid; gap: 8px; background: rgba(255, 181, 71, .06); }
 .midweek .mw-title { color: var(--flood); margin: 0; }
+
+/* Retirement Icon card: a cream-and-gold EA-style card with prime OVR, positions and main club. */
+.icon-card {
+  position: relative; width: 230px; margin: 4px auto 12px; aspect-ratio: 23 / 33; padding: 26px 20px 30px;
+  display: flex; flex-direction: column; color: #3a2a06; font-family: var(--display);
+  background: radial-gradient(120% 70% at 50% 20%, #fff9e8 0%, #f3dfa8 45%, #cfa650 100%);
+  clip-path: polygon(50% 0, 88% 3%, 100% 10%, 100% 86%, 50% 100%, 0 86%, 0 10%, 12% 3%);
+}
+.icon-card::after { content: ''; position: absolute; inset: 6px; pointer-events: none; border: 1.5px solid rgba(110, 78, 14, .35);
+  clip-path: polygon(50% 0, 88% 3%, 100% 10%, 100% 86%, 50% 100%, 0 86%, 0 10%, 12% 3%); }
+.ic-top { display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 1; }
+.ic-ovr { display: grid; justify-items: center; line-height: 1; }
+.ic-ovr b { font-size: 46px; font-weight: 800; }
+.ic-ovr span { font-size: 18px; font-weight: 800; letter-spacing: .06em; }
+.ic-ovr i { font-style: normal; font-size: 12px; font-weight: 700; margin-top: 3px; padding: 1px 6px; border-radius: 6px; background: rgba(90, 62, 8, .14); }
+.ic-side { display: grid; justify-items: center; gap: 6px; padding-top: 4px; }
+.ic-side img, .ic-side svg, .ic-side .crest { width: 34px; height: 34px; }
+.ic-tag { font-size: 11px; font-weight: 800; letter-spacing: .2em; color: #7a5410; }
+.ic-man { width: 108px; margin: -24px auto 0; fill: rgba(90, 62, 8, .22); }
+.ic-name { text-align: center; font-size: 22px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; line-height: 1.1;
+  border-top: 1.5px solid rgba(110, 78, 14, .35); padding-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ic-nums { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; margin-top: 6px; line-height: 1.05; }
+.ic-nums b { display: block; font-size: 18px; font-weight: 800; }
+.ic-nums small { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: #7a5410; }
+.ic-nat { text-align: center; font: 600 11px var(--body); color: #7a5410; margin-top: 6px; }
