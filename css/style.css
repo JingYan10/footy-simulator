@@ -562,3 +562,26 @@ select.pick { width: 100%; margin: 8px 0; background: var(--surface); border: 1p
 .ic-nums b { display: block; font-size: 18px; font-weight: 800; }
 .ic-nums small { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: #7a5410; }
 .ic-nat { text-align: center; font: 600 11px var(--body); color: #7a5410; margin-top: 6px; }
+
+/* ---------- penalty shootout ---------- */
+.so { display: grid; gap: 14px; }
+.so .btn { width: 100%; }
+.so-board { display: grid; gap: 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.so-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 24px; align-items: center; gap: 10px; }
+.so-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.so-row .num { font: 800 22px var(--display); text-align: right; }
+.so-dots { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; max-width: 170px; }
+.so-dots i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); }
+.so-dots i.in { background: var(--good); border-color: var(--good); }
+.so-dots i.out { background: var(--bad); border-color: var(--bad); }
+.so-last, .so-res, .so-ask { margin: 0; font-weight: 700; }
+.so-last.good, .so-res.good { color: var(--good); }
+.so-last.bad, .so-res.bad { color: var(--bad); }
+.so-res { font: 800 24px/1.1 var(--display); text-transform: uppercase; }
+/* The goal as seen from the spot: posts and bar in white, netting behind. */
+.so-goal { display: grid; grid-template-columns: repeat(3, 1fr); aspect-ratio: 3 / 1.15; border: 5px solid #f4f6fa; border-bottom: 0;
+  background: repeating-linear-gradient(0deg, transparent 0 9px, rgba(255,255,255,.12) 9px 10px), repeating-linear-gradient(90deg, transparent 0 9px, rgba(255,255,255,.12) 9px 10px), #20324f; }
+.so-goal.shoot { grid-template-rows: repeat(2, 1fr); }
+.so-goal button { border: 1px dashed rgba(255,255,255,.22); background: transparent; color: var(--chalk); font: 700 15px var(--display); text-transform: uppercase; letter-spacing: .05em; cursor: pointer; }
+.so-goal button:hover, .so-goal button:focus-visible { background: rgba(255,181,71,.28); }
+.so-goal.shoot button::after { content: ''; display: block; width: 18px; height: 18px; margin: auto; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); }

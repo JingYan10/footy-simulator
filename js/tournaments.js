@@ -351,7 +351,7 @@ function playStage(t, userFor) {
     k.ties.forEach(([s, w], i) => {
       const first = k.legs[0][i], u = userFor(s, w), r = simTeams(s, w, u, 2);
       const aggS = r.gh + first.ga, aggW = r.ga + first.gh;
-      if (aggS === aggW) { r.pens = Math.random() < clamp(.5 + (teamStr(s) - teamStr(w)) / 60, .35, .65) ? s : w; r.pensScore = shootoutScore(r.pens === r.h); }
+      if (aggS === aggW) decidePens(r, s, w);
       r.winner = aggS > aggW ? s : aggS < aggW ? w : r.pens;
       r.agg = [aggS, aggW];
       res.push({ h: s, a: w, gh: aggS, ga: aggW, pens: r.pens || null, pensScore: r.pensScore || null, winner: r.winner, legs: [first, r] });
@@ -364,12 +364,7 @@ function playStage(t, userFor) {
     ties.forEach(([h, a]) => {
       const u = userFor(h, a);
       const r = simTeams(h, a, u, 0);
-      if (r.gh === r.ga) {
-        // Penalties: close to a coin toss, the stronger side slightly favoured.
-        const ph = clamp(.5 + (teamStr(h) - teamStr(a)) / 60, .35, .65);
-        r.pens = Math.random() < ph ? h : a;
-        r.pensScore = shootoutScore(r.pens === h);
-      }
+      if (r.gh === r.ga) decidePens(r, h, a);
       r.winner = r.gh > r.ga ? h : r.gh < r.ga ? a : r.pens;
       res.push(r);
       if (u) mine = r;
@@ -379,6 +374,14 @@ function playStage(t, userFor) {
   }
   t.stage++;
   return mine;
+}
+
+// Penalties: the shootout you played by hand, if it was yours; otherwise close to a coin toss,
+// the stronger side slightly favoured.
+function decidePens(r, x, y) {
+  if (r.shootout) { r.pens = r.shootout.winner; r.pensScore = r.shootout.score; r.mySo = true; delete r.shootout; return; }
+  r.pens = Math.random() < clamp(.5 + (teamStr(x) - teamStr(y)) / 60, .35, .65) ? x : y;
+  r.pensScore = shootoutScore(r.pens === r.h);
 }
 
 // A believable shootout score as [home, away]: usually 5–4, 4–3 or 4–2, sometimes 3–1 or 3–0,
@@ -391,9 +394,112 @@ function shootoutScore(homeWins) {
 }
 const pensText = r => r.pensScore ? `${Math.max(...r.pensScore)}–${Math.min(...r.pensScore)}` : '';
 
+// ---------- shootouts you take part in ----------
+// A knockout game you are in is played a moment early (S.preSim), and the round then uses that same
+// result. If it ends level and you are on the pitch at the final whistle, you take the shootout by
+// hand first: in goal you pick which way to dive for every kick against you; as an outfield
+// player you take one of your side's five kicks and pick where to put it.
+const preKey = () => { const t = S.phase === 'season' ? null : summerPending(); return S.phase === 'season' ? 'w' + weekKey() : t ? `s${S.season}-${t.key}-${t.stage}` : 'none'; };
+
+// The knockout game this step plays for you: its sides in the order they are simulated, the home
+// advantage and, in a second leg, the first leg. null when it is not a knockout game.
+function myKoGame() {
+  if (S.phase === 'season') {
+    const now = midweekNow();
+    if (!now) return null;
+    const { efx, user } = now, me = S.player.club;
+    if (!efx.euro) return { h: efx.home, a: efx.away, home: 1.5, user: { ...user, team: me }, me };
+    return koOf(efx.t, me, { ...user, team: me });
+  }
+  const t = summerPending();
+  if (!t) return null;
+  return koOf(t, t.mine, { ...summerSelection(t.mine), goals: 0, assists: 0, team: t.mine }, true);
+}
+function koOf(t, me, user, summer = false) {
+  const st = t.stages[t.stage];
+  if (!st || st.type !== 'ko') return null;
+  const f = stageFixture(t, me);
+  if (!f) return null;
+  let first = null;
+  if (st.leg === 2) { const k = t.ko[t.ko.length - 1]; first = k.legs[0][k.ties.findIndex(x => x[0] === f[0] && x[1] === f[1])]; }
+  return { h: f[0], a: f[1], home: st.leg ? 2 : 0, user, me, first, leg1: st.leg === 1, summer };
+}
+
+// Play your knockout game early. Returns the shootout to take by hand, or null.
+function prepareShootout() {
+  const key = preKey();
+  if (S.preSim && S.preSim.key === key) return S.preSim.so && !S.preSim.so.done ? S.preSim.so : null;
+  S.preSim = null;
+  const g = myKoGame();
+  if (!g) return null;
+  const u = { ...g.user };
+  const r = simTeams(g.h, g.a, u, g.home);
+  S.preSim = { key, h: g.h, a: g.a, r, goals: u.goals, assists: u.assists, base: g.summer ? g.user : null };
+  const level = !g.leg1 && (g.first ? r.gh + g.first.ga === r.ga + g.first.gh : r.gh === r.ga);
+  // You only take part if you are still on the pitch at the final whistle.
+  if (!level || !u.mins || (u.start && u.mins < 90)) return null;
+  const p = S.player, opp = g.me === g.h ? g.a : g.h;
+  S.preSim.so = { me: g.me, opp, meHome: g.me === g.h, gk: matchPos() === 'GK', meFirst: Math.random() < .5, myKick: randi(1, 5), mine: [], theirs: [], log: [], done: false };
+  return S.preSim.so;
+}
+
+const SO_COLS = ['left', 'centre', 'right'], SO_ROWS = ['high', 'low'], KEEPER_WENT = ['went left', 'stayed in the middle', 'went right'];
+// Whose kick is next ('mine' or 'theirs'), and whether you take part in it ('shoot' or 'save').
+function soNext(so) {
+  const k = so.mine.length + so.theirs.length, mineNow = (k % 2 === 0) === so.meFirst;
+  const side = mineNow ? 'mine' : 'theirs', round = so[side].length;
+  const you = mineNow ? (!so.gk && round === so.myKick - 1 ? 'shoot' : null) : (so.gk ? 'save' : null);
+  return { side, round, you };
+}
+// Over yet? Within the first five each, once one side can't catch up; then sudden death.
+function soCheck(so) {
+  const gm = so.mine.filter(Boolean).length, gt = so.theirs.filter(Boolean).length, nm = so.mine.length, nt = so.theirs.length;
+  const over = nm <= 5 && nt <= 5 ? gm > gt + (5 - nt) || gt > gm + (5 - nm) || (nm === 5 && nt === 5 && gm !== gt) : nm === nt && gm !== gt;
+  if (!over) return;
+  so.done = true;
+  so.winner = gm > gt ? so.me : so.opp;
+  so.score = so.meHome ? [gm, gt] : [gt, gm];
+}
+// Take the next kick. choice: { col, row } when you shoot, { col } when you dive; ignored otherwise.
+function soKick(so, choice) {
+  if (so.done) return null;
+  const { side, you } = soNext(so), p = S.player, ovr = calcOVR();
+  const kickStr = teamStr(side === 'mine' ? so.me : so.opp), saveStr = teamStr(side === 'mine' ? so.opp : so.me);
+  let goal, text;
+  if (you === 'shoot') {
+    // The keeper guesses a side; the centre is the gamble he rarely stays for.
+    const dive = weightedPick([0, 1, 2], c => [.42, .16, .42][c]), high = choice.row === 0;
+    if (Math.random() < (high ? .13 : .04) * (choice.col === 1 ? .5 : 1) * clamp(1.6 - ovr / 100, .7, 1.2)) { goal = false; text = high ? 'You blazed it over the bar!' : 'You dragged it wide of the post!'; }
+    else if (dive === choice.col && Math.random() < (choice.col === 1 ? (high ? .5 : .9) : high ? .3 : .72) * clamp(saveStr / 78, .85, 1.12)) { goal = false; text = `The keeper ${KEEPER_WENT[dive]} and saved it!`; }
+    else { goal = true; text = dive === choice.col ? `The keeper ${KEEPER_WENT[dive]} but couldn't keep it out. Goal!` : (dive === 1 ? `The keeper stayed in the middle. Goal!` : `The keeper went ${SO_COLS[dive]}. You sent him the wrong way. Goal!`); }
+  } else if (you === 'save') {
+    const col = weightedPick([0, 1, 2], c => [.4, .2, .4][c]), row = Math.random() < .45 ? 0 : 1;
+    const where = col === 1 ? `${SO_ROWS[row]} down the middle` : `${SO_ROWS[row]} and ${SO_COLS[col]}`;
+    if (Math.random() < (row === 0 ? .1 : .04)) { goal = false; text = `They went ${where}... and missed the target!`; }
+    else if (choice.col === col && Math.random() < (col === 1 ? (row === 0 ? .5 : .85) : row === 0 ? .35 : .7) * clamp(ovr / 78, .85, 1.15)) { goal = false; text = `They went ${where}. You read it and saved it!`; }
+    else { goal = true; text = choice.col === col ? `They went ${where}. You got a hand to it, but it went in.` : `They went ${where}; ${choice.col === 1 ? `you stayed in the middle` : `you dived ${SO_COLS[choice.col]}`}. Goal.`; }
+  } else {
+    goal = Math.random() < clamp(.76 + (kickStr - saveStr) / 100, .62, .88);
+    text = `${teamName(side === 'mine' ? so.me : so.opp)}: ${goal ? 'scored' : pick(['saved', 'missed', 'hit the post'])}.`;
+  }
+  so[side].push(goal);
+  so.log.push({ side, goal, you, text });
+  soCheck(so);
+  return so.log[so.log.length - 1];
+}
+
 // One match between any two teams. home is the home advantage in rating points.
 function simTeams(h, a, user, home = 2) {
   const p = S.player;
+  // Your knockout game, already played a moment early so a shootout could be taken by hand.
+  const pre = S.preSim;
+  if (user && pre && pre.h === h && pre.a === a && pre.key === preKey()) {
+    S.preSim = null;
+    user.goals = pre.goals; user.assists = pre.assists;
+    const r = JSON.parse(JSON.stringify(pre.r));
+    if (pre.so && pre.so.done) r.shootout = { winner: pre.so.winner, score: pre.so.score };
+    return r;
+  }
   let sh = teamStr(h), sa = teamStr(a);
   const mineHome = user && user.team === h;
   const ovr = calcOVR();
@@ -570,7 +676,7 @@ function playCupRound(t, userMatch) {
   t.ties.forEach(([h, a]) => {
     const u = userMatch && (h === id || a === id) ? Object.assign(userMatch, { team: id }) : null;
     const r = simTeams(h, a, u, 1.5);
-    if (r.gh === r.ga) { r.pens = Math.random() < clamp(.5 + (teamStr(h) - teamStr(a)) / 60, .35, .65) ? h : a; r.pensScore = shootoutScore(r.pens === h); }
+    if (r.gh === r.ga) decidePens(r, h, a);
     r.winner = r.gh > r.ga ? h : r.gh < r.ga ? a : r.pens;
     res.push(r);
     if (u) mine = { ...r, comp: t.name };
@@ -683,7 +789,9 @@ function playSummerStage() {
   const t = summerPending();
   if (!t) return null;
   const p = S.player, st = t.stages[t.stage], me = t.mine;
-  const user = { ...summerSelection(me), goals: 0, assists: 0, team: me };
+  // Played early for a shootout? Then the same team sheet.
+  const pre = S.preSim && S.preSim.key === preKey() && S.preSim.base;
+  const user = pre ? { ...pre } : { ...summerSelection(me), goals: 0, assists: 0, team: me };
   const res = playStage(t, (h, a) => (h === me || a === me) ? user : null);
   let report = null;
   if (res) {
@@ -732,7 +840,7 @@ function summerSelection(me) {
   const ovr = calcOVR(), str = NATION_STR[me.slice(2)] || 60;
   const start = ovr >= str + 2 ? .9 : ovr >= str - 2 ? .65 : ovr >= str - 5 ? .35 : .15;
   const r = Math.random();
-  if (r < start) return { mins: randi(70, 90), start: true };
+  if (r < start) return starterMins(70);
   if (r < start + (1 - start) * .5) return { mins: randi(10, 30), start: false };
   return { mins: 0, start: false };
 }

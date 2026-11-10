@@ -493,9 +493,15 @@ const adjustForm = () => adjusting() ? ADJUST_FORM : 1;
 const TACKLERS = ['CB', 'LB', 'RB', 'CDM'];
 // Tackles that count as a busy, decent game when you went against the manager's plan.
 const DECENT_TACKLES = { CB: 5, LB: 5, RB: 5, CDM: 4 };
+// Keepers grow on clean sheets and saves, with the rating counting half as much. Real top keepers
+// keep a clean sheet in about 40% of games and make 2.5 to 3 saves, worth what 0.6 goals and 0.3
+// assists a game are to a striker.
+const GK_CLEAN_GAIN = .015, GK_SAVE_GAIN = .002;
 function perfDelta(rating, user) {
-  const output = TACKLERS.includes(matchPos()) ? (user.tackles || 0) * .0011 : user.goals * .015 + user.assists * .01;
-  const d = ((rating - 6.7) * .03 + output) * user.mins / 90;
+  const gk = matchPos() === 'GK';
+  const output = gk ? (user.clean ? GK_CLEAN_GAIN : 0) + (user.saves || 0) * GK_SAVE_GAIN
+    : TACKLERS.includes(matchPos()) ? (user.tackles || 0) * .0011 : user.goals * .015 + user.assists * .01;
+  const d = ((rating - 6.7) * (gk ? .015 : .03) + output) * user.mins / 90;
   return d > 0 ? d * growthFactor() * PERF_GAIN : d * declineFactor() * vetLeagueEase();
 }
 
@@ -757,7 +763,7 @@ function squadRank(c, ovr, aff, mine) {
 }
 
 const STAR_OVR = 86;
-const MAX_START = .85;
+const MAX_START = .85, MAX_START_GK = .95;
 
 // Chance of starting the next match, and share of the rest where you come off the bench.
 function startChance() {
@@ -791,9 +797,10 @@ function startChance() {
   if (frozenOut()) { start = 0; subShare = .1; }
   // Just back from injury: the manager eases you in.
   if (p.rust > 0) start *= .75;
-  // Nobody is guaranteed a shirt: at most an 85% chance of starting.
+  // Nobody is guaranteed a shirt: at most an 85% chance of starting (95% for a keeper, whom
+  // managers rarely rotate).
   // Turned down a new position this season: the manager leaves you out a little more.
-  return { start: Math.max(0, clamp(start, 0, MAX_START) - (p.posRefused === S.season ? POS_REFUSE_START : 0)), subShare };
+  return { start: Math.max(0, clamp(start, 0, matchPos() === 'GK' ? MAX_START_GK : MAX_START) -(p.posRefused === S.season ? POS_REFUSE_START : 0)), subShare };
 }
 
 // ---------- pop-up events ----------
@@ -1775,13 +1782,22 @@ function cupSelection(efx = midweekFixture()) {
   return p.preCup.sel;
 }
 
+// A starting keeper is never subbed for tactics: he plays the full 90 unless he is hurt
+// during the game (rare), which then counts as that week's injury.
+const GK_OFF_INJURED = .025;
+function starterMins(lo = 75) {
+  if (matchPos() !== 'GK') return { mins: randi(lo, 90), start: true };
+  if (Math.random() < GK_OFF_INJURED) return { mins: randi(20, 80), start: true, offInjured: true };
+  return { mins: 90, start: true };
+}
+
 function selection(domesticCup = false, opp = null) {
   const p = S.player;
   if (p.injured) return { mins: 0, start: false };
   let { start, subShare } = startChance();
   start = Math.max(start, rotationStart(domesticCup, opp));
   const r = Math.random();
-  if (r < start) return { mins: randi(75, 90), start: true };
+  if (r < start) return starterMins();
   if (r < start + (1 - start) * subShare) return { mins: randi(12, 35), start: false };
   return { mins: 0, start: false };
 }
@@ -1997,6 +2013,23 @@ function birthdayWeek(report) {
   }
 }
 
+// Your part in the midweek game: rested if the weekend left you too tired for two games, out if
+// injured, otherwise the team sheet. user/weekEnergy are the league game's, if there was one.
+function midweekUser(efx, user, weekEnergy) {
+  const p = S.player;
+  if (user && user.mins && weekEnergy < TWO_GAME_ENERGY) return { mins: 0, start: false, goals: 0, assists: 0, rested: true };
+  return { ...(p.injured || (user && user.offInjured) ? { mins: 0, start: false } : cupSelection(efx)), goals: 0, assists: 0 };
+}
+// The midweek game is played in this step of the week (a league game still to come is played first).
+// Returns your part in it, or null.
+function midweekNow() {
+  const p = S.player;
+  if (S.phase !== 'season' || p.needsContract) return null;
+  const half = leagueDone() ? S.weekHalf : null, efx = midweekFixture();
+  if (!efx || (!half && nextFixture())) return null;
+  return { efx, user: midweekUser(efx, half ? half.user : null, half ? half.weekEnergy : p.energy) };
+}
+
 function advanceWeek() {
   const p = S.player;
   if (S.phase !== 'season' || p.needsContract) return null;
@@ -2074,7 +2107,7 @@ function advanceWeek() {
   const efx = midweekFixture();
   // Two games in a week takes 50+ energy at the start of it; otherwise you play only the league game.
   const tooTired = efx && user && user.mins && weekEnergy < TWO_GAME_ENERGY;
-  const cupUser = efx ? (tooTired ? { mins: 0, start: false, goals: 0, assists: 0, rested: true } : { ...(p.injured ? { mins: 0, start: false } : cupSelection(efx)), goals: 0, assists: 0 }) : null;
+  const cupUser = efx ? midweekUser(efx, user, weekEnergy) : null;
   if (tooTired) report.events.push(`Rested for the ${efx.t.name.replace(/ \d{4}$/, '')} game: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week`);
   const euroRes = euroWeek(efx && efx.euro ? cupUser : null);
   const homeRes = cupWeek(efx && !efx.euro ? cupUser : null);
@@ -2123,7 +2156,9 @@ function advanceWeek() {
   } else {
     let chance = .009 + (p.energy < TIRED_ENERGY ? TIRED_INJURY : 0) + (p.trainedThisWeek || 0) * .003 + (user && user.mins ? .008 : 0) + (cupUser && cupUser.mins ? .008 : 0);
     chance *= (1 - .1 * p.equip) * (1 + vetYears() * .04) * injuryMult();
-    if (Math.random() < chance) {
+    const offHurt = [user, cupUser].find(u => u && u.mins && u.offInjured);
+    if (offHurt) report.events.push(`Went off injured after ${offHurt.mins} minutes`);
+    if (offHurt || Math.random() < chance) {
       // Most knocks are short; a strong body makes a serious one rarer.
       const serious = Math.random() < seriousChance();
       if (serious) p.seriousSeason = S.season;
@@ -2978,7 +3013,7 @@ const AWARD_OVR = [
 const awardValue = a => (AWARD_OVR.find(([re]) => re.test(a)) || [0, 0])[1];
 
 // Goals + assists a season needs before the review lifts your OVR. Attackers need 10;
-// deeper roles need fewer. Keepers are judged on their ratings instead.
+// deeper roles need fewer. Keepers are judged on clean sheets and saves instead.
 const GA_PAR = { ST: 10, LW: 10, RW: 10, CAM: 10, LM: 8, RM: 8, CM: 6, CDM: 4, LB: 4, RB: 4, CB: 2 };
 // Tackles a season needs before the review lifts a defender's or holding midfielder's OVR.
 const TACKLE_PAR = { CB: 200, LB: 180, RB: 180, CDM: 160 };
@@ -2991,12 +3026,17 @@ function performanceReview(st, avg, awards) {
   const ga = st.goals + st.assists + (st.cup ? st.cup.goals + st.cup.assists : 0), par = GA_PAR[p.pos];
   let d = 0;
   if (st.apps >= 10 && !par) {
-    d += avg >= 7.5 ? 1.5 : avg >= 7 ? .8 : avg >= 6.5 ? .2 : avg >= 6 ? -.6 : -1.2;
-    notes.push(`${avg.toFixed(2)} average rating`);
-    // Keepers are also judged on clean sheets and saves per game, like outfield players on G/A.
+    // Keepers are judged mainly on clean sheets and saves per game (all competitions), like
+    // outfield players on G/A; the average rating only nudges it. A real top keeper keeps a clean
+    // sheet in about 40% of games and makes 2.5 to 3 saves a game.
+    const w = L.tier === 1 ? leagueWeight(L) : L.tier === 2 ? .7 : .5;
     const apps = st.apps + (st.cup ? st.cup.apps : 0), cs = (st.cleanAll || 0) / Math.max(1, apps), sv = (st.saves || 0) / Math.max(1, apps);
-    const keep = (cs >= .45 ? 1.8 : cs >= .35 ? 1.2 : cs >= .25 ? .6 : cs >= .15 ? .2 : 0) + (sv >= 3.5 ? .6 : sv >= 2.5 ? .3 : 0);
-    if (keep) { d += keep; notes.push(`${st.cleanAll || 0} clean sheets, ${st.saves || 0} saves`); }
+    const csD = cs >= .45 ? 3 : cs >= .38 ? 2.2 : cs >= .3 ? 1.4 : cs >= .22 ? .6 : cs >= .15 ? 0 : -.8;
+    const svD = sv >= 3.5 ? 1 : sv >= 2.8 ? .6 : sv >= 2.2 ? .25 : 0;
+    d += (csD > 0 ? csD * w : csD) + svD * w;
+    notes.push(`${st.cleanAll || 0} clean sheets, ${(cs * 100).toFixed(0)}% of games`, `${sv.toFixed(1)} saves a game`);
+    const r = avg >= 7.5 ? .4 : avg >= 7 ? .2 : avg < 6.2 ? -.4 : 0;
+    if (r) { d += r; notes.push(`${avg.toFixed(2)} average rating`); }
   } else if (st.apps >= 10) {
     // Numbers count for less in the lower leagues.
     const w = L.tier === 1 ? leagueWeight(L) : L.tier === 2 ? .7 : .5;

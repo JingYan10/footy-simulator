@@ -1547,7 +1547,59 @@ function showOrderSheet() {
     </div>`);
 }
 
-function doAdvance() { const rep = advanceWeek(); render(); if (rep) showMatchReport(rep); }
+function doAdvance() {
+  // A knockout game of yours that ends level goes to a shootout you take by hand first.
+  const so = prepareShootout();
+  if (so) { save(); showShootout(so, 'week'); return; }
+  const rep = advanceWeek(); render(); if (rep) showMatchReport(rep);
+}
+function doSummerPlay() {
+  const so = prepareShootout();
+  if (so) { save(); showShootout(so, 'summer'); return; }
+  const r = playSummerStage(); render(); showSummerReport(r);
+}
+
+// ---------- penalty shootout ----------
+let soMode = 'week';
+function soDots(arr, n) {
+  const shown = Math.max(5, n);
+  return Array.from({ length: shown }, (_, i) => `<i class="${arr[i] == null ? '' : arr[i] ? 'in' : 'out'}"></i>`).join('');
+}
+function shootoutHtml(so) {
+  const gm = so.mine.filter(Boolean).length, gt = so.theirs.filter(Boolean).length, n = Math.max(so.mine.length, so.theirs.length);
+  const last = so.log[so.log.length - 1];
+  const board = `<div class="so-board">
+    <div class="so-row"><b>${esc(teamName(so.me))}</b><span class="so-dots">${soDots(so.mine, n)}</span><span class="num">${gm}</span></div>
+    <div class="so-row"><b>${esc(teamName(so.opp))}</b><span class="so-dots">${soDots(so.theirs, n)}</span><span class="num">${gt}</span></div></div>`;
+  const lastLine = last ? `<p class="so-last ${last.goal === (last.side === 'mine') ? 'good' : 'bad'}">${esc(last.text)}</p>` : `<p class="muted" style="margin:0">Level at full time. ${so.gk ? 'You are in goal: pick which way to dive for every one of their kicks.' : `You take your side's kick number ${so.myKick}.`}</p>`;
+  let act;
+  if (so.done) {
+    const won = so.winner === so.me;
+    act = `<p class="so-res ${won ? 'good' : 'bad'}">${won ? 'You win' : `${esc(teamName(so.opp))} win`} ${Math.max(gm, gt)}–${Math.min(gm, gt)} on penalties${won ? '!' : '.'}</p><button class="btn primary" data-act="soDone">Continue</button>`;
+  } else {
+    const nx = soNext(so);
+    if (nx.you === 'shoot') {
+      act = `<p class="so-ask">Your kick. Pick where to shoot:</p><div class="so-goal shoot">${[0, 1].map(r => [0, 1, 2].map(c => `<button data-act="soShoot" data-v="${c},${r}" aria-label="${SO_ROWS[r]} ${SO_COLS[c]}"></button>`).join('')).join('')}</div><p class="small muted" style="margin:0">Seen from the spot. Low and in the corner is safest; high is harder to save but can fly over.</p>`;
+    } else if (nx.you === 'save') {
+      act = `<p class="so-ask">You're in goal. Pick which way to dive:</p><div class="so-goal save">${[0, 1, 2].map(c => `<button data-act="soDive" data-v="${c}"><span>${c === 1 ? 'Stay' : c ? 'Dive right' : 'Dive left'}</span></button>`).join('')}</div><p class="small muted" style="margin:0">Seen from the spot, as the kicker sees it.</p>`;
+    } else {
+      act = `<button class="btn primary" data-act="soAuto">${esc(teamName(nx.side === 'mine' ? so.me : so.opp))} to kick</button>`;
+    }
+  }
+  return `<div class="so"><h3>Penalty shootout</h3>${board}${lastLine}${act}</div>`;
+}
+function showShootout(so, mode) {
+  if (mode) soMode = mode;
+  const sheet = modal.querySelector('.so') && modal.querySelector('.sheet');
+  if (sheet) sheet.innerHTML = shootoutHtml(so); else openModal(shootoutHtml(so));
+}
+function soStep(choice) {
+  const so = S.preSim && S.preSim.so;
+  if (!so) { closeModal(); render(); return; }
+  soKick(so, choice);
+  save();
+  showShootout(so);
+}
 
 function openModal(html) { modal.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`; modal.hidden = false; }
 function closeModal() { modal.hidden = true; modal.innerHTML = ''; }
@@ -1654,7 +1706,11 @@ document.addEventListener('click', e => {
     case "inqIgnore": ignoreInquiry(v); render(); return;
     case "inqThey": case "inqHalf": case "inqFull": { const [id] = [v]; const r = payBreach(id, act === "inqThey" ? 'they' : act === "inqHalf" ? 'half' : 'full'); toast(r === 'ok' ? 'Release clause broken!' : r === 'no' ? 'They said no' : 'Not enough money'); render(); nextPopup(); return; }
     case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : "Not possible right now"); render(); return; }
-    case 'summerPlay': { const r = playSummerStage(); render(); showSummerReport(r); return; }
+    case 'summerPlay': doSummerPlay(); return;
+    case 'soShoot': { const [col, row] = v.split(',').map(Number); soStep({ col, row }); return; }
+    case 'soDive': soStep({ col: +v }); return;
+    case 'soAuto': soStep(null); return;
+    case 'soDone': closeModal(); if (soMode === 'summer') doSummerPlay(); else doAdvance(); return;
     case 'summerSim': simulateSummer(); render(); return;
     case 'exportSave': showExport(); return;
     case 'copySave': navigator.clipboard.writeText(exportSave()).then(() => toast('Save copied'), () => toast('Select the text and copy it')); return;
@@ -1708,7 +1764,8 @@ document.addEventListener('change', e => {
   if (e.target.dataset && e.target.dataset.act === 'wishLeague') { wishLeague = e.target.value; showWishSheet(); }
 });
 
-modal.addEventListener('click', e => { if (e.target === modal) { closeModal(); render(); } });
+// A shootout can't be closed halfway.
+modal.addEventListener('click', e => { if (e.target === modal && !modal.querySelector('.so')) { closeModal(); render(); } });
 
 // Service worker only works over http(s), not when opened as a local file.
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
