@@ -27,7 +27,8 @@ const GROUP_SLOTS = { GK: 1, DEF: 4, MID: 3, FWD: 3 };
 // position the shape has no place for is picked a little less (3 points down in the pecking order).
 const FORMATIONS = {
   '4-3-3': { DEF: ['LB', 'CB', 'CB', 'RB'], MID: ['CM', 'CDM', 'CM'], FWD: ['LW', 'ST', 'RW'] },
-  '4-2-3-1': { DEF: ['LB', 'CB', 'CB', 'RB'], MID: ['CDM', 'CDM', 'CAM'], FWD: ['LW', 'ST', 'RW'] },
+  // The three behind the striker: wide midfielders either side of the No. 10.
+  '4-2-3-1': { DEF: ['LB', 'CB', 'CB', 'RB'], MID: ['CDM', 'CDM', 'CAM'], FWD: ['LM', 'ST', 'RM'] },
   '4-4-2': { DEF: ['LB', 'CB', 'CB', 'RB'], MID: ['LM', 'CM', 'CM', 'RM'], FWD: ['ST', 'ST'] },
   '3-5-2': { DEF: ['CB', 'CB', 'CB'], MID: ['LM', 'CDM', 'CM', 'CAM', 'RM'], FWD: ['ST', 'ST'] },
   '3-4-3': { DEF: ['CB', 'CB', 'CB'], MID: ['LM', 'CM', 'CM', 'RM'], FWD: ['LW', 'ST', 'RW'] },
@@ -484,6 +485,35 @@ function rollWeekPos(sel) {
 }
 // A one-week position you haven't been told about yet stays hidden.
 const weekPosTold = () => { const w = S.player.weekPos; return !(w && w.key === weekKey() && w.pos && !w.told); };
+// When the manager's shape has no place for the position you play, you are told the role you take
+// instead (a central midfielder as a holder in a 4-2-3-1): once each time that changes, not weekly.
+function shapeRoleNote() {
+  const c = myClub(), pos = matchPos(), role = shapeRole(pos, c);
+  if (role === pos) return null;
+  const key = `${c.id}|${c.mgr}|${pos}|${role}`;
+  return S.player.roleTold === key ? null : { key, pos, role };
+}
+function tellShapeRole(popup = true) {
+  const n = shapeRoleNote();
+  if (!n) return;
+  S.player.roleTold = n.key;
+  syncObjRole();
+  const c = myClub(), what = roleText(n.pos, n.role);
+  msg(`${c.mgr} plays a ${formationOf(c)}: you start ${what}, and his targets are set for that role.`, 'info');
+  if (popup) notify('good', `Playing ${n.role}`, `${c.mgr}'s ${formationOf(c)} has no ${POS_NAMES[n.pos].toLowerCase()} spot, so you start ${what}. You play it as a ${n.role} in matches, and his targets are set for a ${n.role}.`);
+}
+// The role you actually fill on the pitch for your club: what your goals, assists, tackles and
+// ratings are made of.
+const matchRole = () => { const c = myClub(); return c ? shapeRole(matchPos(), c) : matchPos(); };
+// The role the manager's targets are set for: your position (or the new one you took on) as his shape uses it.
+const objRole = () => { const p = S.player, c = myClub(), pos = p.playPos || p.pos; return c ? shapeRole(pos, c) : pos; };
+// Targets set for a role you no longer fill (a new manager, a new shape) are set again for the new one.
+function syncObjRole() {
+  const p = S.player, role = objRole();
+  if (p.injured) return;
+  const spans = (p.objectives || []).filter(o => o.pos && o.pos !== role && o.span !== 'chance').map(o => o.span);
+  if (spans.length) setObjectives(spans);
+}
 function tellWeekPos(popup = true) {
   const p = S.player, w = p.weekPos;
   if (weekPosTold()) return;
@@ -499,7 +529,7 @@ const adjusting = () => (S.player.adjustUntil || 0) > absWeek();
 const adjustForm = () => adjusting() ? ADJUST_FORM : 1;
 const TACKLERS = ['CB', 'LB', 'RB', 'CDM'];
 // Tackles that count as a busy, decent game when you went against the manager's plan.
-const DECENT_TACKLES = { CB: 5, LB: 5, RB: 5, CDM: 4 };
+const DECENT_TACKLES = { CB: 5, LB: 5, RB: 5, CDM: 5 };
 // Keepers grow on clean sheets and saves, with the rating counting half as much. Real top keepers
 // keep a clean sheet in about 40% of games and make 2.5 to 3 saves, worth what 0.6 goals and 0.3
 // assists a game are to a striker.
@@ -507,7 +537,7 @@ const GK_CLEAN_GAIN = .015, GK_SAVE_GAIN = .002;
 function perfDelta(rating, user) {
   const gk = matchPos() === 'GK';
   const output = gk ? (user.clean ? GK_CLEAN_GAIN : 0) + (user.saves || 0) * GK_SAVE_GAIN
-    : TACKLERS.includes(matchPos()) ? (user.tackles || 0) * .0011 : user.goals * .015 + user.assists * .01;
+    : TACKLERS.includes(matchRole()) ? (user.tackles || 0) * .0011 : user.goals * .015 + user.assists * .01;
   const d = ((rating - 6.7) * (gk ? .015 : .03) + output) * user.mins / 90;
   return d > 0 ? d * growthFactor() * PERF_GAIN : d * declineFactor() * vetLeagueEase();
 }
@@ -899,7 +929,7 @@ function makeDrill() {
 // What a full game in a position is worth towards an objective of this kind (clean sheets aside).
 function objPerGame(kind, pos, str = teamStrength(myClub())) {
   const p = S.player, ovr = calcOVR();
-  const tk = Math.max(1, 2 + ((p.attrs.DEF || 40) - 50) * .2) * (TACKLE_ROLE[pos] ?? 1);
+  const tk = Math.max(TACKLE_FLOOR, 2 + ((p.attrs.DEF || 40) - 50) * .2) * (TACKLE_ROLE[pos] ?? 1);
   const g = (OBJ_RATE[pos] || .12) * clamp(Math.pow(ovr / str, 3), .5, 1.6), a = (OBJ_AST_RATE[pos] || .15) * clamp(Math.pow(ovr / str, 2), .5, 1.6);
   // Holding midfielders aren't there to score: their goals + assists target is 40% lower.
   return kind === 'tackles' ? tk : kind === 'ga' ? (g + a) * (pos === 'CDM' ? .6 : 1) : kind === 'gat' ? tk + g + a : kind === 'assists' ? a : g;
@@ -913,7 +943,7 @@ function makeObjective(span) {
   const { start, subShare } = startChance();
   const play = clamp(start + (1 - start) * subShare * .35, .15, 1);
   // Targets are set for the position you are playing now (a new one you have taken on, too).
-  const c = myClub(), str = teamStrength(c), pos = p.playPos || p.pos, kind = objKind(pos);
+  const c = myClub(), str = teamStrength(c), pos = objRole(), kind = objKind(pos);
   let perGame;
   if (kind === 'clean') {
     // Clean sheets depend on how strong your team is compared with the rest of the league.
@@ -1008,6 +1038,7 @@ function settleChance(ok) {
 
 // After each week: settle objectives whose window has closed and set the next ones.
 function tickObjectives() {
+  syncObjRole();
   const p = S.player, ended = (p.objectives || []).filter(o => o.span !== 'season' && o.endWeek < S.week);
   ended.forEach(resolveObjective);
   p.objectives = p.objectives.filter(o => !(o.span === 'chance' && ended.includes(o)));
@@ -1154,7 +1185,27 @@ function planPositionAsk() {
   const p = S.player;
   p.posAsk = (POS_NEAR[p.pos] || []).length && Math.random() < rand(.1, .4) ? { season: S.season, week: Math.ceil(randi(1, 10) * SEASON_WEEKS / 10) } : null;
 }
+// Start enough games in the role his shape puts you in (a CM as a holder in a 4-2-3-1) and the
+// manager asks you to make it your position, once a season for each role.
+const SHAPE_ASK_STARTS = 8;
+function maybeShapeAsk() {
+  const p = S.player;
+  if (S.decision || p.loan || p.injured || p.needsContract) return false;
+  const c = myClub(), [role, n] = Object.entries(p.st.shapeApps || {}).sort((a, b) => b[1] - a[1])[0] || [];
+  if (!role || n < SHAPE_ASK_STARTS || role === p.pos || role === p.nextPos || role === 'GK') return false;
+  const key = `${S.season}|${role}`;
+  if (p.shapeAsked === key) return false;
+  p.shapeAsked = key;
+  const early = S.week <= SEASON_WEEKS * POS_ASK_EARLY, name = POS_NAMES[role].toLowerCase();
+  // Late in the season he can only add it beside your main position: nothing to ask if it already is.
+  if (!early && altPositions().includes(role)) return false;
+  S.decision = { type: 'position', to: role, early, text: early
+    ? `You have started ${n} games as a ${name} in ${c.mgr}'s ${formationOf(c)}. He wants to make it your position: agree and it becomes your main position from next season, with ${POS_NAMES[p.pos].toLowerCase()} beside it.`
+    : `You have started ${n} games as a ${name} in ${c.mgr}'s ${formationOf(c)}. He wants it added as one of your positions, beside ${POS_NAMES[p.pos].toLowerCase()}.` };
+  return true;
+}
 function maybePositionAsk() {
+  if (maybeShapeAsk()) return;
   const p = S.player, a = p.posAsk;
   if (!a || a.season !== S.season || S.week < a.week || S.decision || p.loan || p.injured || p.needsContract) return;
   p.posAsk = null;
@@ -1847,7 +1898,7 @@ function playFixture(h, a, user) {
   }
   // A defender or holding midfielder on the pitch: following the plan keeps the shape (about 10% fewer
   // goals against), playing your own game leaves gaps (about 12% more).
-  const shape = user && user.mins && TACKLERS.includes(matchPos()) ? (user.own ? 1.12 : user.follow ? .9 : 1) : 1;
+  const shape = user && user.mins && TACKLERS.includes(matchRole()) ? (user.own ? 1.12 : user.follow ? .9 : 1) : 1;
   const homeMine = user && h === p.club;
   const gh = poisson(1.45 * Math.exp((sh - sa + 2) / 13) * (user && !homeMine ? shape : 1));
   const ga = poisson(1.15 * Math.exp((sa - sh - 2) / 13) * (homeMine ? shape : 1));
@@ -1859,10 +1910,10 @@ function playFixture(h, a, user) {
       let s = null, myAssist = false, goal = null;
       if (mine && user.mins) {
         const teamStr = teamStrength(c);
-        const pGoal = clamp(GOAL_SHARE[matchPos()] * Math.pow(ovr / teamStr, 3) * user.mins / 90 * (user.own ? 1.3 : 1) * matchForm() * scoreFactor() * footGoal() * edge, 0, .7);
+        const pGoal = clamp(GOAL_SHARE[matchRole()] * Math.pow(ovr / teamStr, 3) * user.mins / 90 * (user.own ? 1.3 : 1) * matchForm() * scoreFactor() * footGoal() * edge, 0, .7);
         if (Math.random() < pGoal) { user.goals++; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch) }; }
         else {
-          const pAst = clamp(ASSIST_SHARE[matchPos()] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * 1.3 * (user.own ? 1.3 : 1) * matchForm() * assistFactor() * footAssist() * edge, 0, .7);
+          const pAst = clamp(ASSIST_SHARE[matchRole()] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * 1.3 * (user.own ? 1.3 : 1) * matchForm() * assistFactor() * footAssist() * edge, 0, .7);
           if (Math.random() < pAst) { user.assists++; myAssist = true; }
           s = aiScorer(c);
         }
@@ -1885,7 +1936,7 @@ function matchRating(user, res) {
   const p = S.player, mine = res.h === p.club;
   const gf = mine ? res.gh : res.ga, gaa = mine ? res.ga : res.gh;
   const teamStr = teamStrength(myClub());
-  const g = POS_GROUP[matchPos()];
+  const g = POS_GROUP[matchRole()];
   let r = 6.4 + (calcOVR() - teamStr) / 30 + user.goals * .9 + user.assists * .6;
   r += gf > gaa ? .3 : gf < gaa ? -.3 : 0;
   if ((g === 'GK' || g === 'DEF') && gaa === 0 && user.mins >= 60) r += .6;
@@ -1906,14 +1957,16 @@ function matchRating(user, res) {
 // Your stats, form, fitness, reputation, OVR and objectives after a game you played in.
 // Tackles in one game: mostly your Defending stat, scaled by position and minutes. A
 // defender with 80 Defending averages about 8 over 90 minutes; keepers make none.
-const TACKLE_ROLE = { CB: 1, LB: 1, RB: 1, CDM: .8, CM: .5, LM: .35, RM: .35, CAM: .25, LW: .25, RW: .25, ST: .15, GK: 0 };
+// Even with little Defending, a player in the role still wins the odd ball: about 2 a game as a holder.
+const TACKLE_FLOOR = 2;
+const TACKLE_ROLE = { CB: 1, LB: 1, RB: 1, CDM: 1.1, CM: .5, LM: .35, RM: .35, CAM: .25, LW: .25, RW: .25, ST: .15, GK: 0 };
 function matchTackles(user, p = S.player) {
-  const role = TACKLE_ROLE[p === S.player ? matchPos() : p.pos] || 0;
+  const role = TACKLE_ROLE[p === S.player ? matchRole() : p.pos] || 0;
   if (!role || !user.mins) return 0;
   // Playing your own game you fly into more challenges (+15%); sticking to the plan, a few fewer (−10%).
-  const plan = TACKLERS.includes(p === S.player ? matchPos() : p.pos) ? (user.own ? 1.15 : user.follow ? .9 : 1) : 1;
+  const plan = TACKLERS.includes(p === S.player ? matchRole() : p.pos) ? (user.own ? 1.15 : user.follow ? .9 : 1) : 1;
   const learning = p === S.player ? adjustForm() : 1;
-  const base = Math.max(0, 2 + ((p.attrs.DEF || 40) - 50) * .2) * role * user.mins / 90 * (p === S.player ? tackleFactor() : 1) * plan * learning;
+  const base = Math.max(TACKLE_FLOOR, 2 + ((p.attrs.DEF || 40) - 50) * .2) * role * user.mins / 90 * (p === S.player ? tackleFactor() : 1) * plan * learning;
   return Math.max(0, Math.round(base + gauss() * 1.3));
 }
 
@@ -1954,13 +2007,15 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   const st = p.st, line = cup ? st.cup : st;
   line.apps++; line.goals += user.goals; line.assists += user.assists; line.rsum += rating;
   // Every game counts towards the position you played in it (for the retirement Icon card).
-  const mp = matchPos(); st.posApps = st.posApps || {}; st.posApps[mp] = (st.posApps[mp] || 0) + 1;
+  const mp = matchRole(); st.posApps = st.posApps || {}; st.posApps[mp] = (st.posApps[mp] || 0) + 1;
+  // Games the manager's shape put you in another role: enough of them and he asks you to switch.
+  if (mp !== matchPos() && user.start) { st.shapeApps = st.shapeApps || {}; st.shapeApps[mp] = (st.shapeApps[mp] || 0) + 1; }
   addComp(st.comps = st.comps || {}, comp ? comp.name : league(myClub().league).name, comp ? comp.kind : 'league', 1, user.goals, user.assists, rating);
   if (!cup && user.start) st.starts++;
   const conceded = isHome ? res.ga : res.gh;
   const clean = conceded === 0 && ['GK', 'DEF'].includes(POS_GROUP[p.pos]) && user.mins >= 60;
   if (clean && !cup) st.clean++;
-  if (clean) st.cleanAll = (st.cleanAll || 0) + 1;
+  if (clean || (conceded === 0 && mp === 'CDM' && user.mins >= 60)) st.cleanAll = (st.cleanAll || 0) + 1;
   const tk = matchTackles(user);
   user.tackles = tk;
   st.tackles = (st.tackles || 0) + tk;
@@ -1982,7 +2037,7 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
       : o.kind === 'ga' ? user.goals + user.assists : o.kind === 'gat' ? user.goals + user.assists + (user.tackles || 0) : o.kind === 'clean' && clean ? 1 : 0;
     // Asked to play out of position in a league game: the manager lowers the target by what that
     // game was worth less there (a full-back in midfield makes fewer tackles).
-    const played = matchPos();
+    const played = matchRole();
     if (!cup && o.pos && o.perGame && played !== o.pos && OBJ_SCALED.includes(o.kind)) {
       const r = Math.min(1, objPerGame(o.kind, played) / Math.max(.01, objPerGame(o.kind, o.pos)));
       if (r < 1) {
@@ -2076,6 +2131,7 @@ function advanceWeek() {
     else p.st.missed = (p.st.missed || 0) + 1;
     user = { ...matchdaySelection(fx), goals: 0, assists: 0 };
     tellWeekPos(false);
+    if (user.start) tellShapeRole();
     S.player.preSel = null;
     // The manager's plan only matters if you actually play.
     if (p.order && user.mins) { user.follow = p.order.choice !== 'own'; user.own = p.order.choice === 'own'; }
@@ -2098,10 +2154,10 @@ function advanceWeek() {
     if (user.mins) {
       applyUserMatch(user, res, fx.isHome, false, report);
       if (user.follow) { changeAff(2); report.events.push('You followed the manager\x27s plan. Affection +2'); }
-      if (user.own && TACKLERS.includes(matchPos())) {
+      if (user.own && TACKLERS.includes(matchRole())) {
         // Defenders and holding midfielders are judged on what they are there for: a clean sheet and a
         // decent number of tackles (5, or 4 for a holding midfielder).
-        const kept = (fx.isHome ? res.ga : res.gh) === 0, busy = (user.tackles || 0) >= DECENT_TACKLES[matchPos()];
+        const kept = (fx.isHome ? res.ga : res.gh) === 0, busy = (user.tackles || 0) >= DECENT_TACKLES[matchRole()];
         if (kept && busy) { changeAff(2); report.events.push(`You ignored the plan, but a clean sheet and ${user.tackles} tackles won him over. Affection +2`); }
         else if (kept || busy) { changeAff(-2); report.events.push(`You ignored the plan. ${kept ? 'A clean sheet' : `${user.tackles} tackles`}, but not enough to please him: affection −2`); }
         else { changeAff(-6); report.events.push("You ignored the manager's plan: no clean sheet and too few tackles. He is furious: affection −6"); }
@@ -2216,6 +2272,7 @@ function advanceWeek() {
   }));
 
   randomEvent(report);
+  dropEarlyRenewals();
   checkContractBoost();
   veteranRenewal();
   loyaltyOffer();
@@ -2278,6 +2335,19 @@ function veteranRenewal() {
   notify('good', 'The manager wants you to stay', `${myClub().mgr} came to you with a new contract. Check your Home screen.`);
 }
 
+// New contracts are only talked about in the last season of your deal: the club won't offer one
+// earlier, and you can't ask for one earlier.
+const lastYear = () => S.player.years <= 1;
+// A renewal on the table from before this rule (or a board task for one) goes away until then.
+function dropEarlyRenewals() {
+  const p = S.player;
+  if (lastYear() || p.needsContract) return;
+  const had = S.offers.some(o => o.type === 'renew');
+  S.offers = S.offers.filter(o => o.type !== 'renew');
+  p.renewTask = null;
+  if (had) msg(`${myClub().name} will talk about a new contract in the last season of your deal.`, 'info');
+}
+
 function randomEvent(report) {
   const p = S.player;
   if (Math.random() > .14) return;
@@ -2296,7 +2366,7 @@ function randomEvent(report) {
 
 function checkContractBoost() {
   const p = S.player, ovr = calcOVR();
-  if (p.loan || p.years < 1 || ovr - p.ovrAtSign < 4 || effAff() < 45 || clubTalksLocked()) return;
+  if (p.loan || p.years < 1 || !lastYear() || ovr - p.ovrAtSign < 4 || effAff() < 45 || clubTalksLocked()) return;
   if (S.offers.some(o => o.type === 'renew')) return;
   if (p.wage > marketWage(ovr, myClub()) * .8 || ageOf(p.by) >= OLD_RENEW_AGE) return;
   // When the club comes to you it is a loyalty deal half the time (if the manager adores you); any
@@ -2324,7 +2394,7 @@ function loyaltyRoll() {
 // only thinks again about every three months, again half the time.
 function loyaltyOffer() {
   const p = S.player;
-  if (p.loan || p.needsContract || !loyalAge() || clubTalksLocked() || S.offers.some(o => o.type === 'renew')) return;
+  if (p.loan || p.needsContract || !lastYear() || !loyalAge() || clubTalksLocked() || S.offers.some(o => o.type === 'renew')) return;
   if (p.loyalNext) { if (!loyaltyRoll()) return; }
   else {
     if (p.loyalAsked === S.season || effAff() < LOYAL_AFF) return;
@@ -2980,6 +3050,7 @@ function requestContract() {
   const p = S.player, wk = S.season * 100 + S.week;
   if (p.loan || p.needsContract || S.offers.some(o => o.type === 'renew')) return 'busy';
   if (newClub()) return 'newclub';
+  if (!lastYear()) return 'notyet';
   if (negLocked()) return 'locked';
   if (p.lastAsk && wk - p.lastAsk < 10) return 'soon';
   p.lastAsk = wk;
@@ -3038,7 +3109,9 @@ const awardValue = a => (AWARD_OVR.find(([re]) => re.test(a)) || [0, 0])[1];
 // deeper roles need fewer. Keepers are judged on clean sheets and saves instead.
 const GA_PAR = { ST: 10, LW: 10, RW: 10, CAM: 10, LM: 8, RM: 8, CM: 6, CDM: 4, LB: 4, RB: 4, CB: 2 };
 // Tackles a season needs before the review lifts a defender's or holding midfielder's OVR.
-const TACKLE_PAR = { CB: 200, LB: 180, RB: 180, CDM: 160 };
+const TACKLE_PAR = { CB: 200, LB: 180, RB: 180, CDM: 220 };
+// Tackles a game a holding midfielder needs before winning the ball back lifts his review.
+const CDM_TACKLES_PG = 6;
 
 // End-of-season OVR review. For outfield players goals and assists decide it: under half of par
 // costs OVR, under par holds it, and every G/A over par lifts it more. Ratings, awards and
@@ -3062,17 +3135,29 @@ function performanceReview(st, avg, awards) {
   } else if (st.apps >= 10) {
     // Numbers count for less in the lower leagues.
     const w = L.tier === 1 ? leagueWeight(L) : L.tier === 2 ? .7 : .5;
-    if (TACKLERS.includes(p.pos)) {
+    if (objRole() === 'CDM') {
+      // A holding midfielder is judged on the whole job, not tackles alone: winning the ball back
+      // (tackles a game), keeping things tight (clean sheets), chipping in (goals + assists) and how
+      // well he plays overall (his rating counts twice as much as for other positions).
+      const apps = st.apps + (st.cup ? st.cup.apps : 0), tpg = (st.tackles || 0) / Math.max(1, apps), cs = (st.cleanAll || 0) / Math.max(1, apps);
+      const tkD = clamp((tpg - CDM_TACKLES_PG) * .3, -.8, 1.2);
+      const csD = cs >= .45 ? .8 : cs >= .35 ? .5 : cs >= .25 ? .2 : cs >= .15 ? 0 : -.3;
+      const gaD = clamp((ga - GA_PAR.CDM) * .12, -.4, 1);
+      const rD = avg >= 7.6 ? 1.2 : avg >= 7.3 ? .8 : avg >= 7.1 ? .5 : avg >= 6.9 ? .2 : avg >= 6.6 ? 0 : avg >= 6.4 ? -.4 : -.8;
+      const parts = tkD + csD + gaD + rD;
+      d += parts > 0 ? Math.min(4.5, parts) * w : parts;
+      notes.push(`${tpg.toFixed(1)} tackles a game (par ${CDM_TACKLES_PG})`, `${st.cleanAll || 0} clean sheets, ${(cs * 100).toFixed(0)}% of games`, `${ga} goals + assists (par ${GA_PAR.CDM})`, `${avg.toFixed(2)} average rating`);
+    } else if (TACKLERS.includes(objRole())) {
       // Defenders and holding midfielders are judged on tackles (all competitions): every 8 over par
       // counts like one goal or assist over par for an attacker.
-      const tk = st.tackles || 0, tpar = TACKLE_PAR[p.pos];
+      const tk = st.tackles || 0, tpar = TACKLE_PAR[objRole()];
       d += tk >= tpar ? Math.min(4.5, .3 + (tk - tpar) / 8 * .15) * w : tk >= tpar / 2 ? 0 : -.8;
       notes.push(`${tk} tackles (par ${tpar})`);
     } else {
       d += ga >= par ? Math.min(4.5, .3 + (ga - par) * .15) * w : ga >= par / 2 ? 0 : -.8;
       notes.push(`${ga} goals + assists (par ${par})`);
     }
-    const r = avg >= 7.5 ? .4 : avg >= 7 ? .2 : avg < 6.2 ? -.4 : 0;
+    const r = objRole() === 'CDM' ? 0 : avg >= 7.5 ? .4 : avg >= 7 ? .2 : avg < 6.2 ? -.4 : 0;
     if (r) { d += r; notes.push(`${avg.toFixed(2)} average rating`); }
   } else if (age >= 22 && !st.missed) { d -= .6; notes.push('too few games'); }
   awards.forEach(a => { const v = awardValue(a); if (v) { d += v; notes.push(a); } });

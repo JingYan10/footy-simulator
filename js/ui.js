@@ -517,8 +517,9 @@ function contractCard() {
     ${p.listed ? `<div class="small flood">You are transfer-listed. ${inWindow() ? 'Clubs are bidding now.' : `Bids arrive when the window opens (week ${JAN_WINDOW[0]} or summer).`}</div>` : ''}
     ${newClub() ? `<div class="small muted">First season at ${esc(myClub().name)}: settle in before asking for a new contract or sounding out other clubs (until about week ${lockWeekLabel(p.newClubUntil)}).</div>` : ''}
     ${p.renewTask ? `<div class="obj"><div class="row small"><span><b>Board's task</b> · ${renewTaskText(p.renewTask)} for a new contract</span><span class="num">${p.renewTask.progress}/${p.renewTask.target}</span></div><div class="bar"><i class="mid" style="width:${Math.min(100, Math.round(p.renewTask.progress / p.renewTask.target * 100))}%"></i></div><div class="small muted">Until about week ${lockWeekLabel(p.renewTask.until)} · hit it and the offer is guaranteed</div></div>` : ''}
+    ${!lastYear() && !newClub() && !p.needsContract ? `<div class="small muted">New contract talks open in the last season of your deal (${p.years} seasons left).</div>` : ''}
     <div class="btns">
-      <button class="btn sm" data-act="askContract" ${newClub() ? 'disabled' : ''}>Ask for new contract</button>
+      <button class="btn sm" data-act="askContract" ${newClub() || !lastYear() ? 'disabled' : ''}>Ask for new contract</button>
       ${blockActive() ? `<button class="btn sm" data-act="soundOut" ${canSoundOut() ? '' : 'disabled'}>${justSigned() ? 'You just signed: your agent won\x27t ask around yet' : inWindow() ? (S.player.soundedAt === windowKey() ? 'Agent already asked around' : 'Ask agent to sound out clubs') : 'Agent can ask around in a window'}</button>` : ''}
       ${p.listed ? '<button class="btn sm" data-act="unlist">Withdraw request</button>' : `<button class="btn sm danger" data-act="listAsk" ${clauseActive() ? 'disabled' : ''}>Request transfer</button>`}
     </div></section>`;
@@ -1499,39 +1500,51 @@ function showDecision() {
 }
 
 // Matchday: both team sheets in each club's formation, with the bench, and where you fit in. Fit players only.
-const LINE_ORDER = { GK: 0, LB: 1, CB: 2, RB: 3, LM: 4, CDM: 5, CM: 6, CAM: 7, RM: 8, LW: 9, ST: 10, RW: 11 };
 function teamSheet(c, me) {
   const shape = FORMATIONS[formationOf(c)], ROLES = { GK: ['GK'], DEF: shape.DEF, MID: shape.MID, FWD: shape.FWD };
   const avail = c.players.filter(pl => !pl.inj).map(pl => ({ n: pl.n, pos: pl.pos, r: pl.r }));
   // Fill the shape by role where the squad allows, then the best of the rest in that line.
-  const xi = {}, taken = new Set();
+  // Each line keeps the shape's slots in order, left to right (LM, CM, CM, RM), so a player is drawn
+  // where his slot is, whatever his own position.
+  const xi = {}, slots = {}, taken = new Set();
   for (const g of Object.keys(ROLES)) {
     const line = avail.filter(pl => POS_GROUP[pl.pos] === g).sort((a, b) => b.r - a.r);
-    xi[g] = ROLES[g].map(role => { const pl = line.find(x => !taken.has(x) && (!role || x.pos === role)); if (pl) taken.add(pl); return pl; });
-    xi[g] = xi[g].map(pl => pl || (() => { const x = line.find(y => !taken.has(y)); if (x) taken.add(x); return x; })()).filter(Boolean);
+    const row = ROLES[g].map(role => { const pl = line.find(x => !taken.has(x) && (!role || x.pos === role)); if (pl) taken.add(pl); return pl; });
+    const filled = row.map(pl => pl || (() => { const x = line.find(y => !taken.has(y)); if (x) taken.add(x); return x; })());
+    slots[g] = ROLES[g].filter((_, k) => filled[k]);
+    xi[g] = filled.filter(Boolean);
   }
-  // You take the slot of your role in the shape (your position, or the one you fill), else the
-  // weakest in that line.
+  // You take a slot of your role in the shape (your position, or the one you fill); failing that a
+  // slot of a role close to it, else the weakest player's slot in that line.
   if (me && me.start) {
-    const role = shapeRole(me.pos, c), g = role === 'GK' ? 'GK' : ['DEF', 'MID', 'FWD'].find(l => shape[l].includes(role)) || POS_GROUP[me.pos], row = xi[g];
-    let i = row.findIndex(pl => pl.pos === role);
-    if (i < 0) i = row.findIndex(pl => (ROLE_FIT[role] || []).includes(pl.pos));
-    if (i < 0) i = row.reduce((lo, pl, k) => pl.r < row[lo].r ? k : lo, 0);
-    row[i] = me;
+    const role = shapeRole(me.pos, c), g = role === 'GK' ? 'GK' : ['DEF', 'MID', 'FWD'].find(l => shape[l].includes(role)) || POS_GROUP[me.pos];
+    const row = xi[g], roles = slots[g] || [];
+    const weakest = ks => ks.reduce((lo, k) => row[k].r < row[lo].r ? k : lo, ks[0]);
+    const exact = roles.map((r, k) => r === role ? k : -1).filter(k => k >= 0);
+    const near = roles.map((r, k) => (ROLE_FIT[role] || []).includes(r) ? k : -1).filter(k => k >= 0);
+    const i = exact.length ? weakest(exact) : near.length ? weakest(near) : weakest(row.map((_, k) => k));
+    if (row.length) row[i] = me; else row.push(me);
   }
-  Object.values(xi).forEach(row => row.sort((a, b) => LINE_ORDER[a.pos] - LINE_ORDER[b.pos]));
   const used = new Set(Object.values(xi).flat());
   const rest = avail.filter(pl => !used.has(pl)).sort((a, b) => b.r - a.r);
   const bench = [...rest.filter(pl => pl.pos === 'GK').slice(0, 1), ...rest.filter(pl => pl.pos !== 'GK').slice(0, me && !me.start ? 5 : 6)];
   if (me && !me.start && me.squad) bench.push(me);
-  return { xi, bench };
+  return { xi, slots, bench, shape: formationOf(c) };
 }
 // How you fit a role your position is not: a full-back wide in midfield is a wing-back.
 const roleText = (pos, role) => (pos === 'LB' || pos === 'RB') && (role === 'LM' || role === 'RM') ? `as a ${role === 'LM' ? 'left' : 'right'} wing-back` : `in the ${POS_NAMES[role].toLowerCase()} role`;
 const shortN = n => { const w = n.split(' '); return w.length > 1 ? w.slice(1).join(' ') : n; };
 function pitchHtml(sheet) {
-  const chip = pl => `<div class="lp-chip ${pl.me ? 'me' : ''}"><b class="num">${pl.r}</b><span>${esc(shortN(pl.n))}</span><small>${pl.pos}</small></div>`;
-  return `<div class="pitch">${['FWD', 'MID', 'DEF', 'GK'].map(g => `<div class="lp-row">${sheet.xi[g].map(chip).join('')}</div>`).join('')}</div>`;
+  // Each chip is labelled with the slot it plays (a right midfielder on the right wing shows RW).
+  const chip = ({ pl, role }) => `<div class="lp-chip ${pl.me ? 'me' : ''}"><b class="num">${pl.r}</b><span>${esc(shortN(pl.n))}</span><small>${role || pl.pos}</small></div>`;
+  const cells = g => sheet.xi[g].map((pl, k) => ({ pl, role: (sheet.slots || {})[g]?.[k] }));
+  let rows = ['FWD', 'MID', 'DEF', 'GK'].map(cells);
+  // A 4-2-3-1 is drawn as one: the striker, then the wide men either side of the No. 10, then the two holders.
+  if (sheet.shape === '4-2-3-1') {
+    const fwd = cells('FWD'), mid = cells('MID'), is = r => x => x.role === r;
+    rows = [fwd.filter(is('ST')), [...fwd.filter(is('LM')), ...mid.filter(is('CAM')), ...fwd.filter(is('RM'))], mid.filter(is('CDM')), cells('DEF'), cells('GK')];
+  }
+  return `<div class="pitch">${rows.filter(r => r.length).map(r => `<div class="lp-row">${r.map(chip).join('')}</div>`).join('')}</div>`;
 }
 // Today's game: the league game, or the midweek game once the league game is done (or with no
 // league game this week).
@@ -1545,6 +1558,8 @@ function showMatchday() {
   if (leagueSel) tellWeekPos();
   const rested = cup && leagueDone() && half.user && half.user.mins && half.weekEnergy < TWO_GAME_ENERGY;
   const sel = p.injured || rested ? { mins: 0, start: false } : cup ? cupSelection(efx) : leagueSel;
+  // A new role in the manager's shape gets its own alert first; the team sheet opens when you close it.
+  if (sel.start && shapeRoleNote()) { tellShapeRole(); if (POPUPS.length) { matchdayNext = true; nextPopup(); return; } }
   const me = { n: p.name, pos: matchPos(), r: calcOVR(), me: true, start: !!sel.start, squad: !p.injured };
   const mine = teamSheet(myClub(), me), opp = teamSheet(club(fx.opp), null);
   const where = p.injured ? '<span class="bad">You are injured and miss this one.</span>'
@@ -1569,8 +1584,8 @@ function showOrderSheet() {
   const o = S.player.order;
   openModal(`<h3>Manager's plan</h3><p style="margin:0">Before the game, ${myClub().mgr} pulls you aside: “${esc(o.text)}”</p>
     <div class="inbox">
-      <button class="house" data-act="orderGo" data-v="follow"><span><b>Follow the plan</b><br><span class="small muted">Slightly better chance of winning, same scoring chance${TACKLERS.includes(matchPos()) ? '; a slightly better chance of a clean sheet, but a few fewer tackles' : ''}. Affection +2 if you play.</span></span></button>
-      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning${TACKLERS.includes(matchPos()) ? '; a few more tackles, but a slightly worse chance of a clean sheet' : ''}. ${TACKLERS.includes(matchPos()) ? `Clean sheet and ${DECENT_TACKLES[matchPos()]}+ tackles: +2. Only one of them: −2. Neither: −6.` : 'Goal or assist in a win: +2. Goal or assist without winning: −2. Neither, but a win: −2. Neither and no win: −6.'}</span></span></button>
+      <button class="house" data-act="orderGo" data-v="follow"><span><b>Follow the plan</b><br><span class="small muted">Slightly better chance of winning, same scoring chance${TACKLERS.includes(matchRole()) ? '; a slightly better chance of a clean sheet, but a few fewer tackles' : ''}. Affection +2 if you play.</span></span></button>
+      <button class="house" data-act="orderGo" data-v="own"><span><b>Play my own game</b><br><span class="small muted">Better chance to score, worse chance of winning${TACKLERS.includes(matchRole()) ? '; a few more tackles, but a slightly worse chance of a clean sheet' : ''}. ${TACKLERS.includes(matchRole()) ? `Clean sheet and ${DECENT_TACKLES[matchPos()]}+ tackles: +2. Only one of them: −2. Neither: −6.` : 'Goal or assist in a win: +2. Goal or assist without winning: −2. Neither, but a win: −2. Neither and no win: −6.'}</span></span></button>
     </div>`);
 }
 
@@ -1732,7 +1747,7 @@ document.addEventListener('click', e => {
     case "inqListen": listenInquiry(v); render(); nextPopup(); return;
     case "inqIgnore": ignoreInquiry(v); render(); return;
     case "inqThey": case "inqHalf": case "inqFull": { const [id] = [v]; const r = payBreach(id, act === "inqThey" ? 'they' : act === "inqHalf" ? 'half' : 'full'); toast(r === 'ok' ? 'Release clause broken!' : r === 'no' ? 'They said no' : 'Not enough money'); render(); nextPopup(); return; }
-    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : "Not possible right now"); render(); return; }
+    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : r === "notyet" ? "Only in the last season of your contract" : "Not possible right now"); render(); return; }
     case 'summerPlay': doSummerPlay(); return;
     case 'soShoot': { const [col, row] = v.split(',').map(Number); soStep({ col, row }); return; }
     case 'soDive': soStep({ col: +v }); return;
