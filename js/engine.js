@@ -39,20 +39,48 @@ const FORMATION_SHARE = [['4-3-3', 35], ['4-2-3-1', 25], ['4-4-2', 20], ['3-5-2'
 const ROLE_FIT = { LB: ['LM'], RB: ['RM'], LW: ['LM'], RW: ['RM'], LM: ['LW', 'LB'], RM: ['RW', 'RB'], CDM: ['CM'], CAM: ['CM'], CM: ['CDM', 'CAM'] };
 const OFF_ROLE = 3;
 // A club's shape comes from its manager, so it changes when he does.
+const strHash = key => { let h = 0; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
 function formationOf(c) {
-  const key = `${c.id}|${c.mgr}`;
-  let h = 0; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  let r = h % 100;
+  let r = strHash(`${c.id}|${c.mgr}`) % 100;
   for (const [f, share] of FORMATION_SHARE) { if (r < share) return f; r -= share; }
   return '4-3-3';
+}
+// Every manager also has a plan B, another shape he switches to for about 1 game week in 4. His main
+// shape still decides how many places each line has (and so your start chance); plan B only changes
+// who plays where that week.
+const PLAN_B_SHARE = 25;
+function altFormationOf(c) {
+  const main = formationOf(c), pool = FORMATION_SHARE.filter(([f]) => f !== main);
+  let r = strHash(`${c.id}|${c.mgr}|B`) % pool.reduce((s, [, n]) => s + n, 0);
+  for (const [f, share] of pool) { if (r < share) return f; r -= share; }
+  return pool[0][0];
+}
+const planBWeek = (c, season = S.season, week = S.week) => strHash(`${c.id}|${season}|${week}|planB`) % 100 < PLAN_B_SHARE;
+const weekFormation = c => planBWeek(c) ? altFormationOf(c) : formationOf(c);
+// Your role this week. In a plan B week with more than one place for you, the manager picks one of them.
+function weekRole(pos, c) {
+  const f = weekFormation(c);
+  if (f === formationOf(c)) return shapeRole(pos, c);
+  const opts = shapeOptions(pos, f);
+  return opts[strHash(`${c.id}|${S.season}|${S.week}|role`) % opts.length];
 }
 // The manager's shape never changes for you: no player is bigger than the club. Where the shape has
 // no place for your position, you take the role you can fill (a full-back as a wing-back in a back
 // three, a winger wide in midfield).
-function shapeRole(pos, c) {
-  const roles = Object.values(FORMATIONS[formationOf(c)]).flat();
+function shapeRole(pos, c, f = formationOf(c)) {
+  const roles = Object.values(FORMATIONS[f]).flat();
   if (pos === 'GK' || roles.includes(pos)) return pos;
   return (ROLE_FIT[pos] || []).find(r => roles.includes(r)) || pos;
+}
+// Where a shape could use you: your own position if it has one, else the roles close to it (a left
+// winger in a 4-4-2 is a left mid or a striker). At most two.
+function shapeOptions(pos, f) {
+  const roles = Object.values(FORMATIONS[f]).flat();
+  if (pos === 'GK' || roles.includes(pos)) return [pos];
+  const fit = (ROLE_FIT[pos] || []).filter(r => roles.includes(r));
+  const near = (POS_NEAR[pos] || []).filter(r => roles.includes(r) && !fit.includes(r));
+  const out = [...fit, ...near].slice(0, 2);
+  return out.length ? out : [pos];
 }
 const formationSlots = (c, g) => g === 'GK' ? 1 : FORMATIONS[formationOf(c)][g].length;
 function fitsFormation(pos, c) {
@@ -487,15 +515,28 @@ function rollWeekPos(sel) {
 const weekPosTold = () => { const w = S.player.weekPos; return !(w && w.key === weekKey() && w.pos && !w.told); };
 // When the manager's shape has no place for the position you play, you are told the role you take
 // instead (a central midfielder as a holder in a 4-2-3-1): once each time that changes, not weekly.
+// A plan B week that moves you somewhere else is told every time it happens, for that week only.
 function shapeRoleNote() {
-  const c = myClub(), pos = matchPos(), role = shapeRole(pos, c);
+  const c = myClub(), pos = matchPos(), f = weekFormation(c), role = weekRole(pos, c);
+  if (f !== formationOf(c)) {
+    if (role === shapeRole(pos, c)) return null;
+    const key = `${c.id}|${weekKey()}`;
+    return S.player.planBTold === key ? null : { key, pos, role, f, planB: true };
+  }
   if (role === pos) return null;
   const key = `${c.id}|${c.mgr}|${pos}|${role}`;
-  return S.player.roleTold === key ? null : { key, pos, role };
+  return S.player.roleTold === key ? null : { key, pos, role, f };
 }
 function tellShapeRole(popup = true) {
   const n = shapeRoleNote();
   if (!n) return;
+  if (n.planB) {
+    S.player.planBTold = n.key;
+    const c = myClub(), what = roleText(n.pos, n.role);
+    msg(`Plan B this week: ${c.mgr} switches to a ${n.f}, so you start ${what}.`, 'info');
+    if (popup) notify('good', `Plan B: playing ${n.role}`, `${c.mgr} goes with his ${n.f} this week instead of his usual ${formationOf(c)}, so you start ${what}. Back to normal next week; his targets stay the same.`);
+    return;
+  }
   S.player.roleTold = n.key;
   syncObjRole();
   const c = myClub(), what = roleText(n.pos, n.role);
@@ -504,7 +545,7 @@ function tellShapeRole(popup = true) {
 }
 // The role you actually fill on the pitch for your club: what your goals, assists, tackles and
 // ratings are made of.
-const matchRole = () => { const c = myClub(); return c ? shapeRole(matchPos(), c) : matchPos(); };
+const matchRole = () => { const c = myClub(); return c ? weekRole(matchPos(), c) : matchPos(); };
 // The role the manager's targets are set for: your position (or the new one you took on) as his shape uses it.
 const objRole = () => { const p = S.player, c = myClub(), pos = p.playPos || p.pos; return c ? shapeRole(pos, c) : pos; };
 // Targets set for a role you no longer fill (a new manager, a new shape) are set again for the new one.
@@ -2011,7 +2052,7 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   // Every game counts towards the position you played in it (for the retirement Icon card).
   const mp = matchRole(); st.posApps = st.posApps || {}; st.posApps[mp] = (st.posApps[mp] || 0) + 1;
   // Games the manager's shape put you in another role: enough of them and he asks you to switch.
-  if (mp !== matchPos() && user.start) { st.shapeApps = st.shapeApps || {}; st.shapeApps[mp] = (st.shapeApps[mp] || 0) + 1; }
+  if (mp !== matchPos() && user.start && !planBWeek(myClub())) { st.shapeApps = st.shapeApps || {}; st.shapeApps[mp] = (st.shapeApps[mp] || 0) + 1; }
   addComp(st.comps = st.comps || {}, comp ? comp.name : league(myClub().league).name, comp ? comp.kind : 'league', 1, user.goals, user.assists, rating);
   if (!cup && user.start) st.starts++;
   const conceded = isHome ? res.ga : res.gh;

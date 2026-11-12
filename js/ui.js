@@ -245,6 +245,23 @@ document.addEventListener('load', e => {
 // What the club says when it hands you an offer. Each pitch is built from an opening, a line about
 // you (your season, your position, your country, your age) and a closing, all picked to fit the
 // deal, so two offers rarely read the same. The same offer always shows the same words.
+// The role a buying club signs you for in its manager's shape, and where his plan B would put you.
+const posWord = r => POS_NAMES[r].toLowerCase(), aPos = r => `${/^[aeiou]/i.test(posWord(r)) ? 'an' : 'a'} ${posWord(r)}`;
+function signRole(c) {
+  const pos = S.player.pos, main = formationOf(c), alt = altFormationOf(c), role = shapeRole(pos, c), altOpts = shapeOptions(pos, alt);
+  return { pos, main, alt, role, altOpts, altSame: altOpts.length === 1 && altOpts[0] === role };
+}
+function signRolePitch(o, c) {
+  const s = signRole(c);
+  const first = s.role === s.pos ? `We need ${aPos(s.pos)}.` : `We play a ${s.main}, so we'd use you as ${aPos(s.role)}.`;
+  if (s.altSame) return first;
+  const extra = s.altOpts.filter(r => r !== s.role);
+  return `${first} Sometimes we switch to a ${s.alt}, and then you might be ${s.altOpts.includes(s.role) ? `${extra.map(aPos).join(' or ')} instead` : s.altOpts.map(aPos).join(' or ')}.`;
+}
+function signRoleNote(c) {
+  const s = signRole(c);
+  return `<div class="small">Signed as <b>${s.role}</b> in ${esc(c.mgr)}'s ${s.main}${s.role !== s.pos ? ` <span class="muted">(no ${s.pos} spot)</span>` : ''}${s.altSame ? '' : ` · <span class="muted">plan B ${s.alt}:</span> <b>${s.altOpts.join(' or ')}</b>`}</div>`;
+}
 function offerPitch(o, c) {
   const p = S.player, age = ageOf(p.by), seed = [...o.id].reduce((s, ch, i) => s + ch.charCodeAt(0) * (i + 7), 0);
   // Each part uses its own slice of the seed, so the pieces vary independently.
@@ -322,7 +339,7 @@ function offerPitch(o, c) {
     open = one(['We\'d build our team around you.', 'Our fans already know your name.', 'We\'ve been watching you for a long time.', `Ask anyone at ${c.name}: you're the one we want.`, 'We\'re not looking for just another player. We\'re looking for a hero.'], 1);
     close = one(['Here, you wouldn\'t just be one of the players. You\'d be the player.', 'Join us, and we\'ll give you the platform and the love to become someone special.', 'You\'re exactly the player we\'ve been looking for.', `${yrs} to become a legend here. The badge is waiting.`, 'Come and be the reason our supporters believe again.'], 3);
   }
-  return `${open} ${fact} ${close}`;
+  return `${open} ${fact}${o.type === 'transfer' ? ' ' + signRolePitch(o, c) : ''} ${close}`;
 }
 
 function offersHtml() {
@@ -345,6 +362,7 @@ function offersHtml() {
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
       <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.raise ? 'Pay rise' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b><small>until end of ${seasonLabel(offerEnds(o))}</small></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
+      ${o.type === 'transfer' ? signRoleNote(c) : ''}
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
       ${o.type === 'renew' && !o.raise && ROLE_RANK[role] >= 2 ? `<div class="small good">Sign as ${role.toLowerCase()} and your starting place is protected for ${RENEW_PROMISE} games.</div>` : ''}
       ${dropped ? `<div class="small bad">Was offered as ${o.status.toLowerCase()}: your contract talks cost you affection with ${esc(c.mgr)}, and your place with it.</div>` : ''}
@@ -1506,7 +1524,7 @@ function showDecision() {
 
 // Matchday: both team sheets in each club's formation, with the bench, and where you fit in. Fit players only.
 function teamSheet(c, me) {
-  const shape = FORMATIONS[formationOf(c)], ROLES = { GK: ['GK'], DEF: shape.DEF, MID: shape.MID, FWD: shape.FWD };
+  const f = weekFormation(c), shape = FORMATIONS[f], ROLES = { GK: ['GK'], DEF: shape.DEF, MID: shape.MID, FWD: shape.FWD };
   const avail = c.players.filter(pl => !pl.inj).map(pl => ({ n: pl.n, pos: pl.pos, r: pl.r }));
   // Fill the shape by role where the squad allows, then the best of the rest in that line.
   // Each line keeps the shape's slots in order, left to right (LM, CM, CM, RM), so a player is drawn
@@ -1522,7 +1540,7 @@ function teamSheet(c, me) {
   // You take a slot of your role in the shape (your position, or the one you fill); failing that a
   // slot of a role close to it, else the weakest player's slot in that line.
   if (me && me.start) {
-    const role = shapeRole(me.pos, c), g = role === 'GK' ? 'GK' : ['DEF', 'MID', 'FWD'].find(l => shape[l].includes(role)) || POS_GROUP[me.pos];
+    const role = me.me ? weekRole(me.pos, c) : shapeRole(me.pos, c, f), g = role === 'GK' ? 'GK' : ['DEF', 'MID', 'FWD'].find(l => shape[l].includes(role)) || POS_GROUP[me.pos];
     const row = xi[g], roles = slots[g] || [];
     const weakest = ks => ks.reduce((lo, k) => row[k].r < row[lo].r ? k : lo, ks[0]);
     const exact = roles.map((r, k) => r === role ? k : -1).filter(k => k >= 0);
@@ -1534,7 +1552,7 @@ function teamSheet(c, me) {
   const rest = avail.filter(pl => !used.has(pl)).sort((a, b) => b.r - a.r);
   const bench = [...rest.filter(pl => pl.pos === 'GK').slice(0, 1), ...rest.filter(pl => pl.pos !== 'GK').slice(0, me && !me.start ? 5 : 6)];
   if (me && !me.start && me.squad) bench.push(me);
-  return { xi, slots, bench, shape: formationOf(c) };
+  return { xi, slots, bench, shape: f };
 }
 // How you fit a role your position is not: a full-back wide in midfield is a wing-back.
 const roleText = (pos, role) => (pos === 'LB' || pos === 'RB') && (role === 'LM' || role === 'RM') ? `as a ${role === 'LM' ? 'left' : 'right'} wing-back` : `in the ${POS_NAMES[role].toLowerCase()} role`;
@@ -1569,14 +1587,14 @@ function showMatchday() {
   const mine = teamSheet(myClub(), me), opp = teamSheet(club(fx.opp), null);
   const where = p.injured ? '<span class="bad">You are injured and miss this one.</span>'
     : rested ? `<span class="bad">You need ${TWO_GAME_ENERGY}+ energy to play twice this week, so you rest for this one.</span>`
-    : sel.start ? `<span class="good">You start ${shapeRole(matchPos(), myClub()) !== matchPos() ? `${roleText(matchPos(), shapeRole(matchPos(), myClub()))} in ${esc(myClub().mgr)}'s ${formationOf(myClub())}` : `as ${POS_NAMES[matchPos()].toLowerCase()}`}.</span>`
+    : sel.start ? `<span class="good">You start ${matchRole() !== matchPos() ? `${roleText(matchPos(), matchRole())} in ${esc(myClub().mgr)}'s ${weekFormation(myClub())}` : `as ${POS_NAMES[matchPos()].toLowerCase()}`}.</span>`
     : sel.mins ? '<span class="flood">You start on the bench, but should get on.</span>' : '<span class="muted">You are on the bench.</span>';
   const benchHtml = s => s.bench.map(pl => `<span class="${pl.me ? 'me' : ''}">${esc(shortN(pl.n))} <small>${pl.pos} ${pl.r}</small></span>`).join('');
   const home = fx.isHome ? myClub() : club(fx.opp), away = fx.isHome ? club(fx.opp) : myClub();
   const cupName = efx && efx.t.name.replace(/ \d{4}$/, '');
   const title = cup ? `${esc(cupName)} · ${efx.stage}` : `Matchday ${S.week}`;
   // Home side first, like the fixture above.
-  const sheet = (c, s) => `<div><h4>${esc(c.short)} · ${formationOf(c)}</h4>${pitchHtml(s)}<div class="lp-bench"><b>Bench</b>${benchHtml(s)}</div></div>`;
+  const sheet = (c, s) => `<div><h4>${esc(c.short)} · ${weekFormation(c)}${weekFormation(c) !== formationOf(c) ? ' <span class="small flood">plan B</span>' : ''}</h4>${pitchHtml(s)}<div class="lp-bench"><b>Bench</b>${benchHtml(s)}</div></div>`;
   const sheets = fx.isHome ? sheet(myClub(), mine) + sheet(club(fx.opp), opp) : sheet(club(fx.opp), opp) + sheet(myClub(), mine);
   openModal(`<div class="row"><h3 style="margin:0">${title}</h3><span class="small muted">${dayLabel(cup ? dayAfter(midweekOffset(efx)) : weekDate())}</span></div>
     <div class="fixture"><div class="team">${crest(home.id)}<b>${esc(home.name)}</b></div><div class="vs">VS</div><div class="team">${crest(away.id)}<b>${esc(away.name)}</b></div></div>
