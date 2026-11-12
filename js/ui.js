@@ -710,7 +710,7 @@ function summerCard() {
     const ko = t.ko.map(k => { const r = k.res.find(x => x.h === me || x.a === me); return r ? `<div class="small">${k.name}: ${esc(teamName(r.h))} ${r.gh}–${r.ga} ${esc(teamName(r.a))}${r.pens ? ` (${esc(teamName(r.pens))} win ${r.pensScore ? pensText(r) + ' ' : ''}on penalties)` : ''}</div>` : ''; }).join('');
     return `<section class="card hero"><div class="row"><h2>${esc(t.name)}</h2><span class="small">${isNation(me) ? esc(natName(me.slice(2))) : esc(teamName(me))}</span></div>
       ${body}${table}${ko}
-      ${t.winner ? '' : `<div class="btns"><button class="btn primary sm" data-act="summerPlay">Play ${st.name.toLowerCase()}</button><button class="btn sm" data-act="summerSim">Simulate the rest</button></div>`}</section>`;
+      ${t.winner ? '' : `<div class="btns"><button class="btn primary sm" data-act="summerMatchday">To matchday</button><button class="btn sm" data-act="summerSim">Simulate the rest</button></div>`}</section>`;
   }).join('');
 }
 
@@ -1523,8 +1523,8 @@ function showDecision() {
 }
 
 // Matchday: both team sheets in each club's formation, with the bench, and where you fit in. Fit players only.
-function teamSheet(c, me) {
-  const f = weekFormation(c), shape = FORMATIONS[f], ROLES = { GK: ['GK'], DEF: shape.DEF, MID: shape.MID, FWD: shape.FWD };
+function teamSheet(c, me, shapeKey) {
+  const f = shapeKey || weekFormation(c), shape = FORMATIONS[f], ROLES = { GK: ['GK'], DEF: shape.DEF, MID: shape.MID, FWD: shape.FWD };
   const avail = c.players.filter(pl => !pl.inj).map(pl => ({ n: pl.n, pos: pl.pos, r: pl.r }));
   // Fill the shape by role where the squad allows, then the best of the rest in that line.
   // Each line keeps the shape's slots in order, left to right (LM, CM, CM, RM), so a player is drawn
@@ -1540,7 +1540,7 @@ function teamSheet(c, me) {
   // You take a slot of your role in the shape (your position, or the one you fill); failing that a
   // slot of a role close to it, else the weakest player's slot in that line.
   if (me && me.start) {
-    const role = me.me ? weekRole(me.pos, c) : shapeRole(me.pos, c, f), g = role === 'GK' ? 'GK' : ['DEF', 'MID', 'FWD'].find(l => shape[l].includes(role)) || POS_GROUP[me.pos];
+    const role = me.me && !shapeKey ? weekRole(me.pos, c) : shapeRole(me.pos, c, f), g = role === 'GK' ? 'GK' : ['DEF', 'MID', 'FWD'].find(l => shape[l].includes(role)) || POS_GROUP[me.pos];
     const row = xi[g], roles = slots[g] || [];
     const weakest = ks => ks.reduce((lo, k) => row[k].r < row[lo].r ? k : lo, ks[0]);
     const exact = roles.map((r, k) => r === role ? k : -1).filter(k => k >= 0);
@@ -1601,6 +1601,33 @@ function showMatchday() {
     <p class="small" style="margin:0;text-align:center">${where}</p>
     <div class="sheet-tabs">${sheets}</div>
     <div class="btns"><button class="btn primary block" data-act="kickoff">Kick off</button><button class="btn block" data-act="close">Back</button></div>`);
+}
+
+// A summer tournament game (Club World Cup, World Cup, Euro...): both team sheets, as on any matchday.
+// National teams and clubs from outside the game's leagues use the squads from tourSide.
+function showSummerMatchday() {
+  const t = summerPending();
+  if (!t) return;
+  const p = S.player, me = t.mine, st = t.stages[t.stage], f = stageFixture(t, me);
+  if (!f) { doSummerPlay(); return; }
+  const opp = f[0] === me ? f[1] : f[0], isHome = f[0] === me, sel = summerPick(me);
+  const mySide = tourSide(me), oppSide = tourSide(opp), nation = isNation(me);
+  const pos = nation ? p.pos : matchPos(), role = shapeRole(pos, mySide);
+  const meChip = { n: p.name, pos, r: calcOVR(), me: true, start: !!sel.start, squad: !sel.free };
+  const mine = teamSheet(mySide, meChip, formationOf(mySide)), theirs = teamSheet(oppSide, null, formationOf(oppSide));
+  const shape = formationOf(mySide);
+  const where = sel.free ? '<span class="bad">Your contract has run out, so you are not part of the squad.</span>'
+    : sel.start ? `<span class="good">You start ${role !== pos ? `${roleText(pos, role)} in ${esc(mySide.mgr)}'s ${shape}` : `as ${POS_NAMES[pos].toLowerCase()}`}.</span>`
+    : sel.mins ? '<span class="flood">You start on the bench, but should get on.</span>' : '<span class="muted">You are on the bench.</span>';
+  const benchHtml = s => s.bench.map(pl => `<span class="${pl.me ? 'me' : ''}">${esc(shortN(pl.n))} <small>${pl.pos} ${pl.r}</small></span>`).join('');
+  const sheet = (c, s) => `<div><h4>${esc(c.short)} · ${s.shape}</h4>${pitchHtml(s)}<div class="lp-bench"><b>Bench</b>${benchHtml(s)}</div></div>`;
+  const sheets = isHome ? sheet(mySide, mine) + sheet(oppSide, theirs) : sheet(oppSide, theirs) + sheet(mySide, mine);
+  const side = id => `<div class="team">${crest(id)}<b>${esc(teamName(id))}</b></div>`;
+  openModal(`<div class="row"><h3 style="margin:0">${esc(t.name.replace(/ \d{4}$/, ''))} · ${esc(st.name)}</h3><span class="small muted">${nation ? esc(natName(p.nat)) : ''}</span></div>
+    <div class="fixture">${side(f[0])}<div class="vs">VS</div>${side(f[1])}</div>
+    <p class="small" style="margin:0;text-align:center">${where}</p>
+    <div class="sheet-tabs">${sheets}</div>
+    <div class="btns"><button class="btn primary block" data-act="summerKick">Kick off</button><button class="btn block" data-act="close">Back</button></div>`);
 }
 
 function showOrderSheet() {
@@ -1772,6 +1799,8 @@ document.addEventListener('click', e => {
     case "inqThey": case "inqHalf": case "inqFull": { const [id] = [v]; const r = payBreach(id, act === "inqThey" ? 'they' : act === "inqHalf" ? 'half' : 'full'); toast(r === 'ok' ? 'Release clause broken!' : r === 'no' ? 'They said no' : 'Not enough money'); render(); nextPopup(); return; }
     case "askContract": { const r = requestContract(); toast(r === "offer" ? (S.offers.some(o => o.raise) ? "Pay rise offered" : "New contract offered") : r === "overpaid" ? "Already paid above your value" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : r === "notyet" ? "Only in the last season of your contract" : "Not possible right now"); render(); return; }
     case 'summerPlay': doSummerPlay(); return;
+    case 'summerMatchday': showSummerMatchday(); return;
+    case 'summerKick': closeModal(); doSummerPlay(); return;
     case 'soShoot': { const [col, row] = v.split(',').map(Number); soStep({ col, row }); return; }
     case 'soDive': soStep({ col: +v }); return;
     case 'soAuto': soStep(null); return;

@@ -11,6 +11,23 @@ const EXTRA_NATIONS = {
 };
 const natName = k => NATIONS[k] || EXTRA_NATIONS[k] || k;
 
+// Names for the generated players of national teams and Club World Cup sides: a few more pools,
+// and nations that share a language borrow a neighbour's.
+Object.assign(NAME_POOLS, {
+  NOR: [['Erik', 'Martin', 'Kristoffer', 'Jonas', 'Sander', 'Magnus', 'Fredrik', 'Oscar', 'Andreas', 'Mathias'], ['Hansen', 'Johansen', 'Olsen', 'Larsen', 'Andersen', 'Nilsen', 'Berg', 'Haugen', 'Lindqvist', 'Eriksson']],
+  CRO: [['Luka', 'Ivan', 'Marko', 'Josip', 'Mateo', 'Nikola', 'Filip', 'Dominik', 'Ante', 'Stefan'], ['Horvat', 'Kovačević', 'Babić', 'Marić', 'Jurić', 'Petrović', 'Jovanović', 'Nikolić', 'Pavlović', 'Knežević']],
+  POL: [['Jakub', 'Kacper', 'Bartosz', 'Mateusz', 'Oleksandr', 'Andriy', 'Mykola', 'Piotr', 'Kamil', 'Viktor'], ['Kowalski', 'Nowak', 'Wiśniewski', 'Lewandowski', 'Shevchenko', 'Bondarenko', 'Kovalenko', 'Zieliński', 'Tkachenko', 'Wójcik']],
+  JPN: [['Takumi', 'Kaoru', 'Daichi', 'Ritsu', 'Wataru', 'Ko', 'Hiroki', 'Yuki', 'Kento', 'Ayumu'], ['Tanaka', 'Suzuki', 'Sato', 'Ito', 'Watanabe', 'Kubo', 'Endo', 'Mitoma', 'Nakamura', 'Yamamoto']],
+  KOR: [['Min-jae', 'Heung-min', 'Kang-in', 'Hee-chan', 'Jae-sung', 'Seung-ho', 'Ji-sung', 'Woo-young', 'Gue-sung', 'Young-woo'], ['Kim', 'Lee', 'Park', 'Hwang', 'Jeong', 'Cho', 'Seol', 'Paik', 'Oh', 'Yang']],
+  CHN: [['Wei', 'Lei', 'Hao', 'Jun', 'Yang', 'Xi', 'Bin', 'Tao', 'Chen', 'Long'], ['Wang', 'Li', 'Zhang', 'Liu', 'Wu', 'Zhao', 'Huang', 'Zhou', 'Xu', 'Sun']],
+  IDN: [['Rizky', 'Arhan', 'Marselino', 'Witan', 'Nguyen', 'Theerathon', 'Safawi', 'Hariss', 'Quang', 'Supachai'], ['Pratama', 'Ferdinan', 'Sulaeman', 'Hai', 'Bunmathan', 'Rasid', 'Harun', 'Chanathip', 'Saputra', 'Van Toan']],
+  NGA: [['Victor', 'Ademola', 'Samuel', 'Wilfred', 'Thomas', 'Kelechi', 'Mohammed', 'Jordan', 'Patson', 'Percy'], ['Osimhen', 'Lookman', 'Chukwueze', 'Ndidi', 'Partey', 'Iheanacho', 'Kudus', 'Ayew', 'Daka', 'Tau']],
+  IRN: [['Mehdi', 'Sardar', 'Alireza', 'Saman', 'Eldor', 'Abbosbek', 'Ali', 'Milad', 'Otabek', 'Ehsan'], ['Taremi', 'Azmoun', 'Jahanbakhsh', 'Ghoddos', 'Shomurodov', 'Fayzullaev', 'Gholizadeh', 'Mohammadi', 'Shukurov', 'Hajsafi']],
+});
+[['ENG', 'SCO WAL IRL CAN AUS JAM'], ['GER', 'SUI AUT'], ['NOR', 'SWE DEN'], ['CRO', 'SRB'], ['POL', 'UKR'], ['ARG', 'URU PAR CHI BOL'], ['ESP', 'COL ECU PER VEN MEX PAN CRC'],
+  ['IDN', 'MAS SGP THA VIE'], ['KSA', 'QAT IRQ UAE JOR EGY ALG TUN MAR'], ['SEN', 'MLI GUI BFA'], ['CIV', 'CMR COD GAB CPV ANG'], ['NGA', 'GHA ZAM RSA'], ['IRN', 'UZB']]
+  .forEach(([from, list]) => list.split(' ').forEach(n => { NAME_POOLS[n] = NAME_POOLS[n] || NAME_POOLS[from]; }));
+
 // Rough national-team strength (average of the best XI), 2025-26.
 const NATION_STR = {
   ESP: 87, FRA: 86, ENG: 86, ARG: 86, POR: 85, BRA: 84, GER: 83, NED: 83, ITA: 82, BEL: 81,
@@ -415,7 +432,7 @@ function myKoGame() {
   }
   const t = summerPending();
   if (!t) return null;
-  return koOf(t, t.mine, { ...summerSelection(t.mine), goals: 0, assists: 0, team: t.mine }, true);
+  return koOf(t, t.mine, { ...summerPick(t.mine), goals: 0, assists: 0, team: t.mine }, true);
 }
 function koOf(t, me, user, summer = false) {
   const st = t.stages[t.stage];
@@ -547,7 +564,45 @@ function simTeams(h, a, user, home = 2) {
 
 function scorerName(id) {
   if (isClub(id)) return aiScorer(club(id)).n;
-  return randomName(isNation(id) ? id.slice(2) : WORLD_CLUBS[+id.slice(2)][1]);
+  return aiScorer(tourSide(id)).n;
+}
+
+// ---------- tournament squads ----------
+// Run fn with Math.random seeded, so a generated squad comes out the same every time it is asked
+// for: a side keeps its players (and coach) for the whole tournament without saving them.
+function seeded(key, fn) {
+  const old = Math.random;
+  let s = strHash(key) || 1;
+  Math.random = () => { s = (s + 0x6D2B79F5) >>> 0; let x = s; x = Math.imul(x ^ x >>> 15, x | 1); x ^= x + Math.imul(x ^ x >>> 7, x | 61); return ((x ^ x >>> 14) >>> 0) / 4294967296; };
+  try { return fn(); } finally { Math.random = old; }
+}
+// A full squad around a rating. A national team's players are all from that country.
+const genSquad = (key, base, nat, natOnly) => seeded(key, () => POSITIONS.flatMap(pos => Array.from({ length: SQUAD_TARGET[pos] }, () => {
+  const pl = genPlayer(pos, base, nat, 20, 33);
+  return natOnly ? { ...pl, nat, n: randomName(nat) } : pl;
+})));
+// A team as a club-like side for the team sheet and the scorers: { id, name, short, mgr, players }.
+// A club in the game is itself. A national team is its country's best players at every club in the
+// game, topped up with generated players around its rating where the game has too few good ones.
+// A Club World Cup side from outside the game's leagues gets a generated squad of its own.
+let tourSideCache = {};
+function tourSide(id) {
+  if (isClub(id)) return club(id);
+  const key = `${id}|${S.season}`;
+  if (tourSideCache[key]) return tourSideCache[key];
+  let side;
+  if (isNation(id)) {
+    const nat = id.slice(2), str = NATION_STR[nat] || 60;
+    const real = Object.values(S.clubs).flatMap(c => c.players.filter(pl => pl.nat === nat));
+    const pool = real.concat(genSquad(`N|${nat}|${S.season}`, str - 3, nat, true));
+    const players = POSITIONS.flatMap(pos => pool.filter(pl => pl.pos === pos).sort((a, b) => b.r - a.r).slice(0, SQUAD_TARGET[pos]));
+    side = { id, name: natName(nat), short: nat, mgr: seeded(`coach|${nat}`, () => randomName(nat)), players };
+  } else {
+    const [name, nat, str] = WORLD_CLUBS[+id.slice(2)];
+    side = { id, name, short: teamCode(id), mgr: seeded(`coach|${name}`, () => randomName(nat)), players: genSquad(`W|${name}|${S.season}`, str - 3, nat) };
+  }
+  if (Object.keys(tourSideCache).length > 80) tourSideCache = {};
+  return (tourSideCache[key] = side);
 }
 
 // ---------- European competitions ----------
@@ -796,7 +851,7 @@ function playSummerStage() {
   const p = S.player, st = t.stages[t.stage], me = t.mine;
   // Played early for a shootout? Then the same team sheet.
   const pre = S.preSim && S.preSim.key === preKey() && S.preSim.base;
-  const user = pre ? { ...pre } : { ...summerSelection(me), goals: 0, assists: 0, team: me };
+  const user = pre ? { ...pre } : { ...summerPick(me), goals: 0, assists: 0, team: me };
   const res = playStage(t, (h, a) => (h === me || a === me) ? user : null);
   let report = null;
   if (res) {
@@ -833,8 +888,17 @@ function playSummerStage() {
     while (!t.winner) playStage(t, () => null);
   }
   if (t.winner) finishTournament(t);
+  S.summerSel = null;
   save();
   return report;
+}
+
+// The team for this round is picked once, when you first look at it (the matchday sheet), and the
+// game then plays with that same pick.
+function summerPick(me) {
+  const key = preKey() + '|' + me;
+  if (!S.summerSel || S.summerSel.key !== key) S.summerSel = { key, sel: summerSelection(me) };
+  return { ...S.summerSel.sel };
 }
 
 // Out of contract, you are not your old club's player: it plays its summer games without you until
