@@ -3189,6 +3189,8 @@ const GA_PAR = { ST: 10, LW: 10, RW: 10, CAM: 10, LM: 8, RM: 8, CM: 6, CDM: 4, L
 const TACKLE_PAR = { CB: 200, LB: 180, RB: 180, CDM: 220 };
 // Tackles a game a holding midfielder needs before winning the ball back lifts his review.
 const CDM_TACKLES_PG = 6;
+// OVR lost when your club is relegated (a regular in the side; scaled down for fewer games).
+const RELEGATION_DROP = [1, 1.5];
 
 // End-of-season OVR review. For outfield players goals and assists decide it: under half of par
 // costs OVR, under par holds it, and every G/A over par lifts it more. Ratings, awards and
@@ -3412,7 +3414,6 @@ function endSeason() {
   }
   (S.cupWins || []).forEach(w => awards.push(w));
   const review = performanceReview(tot, avg, awards);
-  const ovr = calcOVR();
   // Remember the final top-flight tables for next season's European places.
   S.lastStandings = {};
   S.leagues.filter(l => l.tier === 1).forEach(l => { S.lastStandings[l.nat] = leagueTable(l.id).map(r => r.id); });
@@ -3420,6 +3421,14 @@ function endSeason() {
   S.moves = promotionRelegation();
   const myMove = S.moves.find(m => m.id === c.id);
   if (myMove) awards.push(myMove.up ? `Promoted to ${league(myMove.to).name}` : `Relegated to ${league(myMove.to).name}`);
+  // Going down hurts: a regular in the side loses about 1 to 1.5 OVR, someone who barely played less.
+  if (myMove && !myMove.up && st.apps >= 5) {
+    const games = (league(lid).clubs.length - 1) * 2, drop = rand(RELEGATION_DROP[0], RELEGATION_DROP[1]) * clamp(st.apps / Math.max(1, games), .3, 1);
+    nudgeOvr(-drop);
+    review.change = Math.round((review.change - drop) * 10) / 10;
+    review.notes.push(`relegated with ${c.name}`);
+  }
+  const ovr = calcOVR();
   if (pos === 1) notify('good', `${league(lid).name} champions!`, `${c.name} won the league. You were part of it.`);
   if (myMove) notify(myMove.up ? 'good' : 'bad', myMove.up ? 'Promoted!' : 'Relegated', `${c.name} ${myMove.up ? 'go up' : 'go down'} to the ${league(myMove.to).name}.`);
   const personal = awards.filter(awardValue);
