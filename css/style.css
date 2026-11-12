@@ -201,7 +201,12 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .lede { color: var(--muted); margin: 0; max-width: 40ch; }
 .field { display: grid; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
-.field input, .field select { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-height: 46px; width: 100%; }
+.field input, .field select { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-height: 46px; height: 48px; width: 100%; }
+/* iOS Safari draws date fields its own way: wider than the box, centred text, a different height.
+   Strip that so it lines up with the other fields. */
+.field { min-width: 0; }
+.field input[type="date"] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; line-height: 22px; text-align: left; font: inherit; color: inherit; }
+.field input[type="date"]::-webkit-date-and-time-value { text-align: left; margin: 0; min-height: 20px; }
 .posgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .posgrid button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 0; font: 700 15px var(--display); letter-spacing: .06em; }
 .posgrid button.on { background: var(--flood); color: var(--flood-ink); border-color: var(--flood); }
