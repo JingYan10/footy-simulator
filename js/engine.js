@@ -1260,8 +1260,8 @@ function applyNextPosition() {
 
 // A new main position reshapes your stats over the summer: they take on the new position's shape (a
 // full-back is quick and a good defender, a centre-back strong and a great defender), keeping a
-// little (15%) of what made you different, and your OVR drops by 2 at most.
-const SWITCH_MAX_DROP = 2, SWITCH_KEEP = .15;
+// little (15%) of what made you different, and your OVR drops by 1 at most (half the time not at all).
+const SWITCH_MAX_DROP = 2, SWITCH_DROP = 1, SWITCH_KEEP = .15;
 // Stats the position doesn't count (a winger's Defending) still drift towards its shape over the
 // summer, 90% of the way: a converted defender playing wide keeps a little bite, but not 91 Defending.
 const UNUSED_DRIFT = .9;
@@ -1305,7 +1305,7 @@ function shapeReshape(OLD) {
 function rebalanceAttrs(fromPos, fromOvr) {
   const p = S.player, keys = attrKeys(p.pos), old = { ...p.attrs };
   if (!POS_PROFILE[p.pos] || !POS_PROFILE[fromPos]) return;
-  const target = Math.min(MAX_OVR, Math.max(1, fromOvr - randi(0, SWITCH_MAX_DROP)));
+  const target = Math.min(MAX_OVR, Math.max(1, fromOvr - randi(0, SWITCH_DROP)));
   const used = keys.filter(k => WEIGHTS[p.pos][k] > 0);
   used.forEach(k => { p.attrs[k] = clamp(profileAttr(k, p.pos, target) + SWITCH_KEEP * (old[k] - profileAttr(k, fromPos, fromOvr)), 25, 99); });
   // Level it to the target OVR (a few passes, as stats are kept between 25 and 99).
