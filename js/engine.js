@@ -549,7 +549,9 @@ const ROLE_RANK = { Reserve: 0, Rotation: 1, Starter: 2, 'Key Player': 3 };
 // The best role a club offers a veteran (see makeOffer), and the share of the usual wage it pays.
 const vetRoleCap = (age, ovr) => age >= 36 ? (ovr >= 85 ? 'Rotation' : 'Reserve') : age === 35 ? 'Rotation' : age >= 33 ? 'Starter' : null;
 // The season a contract offered now runs to (a mid-season move or renewal adds this half season on top).
-const offerEnds = o => S.season + o.years;
+const offerEnds = o => o.endSeason ?? S.season + o.years;
+// The season your current deal ends with.
+const contractEnd = () => S.season + S.player.years - (S.phase === 'offseason' ? 0 : 1);
 const VET_WAGE_CUT = { 33: .9, 34: .8, 35: .65, 36: .5, 37: .4 };
 // A veteran's contract role holds at that club: rotation means a 35% start chance at most, a reserve 15%.
 const ROLE_CAP_START = { Starter: 1, Rotation: .35, Reserve: .15 };
@@ -2342,9 +2344,8 @@ const lastYear = () => S.player.years <= 1;
 function dropEarlyRenewals() {
   const p = S.player;
   if (lastYear() || p.needsContract) return;
-  const had = S.offers.some(o => o.type === 'renew');
-  S.offers = S.offers.filter(o => o.type !== 'renew');
-  p.renewTask = null;
+  const had = S.offers.some(o => o.type === 'renew' && !o.raise);
+  S.offers = S.offers.filter(o => o.type !== 'renew' || o.raise);
   if (had) msg(`${myClub().name} will talk about a new contract in the last season of your deal.`, 'info');
 }
 
@@ -2674,9 +2675,11 @@ function renewTaskGame(user, clean) {
   if (t.progress < t.target) return;
   p.renewTask = null;
   if (p.loan || p.needsContract) return;
-  S.offers.push(makeOffer(myClub(), 'renew'));
-  msg(`You did what the board asked (${renewTaskText(t)}). ${myClub().name} have put a new contract on the table.`, 'good');
-  notify('good', 'Task complete!', `The board kept their word: ${myClub().name} have offered you a new contract.`);
+  const o = askedOffer();
+  S.offers.push(o);
+  const what = o.raise ? 'a pay rise' : 'a new contract';
+  msg(`You did what the board asked (${renewTaskText(t)}). ${myClub().name} have offered you ${what}.`, 'good');
+  notify('good', 'Task complete!', `The board kept their word: ${myClub().name} have offered you ${what}.`);
 }
 function renewTaskWeek() {
   const p = S.player, t = p.renewTask;
@@ -2888,6 +2891,21 @@ function acceptOffer(id) {
   const o = S.offers.find(x => x.id === id);
   if (!o) return;
   const p = S.player;
+  // A pay rise on your current deal: the new wage starts now, and nothing else changes (end date,
+  // role, clauses). Other offers on the table stay there.
+  if (o.raise) {
+    const was = p.wage;
+    p.wage = o.wage;
+    p.peakWage = Math.max(p.peakWage || 0, o.wage);
+    p.renewedAt = absWeek();
+    p.negLock = absWeek() + NEG_LOCK_WEEKS;
+    S.offers = S.offers.filter(x => x.id !== o.id);
+    if (o.negotiated) p.objHard = Math.min(.3, (p.objHard || 0) + .1);
+    msg(`Pay rise agreed: ${money(was)} → ${money(o.wage)}/week, starting now. Your contract still ends with ${seasonLabel(contractEnd())}. No more salary talks for about six months.${o.negotiated ? ` ${myClub().mgr} expects more after squeezing him: his objectives will be a little harder.` : ''}`, 'good');
+    notify('good', 'Pay rise!', `${money(o.wage)} a week from now on. Your contract still runs to the end of ${seasonLabel(contractEnd())}.`);
+    save();
+    return;
+  }
   // A renewal signed during the season starts with the next one: this season finishes the old deal
   // (same wage, same role), then the new wage, years, role and release clause begin.
   const later = o.type === 'renew' && S.phase === 'season';
@@ -2999,13 +3017,13 @@ function acceptOffer(id) {
 
 function declineOffer(id) {
   const o = S.offers.find(x => x.id === id);
-  if (o && o.type === 'renew') { changeAff(-4); changeBoard(-4); }
+  if (o && o.type === 'renew' && !o.raise) { changeAff(-4); changeBoard(-4); }
   // Saying no to a loyalty deal stings a little, and the club waits three months before thinking about it again.
   if (o && o.clause) {
     S.player.loyalNext = absWeek() + LOYAL_GAP;
     msg(`${myClub().mgr} and the board are a little hurt that you turned down their loyalty deal. Manager −4, board −4.`, 'bad');
     notify('bad', 'They were hoping for a yes', `"We understand... but we really thought you felt the same way about us." ${myClub().mgr} and the board are slightly disappointed (manager −4, board −4).`);
-  } else if (o && o.type === 'renew') msg(`You turned down ${myClub().name}'s new contract. The manager and board are slightly unhappy (−4 each).`, 'bad');
+  } else if (o && o.raise) msg(`You turned down the pay rise. Your current deal carries on as it is.`); else if (o && o.type === 'renew') msg(`You turned down ${myClub().name}'s new contract. The manager and board are slightly unhappy (−4 each).`, 'bad');
   // Turning down other clubs shows loyalty, especially rivals.
   if (o && o.type === 'transfer' && !S.player.needsContract) changeAff(isRival(club(o.club)) ? 5 : 2);
   // Turning down an eager club's second try ends it: no more chances for six months.
@@ -3045,12 +3063,23 @@ function withdrawTransferRequest() {
   save();
 }
 
+// What asking gets you. In the last season of your deal, a new contract. Before that, a pay rise on
+// the deal you have: more money, same end date, nothing else changes (role, clauses).
+const RAISE_MIN = .05, RAISE_MAX = .12, RAISE_OVERPAID = 1.3;
+const canRaise = () => S.player.wage < marketWage(calcOVR(), myClub()) * RAISE_OVERPAID;
+function askedOffer() {
+  const p = S.player, c = myClub();
+  if (lastYear()) return makeOffer(c, 'renew');
+  const base = makeOffer(c, 'renew');
+  const bump = Math.round(p.wage * (1 + rand(RAISE_MIN, RAISE_MAX)) / 10) * 10;
+  return { ...base, raise: true, wage: Math.max(base.wage, bump), years: p.years, endSeason: contractEnd(), status: squadStatus(), promised: false, block: 0, blockFee: 0, clause: 0, roleCap: undefined };
+}
+
 // Ask the club for a new deal. Needs the board and manager on side; otherwise it backfires a little.
 function requestContract() {
   const p = S.player, wk = S.season * 100 + S.week;
   if (p.loan || p.needsContract || S.offers.some(o => o.type === 'renew')) return 'busy';
   if (newClub()) return 'newclub';
-  if (!lastYear()) return 'notyet';
   if (negLocked()) return 'locked';
   if (p.lastAsk && wk - p.lastAsk < 10) return 'soon';
   p.lastAsk = wk;
@@ -3062,14 +3091,21 @@ function requestContract() {
   }
   if (p.renewTask) return 'task';
   if (p.board >= 40 && effAff() >= 50) {
+    // Before the last season you can only ask for more money: already paid well above your value, there is none.
+    if (!lastYear() && !canRaise()) {
+      msg(`${myClub().name} won't raise your wage: on ${money(p.wage)} a week you are already paid well above your market value.`, 'bad');
+      save();
+      return 'overpaid';
+    }
     if (Math.random() >= .8) {
       setRenewTask();
-      msg(`${myClub().name} are not ready to offer a new deal yet. The board wants ${renewTaskText(p.renewTask)} in the next 8 weeks: do it and the contract is yours.`, 'bad');
+      msg(`${myClub().name} are not ready to ${lastYear() ? 'offer a new deal' : 'pay you more'} yet. The board wants ${renewTaskText(p.renewTask)} in the next 8 weeks: do it and the ${lastYear() ? 'contract' : 'pay rise'} is yours.`, 'bad');
       save();
       return 'challenge';
     }
-    S.offers.push(makeOffer(myClub(), 'renew'));
-    msg(`${myClub().name} have put a new contract on the table.`, 'good');
+    const o = askedOffer();
+    S.offers.push(o);
+    msg(o.raise ? `${myClub().name} have offered you a pay rise on your current deal, to ${money(o.wage)} a week until the end of ${seasonLabel(o.endSeason)}.` : `${myClub().name} have put a new contract on the table.`, 'good');
     save();
     return 'offer';
   }
@@ -3858,7 +3894,7 @@ function migrate() {
   // Equipment used to be rented only: what you already use counts as bought.
   if (p.equipOwned == null) p.equipOwned = p.equip || 0;
   // A renewal on offer that would end no later than your current deal is stretched a season past it.
-  (S.offers || []).forEach(o => { if (o.type === 'renew' && o.club === p.club) o.years = Math.max(o.years, (p.years || 0) + (S.phase === 'season' ? 0 : 1)); });
+  (S.offers || []).forEach(o => { if (o.type === 'renew' && !o.raise && o.club === p.club) o.years = Math.max(o.years, (p.years || 0) + (S.phase === 'season' ? 0 : 1)); });
   // Veteran offers from Saudi, MLS and Portuguese clubs made under the old age cap get the new role.
   if (ageOf(p.by) >= VET_AGE) (S.offers || []).forEach(o => {
     const c = S.clubs[o.club];

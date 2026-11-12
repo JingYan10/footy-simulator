@@ -285,6 +285,10 @@ function offerPitch(o, c) {
       `Stay for ${o.clause} seasons and build something with us. We're offering ${more} so there's no doubt how much we believe in you. Let us handle the agents, the rumours and the other clubs. You focus on being you.`,
       `${o.clause} seasons, ${more}, and a club that will protect you like one of its own. Nobody will come knocking, we'll make sure of it. All you have to do is keep smiling on that pitch.`,
     ], 3);
+  } else if (o.raise) {
+    // You asked for more money on the deal you have: the club answers that, nothing more.
+    open = one(['You asked, and we listened.', 'You\'ve earned this conversation.', 'The board looked at your numbers and agreed.', 'We know what you bring to this team.'], 1);
+    close = one(['Same deal, a better wage. Keep doing what you\'re doing.', 'Nothing else changes: just keep giving us everything on the pitch.', 'Consider it a thank-you. Now let\'s go and win something.', 'We look after the players who look after us.'], 3);
   } else if (o.type === 'renew') {
     if (p.needsContract) {
       open = one(['Your contract may have run out, but our belief in you never did.', 'We know the paperwork says it\'s over. We don\'t.', 'Some goodbyes just don\'t feel right. This would be one of them.', 'Before you listen to anyone else, hear us out.'], 1);
@@ -333,15 +337,16 @@ function offersHtml() {
     const talk = o.type === 'transfer'
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
       : o.clause ? `<div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}.</div>${chanceBoosted() ? '' : `<div class="small good">Sign it and you are part of their plans: +${Math.round(CHANCE_BOOST * 100)}% start chance at ${esc(c.name)} for good.</div>`}`
+      : o.raise && !negLocked() && !o.talksOver ? '<div class="small muted">Starts now: same contract, same end date, role and clauses, just more money.</div>'
       : o.type === 'renew' && S.phase === 'season' && !negLocked() && !o.talksOver ? '<div class="small muted">Starts next season: you finish this season on your current deal.</div>'
       : o.talksOver ? '<div class="small bad">Talks broke down. You can still sign this offer or decline it, but not negotiate.</div>'
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
-      <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
+      <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.raise ? 'Pay rise' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b><small>until end of ${seasonLabel(offerEnds(o))}</small></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
-      ${o.type === 'renew' && ROLE_RANK[role] >= 2 ? `<div class="small good">Sign as ${role.toLowerCase()} and your starting place is protected for ${RENEW_PROMISE} games.</div>` : ''}
+      ${o.type === 'renew' && !o.raise && ROLE_RANK[role] >= 2 ? `<div class="small good">Sign as ${role.toLowerCase()} and your starting place is protected for ${RENEW_PROMISE} games.</div>` : ''}
       ${dropped ? `<div class="small bad">Was offered as ${o.status.toLowerCase()}: your contract talks cost you affection with ${esc(c.mgr)}, and your place with it.</div>` : ''}
       ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again. You could never be a legend at either club.</div>` : ''}
       ${o.type === 'transfer' && leagueGrowth(c) < 1 ? '<div class="small flood">Big money, weaker league: your OVR will grow more slowly here.</div>' : ''}
@@ -367,7 +372,7 @@ function showNegotiate(id) {
   // Attempts left as dots, and what this club does if an ask fails.
   const dots = Array.from({ length: maxRounds(o) }, (_, k) => `<i class="${k < left ? 'on' : ''}"></i>`).join('');
   const failNote = renew ? 'If he says no, the offer usually stays but talks are over. A big ask can make him pull it.' : 'If they say no, they walk away and the offer is gone.';
-  openModal(`<div class="neghead">${crest(c.id, 'small')}<div><h3 style="margin:0">Negotiate</h3><div class="small muted">${esc(c.name)} · ${renew ? 'Renewal' : 'Transfer'}</div></div></div>
+  openModal(`<div class="neghead">${crest(c.id, 'small')}<div><h3 style="margin:0">Negotiate</h3><div class="small muted">${esc(c.name)} · ${o.raise ? 'Pay rise' : renew ? 'Renewal' : 'Transfer'}</div></div></div>
     <div class="kv"><div><small>On the table</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Market value</small><b class="num">${money(marketWage(calcOVR(), c))}/wk</b></div><div><small>Attempts left</small><b><span class="tries">${dots}</span> ${left}</b></div></div>
     <p class="small muted" style="margin:0">${intro}</p>
     <p class="small ${renew ? 'flood' : 'bad'}" style="margin:0"><b>${failNote}</b></p>
@@ -517,9 +522,9 @@ function contractCard() {
     ${p.listed ? `<div class="small flood">You are transfer-listed. ${inWindow() ? 'Clubs are bidding now.' : `Bids arrive when the window opens (week ${JAN_WINDOW[0]} or summer).`}</div>` : ''}
     ${newClub() ? `<div class="small muted">First season at ${esc(myClub().name)}: settle in before asking for a new contract or sounding out other clubs (until about week ${lockWeekLabel(p.newClubUntil)}).</div>` : ''}
     ${p.renewTask ? `<div class="obj"><div class="row small"><span><b>Board's task</b> · ${renewTaskText(p.renewTask)} for a new contract</span><span class="num">${p.renewTask.progress}/${p.renewTask.target}</span></div><div class="bar"><i class="mid" style="width:${Math.min(100, Math.round(p.renewTask.progress / p.renewTask.target * 100))}%"></i></div><div class="small muted">Until about week ${lockWeekLabel(p.renewTask.until)} · hit it and the offer is guaranteed</div></div>` : ''}
-    ${!lastYear() && !newClub() && !p.needsContract ? `<div class="small muted">New contract talks open in the last season of your deal (${p.years} seasons left).</div>` : ''}
+    ${!lastYear() && !newClub() && !p.needsContract ? `<div class="small muted">You can ask for a pay rise on this deal (same end date). A new contract comes in its last season (${p.years} seasons left).</div>` : ''}
     <div class="btns">
-      <button class="btn sm" data-act="askContract" ${newClub() || !lastYear() ? 'disabled' : ''}>Ask for new contract</button>
+      <button class="btn sm" data-act="askContract" ${newClub() ? 'disabled' : ''}>${lastYear() ? 'Ask for new contract' : 'Ask for a pay rise'}</button>
       ${blockActive() ? `<button class="btn sm" data-act="soundOut" ${canSoundOut() ? '' : 'disabled'}>${justSigned() ? 'You just signed: your agent won\x27t ask around yet' : inWindow() ? (S.player.soundedAt === windowKey() ? 'Agent already asked around' : 'Ask agent to sound out clubs') : 'Agent can ask around in a window'}</button>` : ''}
       ${p.listed ? '<button class="btn sm" data-act="unlist">Withdraw request</button>' : `<button class="btn sm danger" data-act="listAsk" ${clauseActive() ? 'disabled' : ''}>Request transfer</button>`}
     </div></section>`;
@@ -1747,7 +1752,7 @@ document.addEventListener('click', e => {
     case "inqListen": listenInquiry(v); render(); nextPopup(); return;
     case "inqIgnore": ignoreInquiry(v); render(); return;
     case "inqThey": case "inqHalf": case "inqFull": { const [id] = [v]; const r = payBreach(id, act === "inqThey" ? 'they' : act === "inqHalf" ? 'half' : 'full'); toast(r === 'ok' ? 'Release clause broken!' : r === 'no' ? 'They said no' : 'Not enough money'); render(); nextPopup(); return; }
-    case "askContract": { const r = requestContract(); toast(r === "offer" ? "New contract offered" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : r === "notyet" ? "Only in the last season of your contract" : "Not possible right now"); render(); return; }
+    case "askContract": { const r = requestContract(); toast(r === "offer" ? (S.offers.some(o => o.raise) ? "Pay rise offered" : "New contract offered") : r === "overpaid" ? "Already paid above your value" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : r === "notyet" ? "Only in the last season of your contract" : "Not possible right now"); render(); return; }
     case 'summerPlay': doSummerPlay(); return;
     case 'soShoot': { const [col, row] = v.split(',').map(Number); soStep({ col, row }); return; }
     case 'soDive': soStep({ col: +v }); return;
