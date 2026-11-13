@@ -520,7 +520,8 @@ const weekPosTold = () => { const w = S.player.weekPos; return !(w && w.key === 
 function shapeRoleNote() {
   const c = myClub(), pos = matchPos(), f = weekFormation(c), role = weekRole(pos, c);
   if (f !== formationOf(c)) {
-    if (role === shapeRole(pos, c)) return null;
+    // Plan B that puts you back in your own position (an LM in a 4-3-3 when he switches to a 4-2-3-1) needs no alert.
+    if (role === shapeRole(pos, c) || role === pos) return null;
     const key = `${c.id}|${weekKey()}`;
     return S.player.planBTold === key ? null : { key, pos, role, f, planB: true };
   }
