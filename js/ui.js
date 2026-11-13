@@ -12,10 +12,10 @@ const draft = { name: '', nat: 'ENG', pos: 'ST', birth: '2010-01-01', foot: 'R' 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avgRating = st => rateBox(st.apps ? st.rsum / st.apps : null);
 // A rating in a coloured box, SofaScore style: red under 6, orange to 6.5, yellow to 7, green to 8,
-// dark green to 9, blue from 9.
+// teal to 9, blue from 9, gray when there is no rating yet.
 const rateTier = r => r >= 9 ? 'r9' : r >= 8 ? 'r8' : r >= 7 ? 'r7' : r >= 6.5 ? 'r65' : r >= 6 ? 'r6' : 'r5';
-const rateBox = (r, digits = 2) => `<span class="rate-box ${rateTier(r)}">${r.toFixed(digits)}</span>`;
 const rateBox = (r, digits = 2) => r == null ? '<span class="rate-box none">–</span>' : `<span class="rate-box ${rateTier(r)}">${r.toFixed(digits)}</span>`;
+// The version tag the phone page loads this script with (artifact.html, ?v=...), reused on logo
 // images so a recoloured or replaced logo shows up after a publish instead of a cached old one.
 const ASSET_V = ((document.currentScript && document.currentScript.src.match(/[?&]v=(\d+)/)) || [])[1] || '';
 
