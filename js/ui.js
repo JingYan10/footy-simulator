@@ -225,7 +225,7 @@ function crest(id, size = '') {
 const LGT_BOX = 22, LGT_AREA = 16 * 16;
 document.addEventListener('load', e => {
   const img = e.target;
-  if (img.tagName !== 'IMG' || !img.closest('table.lgt, .lgcrest, .spell, .stint, .honteam') || img.closest('.nation') || !img.naturalWidth) return;
+  if (img.tagName !== 'IMG' || !img.closest('table.lgt, .lgcrest, .spell, .stint, .honteam, .offer .clubcell') || img.closest('.nation') || !img.naturalWidth) return;
   const r = img.naturalWidth / img.naturalHeight;
   let w = Math.sqrt(LGT_AREA * r), h = Math.sqrt(LGT_AREA / r);
   const k = Math.min(1, LGT_BOX / w, LGT_BOX / h);

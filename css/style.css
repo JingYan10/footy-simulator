@@ -619,8 +619,8 @@ table.lgt .pts { width: 30px; font-weight: 800; }
 table.lgt .clubcell { gap: 10px; }
 /* The Results and Cups wrapper only marks crests for the table look; it takes no part in layout. */
 .lgcrest { display: contents; }
-table.lgt .crest.mini, .lgcrest .crest.mini:not(.nation), .spell .crest.mini, .stint .crest.mini, .honteam .crest.mini:not(.nation) { width: 22px; height: 22px; border: 0; border-radius: 0; overflow: visible; background: none; }
-table.lgt .crest.mini img, .lgcrest .crest.mini:not(.nation) img, .spell .crest.mini img, .stint .crest.mini img, .honteam .crest.mini:not(.nation) img { width: 100%; height: 100%; object-fit: contain; }
+table.lgt .crest.mini, .lgcrest .crest.mini:not(.nation), .spell .crest.mini, .stint .crest.mini, .honteam .crest.mini:not(.nation), .offer .clubcell .crest:not(.nation) { width: 22px; height: 22px; border: 0; border-radius: 0; overflow: visible; background: none; }
+table.lgt .crest.mini img, .lgcrest .crest.mini:not(.nation) img, .spell .crest.mini img, .stint .crest.mini img, .honteam .crest.mini:not(.nation) img, .offer .clubcell .crest:not(.nation) img { width: 100%; height: 100%; object-fit: contain; }
 table.lgt td.clubname { max-width: 140px; }
 @media (max-width: 479px) { table.lgt td.clubname { max-width: 128px; } }
 table.lgt td.clubname .clubcell > :last-child, table.lgt td.clubname .clubcell { overflow: hidden; text-overflow: ellipsis; }
