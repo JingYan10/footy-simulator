@@ -99,7 +99,7 @@ function renderCreate() {
     <p class="lede">You're 16 and five clubs want to sign you. Win over the manager, spend your wages wisely and earn a move to the biggest clubs in Europe.</p>
     <div class="field"><label for="f-name">Player name</label><input id="f-name" maxlength="28" placeholder="Your name" value="${esc(draft.name)}" autocomplete="off" required></div>
     <div class="field"><label for="f-nat">Nationality</label><select id="f-nat">${natOpts}</select></div>
-    <div class="field"><label for="f-birth">Date of birth</label><input id="f-birth" type="date" min="1960-01-01" max="2015-12-31" value="${draft.birth}" required><span class="small muted">Your career starts in the summer of ${+draft.birth.slice(0, 4) + START_AGE}, the year you turn ${START_AGE}.</span></div>
+    <div class="field"><label for="f-birth">Date of birth</label><input id="f-birth" type="date" min="1960-01-01" max="2015-12-31" value="${draft.birth}" required><span class="small muted" id="f-birth-note">Your career starts in the summer of ${+draft.birth.slice(0, 4) + START_AGE}, the year you turn ${START_AGE}.</span></div>
     <div class="field"><label>Position</label><div class="posgrid">${posBtns}</div><span class="small muted">${POS_NAMES[draft.pos]}</span></div>
     <div class="field"><label>Strong foot</label><div class="seg">${[['R', 'Right'], ['L', 'Left']].map(([k, l]) => `<button type="button" class="${draft.foot === k ? 'on' : ''}" data-act="foot" data-v="${k}">${l}</button>`).join('')}</div><span class="small muted">On your strong side you cross more; on your weaker side you cut inside and shoot more.</span></div>
     <button class="btn primary block" type="submit">See club offers</button>
@@ -110,7 +110,11 @@ function renderCreate() {
   form.addEventListener('input', e => {
     if (e.target.id === 'f-name') draft.name = e.target.value;
     if (e.target.id === 'f-nat') draft.nat = e.target.value;
-    if (e.target.id === 'f-birth' && e.target.value) { draft.birth = e.target.value; renderCreate(); document.getElementById('f-birth').focus(); }
+    // Only the note under the date changes: redrawing the form would close the iPhone date wheel mid-pick.
+    if (e.target.id === 'f-birth' && e.target.value) {
+      draft.birth = e.target.value;
+      document.getElementById('f-birth-note').textContent = `Your career starts in the summer of ${+draft.birth.slice(0, 4) + START_AGE}, the year you turn ${START_AGE}.`;
+    }
   });
   form.addEventListener('submit', e => {
     e.preventDefault();
@@ -699,6 +703,7 @@ function ovrBreakdown(sum) {
   if (sum.seasonGain != null) rows.push(`Matches and training: <b class="${cls(sum.seasonGain)}">${sign(sum.seasonGain)}</b>`);
   if (sum.review) rows.push(`Performance review: <b class="${cls(sum.review.change)}">${sign(sum.review.change)}</b>${sum.review.notes.length ? ` (${esc(sum.review.notes.join(', '))})` : ''}`);
   if (sum.ageLoss > 0) rows.push(`Ageing, turning ${sum.ageTo}: <b class="bad">−${sum.ageLoss}</b>. From 34 your body slows down a little more every birthday${sum.formShield >= .05 ? `, but your strong season kept you sharp: ${Math.round(sum.formShield * 100)}% less than it would have been` : ''}.`);
+  if (sum.leagueDrop > 0) rows.push(`First season in the ${esc(sum.leagueName)}: <b class="bad">−${sum.leagueDrop}</b>. The easier league takes the edge off your game.`);
   return rows.map(r => `<div class="small muted">${r}</div>`).join('');
 }
 

@@ -582,7 +582,7 @@ function perfDelta(rating, user) {
   const output = gk ? (user.clean ? GK_CLEAN_GAIN : 0) + (user.saves || 0) * GK_SAVE_GAIN
     : TACKLERS.includes(matchRole()) ? (user.tackles || 0) * .0011 : user.goals * .015 + user.assists * .01;
   const d = ((rating - 6.7) * (gk ? .015 : .03) + output) * user.mins / 90;
-  return d > 0 ? d * growthFactor() * PERF_GAIN : d * declineFactor() * vetLeagueEase();
+  return d > 0 ? d * growthFactor() * PERF_GAIN : d * declineFactor();
 }
 
 // How much harder drops hit with age: from 34 an OVR loss is 1.2× bigger, growing a little each year.
@@ -646,7 +646,6 @@ const oppEdge = (mine, opp) => (clubTier(opp) === 1 ? .9 : 1) * clamp(Math.exp((
 function declineFactor(age = ageOf(S.player.by)) { return age > VET_AGE ? 1.1 + (age - VET_AGE - 1) * .1 : 1; }
 // Saudi and MLS football is gentler on an old body: veterans decline about 30% slower there.
 // Saudi Arabia and the MLS are kinder on ageing legs: ageing and bad games cost 60% less there.
-const vetLeagueEase = () => S.player.club && richLeague(myClub()) ? .4 : 1;
 // OVR lost at each birthday from 34 (before kit and league): a steady fade that quickens a little each year.
 const BIRTHDAY_DROP = { 34: .4, 35: .7, 36: .9, 37: 1.2, 38: 1.5, 39: 2 };
 
@@ -3618,13 +3617,13 @@ function endSeason() {
   S.seasonSummary = { season: S.season, club: c.name, clubs, pos, apps: tot.apps, goals: tot.goals, assists: tot.assists, avg, awards, ovrStart: S.ovrSeasonStart || ovr, ovrEnd: ovr, clean: tot.clean, cleanAll: tot.cleanAll || 0, saves: tot.saves || 0, starts: st.starts, missed: tot.missed, loanNext: false, returning: false, cup: tot.cup, review, honours: acc.honours };
 
   // Ageing for the player (applied at the birthday that comes with the new season).
-  // Nothing until 33; from the 34th birthday a gradual fade that steepens from 38 (slower in Saudi
-  // Arabia and the MLS, and with good kit). Pace and reflexes go a little quicker than the rest.
+  // Nothing until 33; from the 34th birthday a gradual fade that steepens from 38 (slower with good
+  // kit). Pace and reflexes go a little quicker than the rest.
   const nextAge = age + 1, sum = S.seasonSummary, rawBefore = rawOVR();
   if (nextAge > VET_AGE) {
     // A strong season keeps you sharp: up to 60% less fade after a great one.
     sum.formShield = clamp((review.form || 0) * .25, 0, .6);
-    const rate = (BIRTHDAY_DROP[nextAge] || 2 + (nextAge - 39) * .4) * (1 - .06 * p.equip) * vetLeagueEase() * (1 - sum.formShield);
+    const rate = (BIRTHDAY_DROP[nextAge] || 2 + (nextAge - 39) * .4) * (1 - .06 * p.equip) * (1 - sum.formShield);
     attrKeys(p.pos).forEach(k => {
       const fast = ['PAC', 'REF'].includes(k) ? 1.3 : 1;
       p.attrs[k] = clamp(p.attrs[k] - rand(.8, 1.2) * rate * fast, 20, 99);
@@ -3637,6 +3636,19 @@ function endSeason() {
   sum.ageLoss = Math.round((rawBefore - rawOVR()) * 10) / 10;
   sum.rawEnd = Math.round(rawOVR() * 10) / 10;
   sum.seasonGain = ovr - (S.ovrSeasonStart || ovr) - Math.round(review.change);
+  // First season in Saudi Arabia or the MLS from 30: the step down in level costs 3 to 4 OVR in all
+  // that season (3 after a great one, 4 after a poor one), whatever matches, review and ageing did.
+  // After that you age like anywhere else.
+  const before = r => r.season < S.season && r.clubId && club(r.clubId) && richLeague(club(r.clubId));
+  if (richLeague(c) && age >= 30 && !p.career.some(before)) {
+    const target = (S.ovrSeasonStart || ovr) - (4 - clamp((review.form || 0) / 2, 0, 1));
+    const extra = rawOVR() - target;
+    if (extra > 0) {
+      nudgeOvr(-extra);
+      sum.leagueDrop = Math.round(extra * 10) / 10; sum.leagueName = L.name;
+      sum.ovrEnd = calcOVR(); sum.rawEnd = Math.round(rawOVR() * 10) / 10;
+    }
+  }
   p.energy = 100;
   S.cupWins = [];
 
