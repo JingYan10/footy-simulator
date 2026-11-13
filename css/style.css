@@ -177,9 +177,7 @@ table.grp.lp td:last-child, table.grp.lp th:last-child { padding: 5px 4px 5px 5p
 .kv b { font-size: 14px; }
 
 .form { display: flex; gap: 4px; }
-.form span { font: 700 13px var(--display); width: 30px; padding: 3px 0; text-align: center; border-radius: 5px; background: var(--surface-2); }
-.form span.hi { background: var(--good); color: #062014; }
-.form span.lo { background: var(--bad); color: #2a0606; }
+.form span { font: 800 13px var(--display); min-width: 34px; padding: 3px 0; }
 
 /* ---------- bottom nav ---------- */
 nav.tabs {

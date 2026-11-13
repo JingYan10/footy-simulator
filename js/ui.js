@@ -11,7 +11,6 @@ const draft = { name: '', nat: 'ENG', pos: 'ST', birth: '2010-01-01', foot: 'R' 
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avgRating = st => st.apps ? (st.rsum / st.apps).toFixed(2) : '–';
-const ratingClass = r => r >= 7.5 ? 'hi' : r < 6 ? 'lo' : '';
 // A rating in a coloured box, SofaScore style: red under 6, orange to 6.5, yellow to 7, green to 8,
 // dark green to 9, blue from 9.
 const rateTier = r => r >= 9 ? 'r9' : r >= 8 ? 'r8' : r >= 7 ? 'r7' : r >= 6.5 ? 'r65' : r >= 6 ? 'r6' : 'r5';
@@ -611,7 +610,7 @@ function viewHome() {
       ${euroLine()}
       ${midweekFixture() ? '<button class="btn primary block" data-act="matchday">To matchday</button>' : '<button class="btn primary block" data-act="advance">Next week</button>'}</section>`;
   }
-  const form = p.form.length ? `<section class="card"><div class="row"><h2>Form</h2><span class="small muted">Season avg ${avgRating(p.st)}</span></div><div class="form">${p.form.map(r => `<span class="${ratingClass(r)}">${r.toFixed(1)}</span>`).join('')}</div>
+  const form = p.form.length ? `<section class="card"><div class="row"><h2>Form</h2><span class="small muted">Season avg ${avgRating(p.st)}</span></div><div class="form">${p.form.map(r => `<span class="rate-box ${rateTier(r)}">${r.toFixed(1)}</span>`).join('')}</div>
     <div class="small muted">${p.st.apps} apps · ${p.pos === 'GK' ? `${p.st.saves || 0} saves · ${p.st.cleanAll || 0} clean sheet${p.st.cleanAll === 1 ? '' : 's'}` : `${p.st.goals} goals · ${p.st.assists} assists${TACKLERS.includes(p.pos) ? ` · ${p.st.tackles || 0} tackles` : ''}`}</div></section>` : '';
   const tbl = leagueTable(myClub().league), myPos = tbl.findIndex(r => r.id === p.club) + 1;
   const money_ = `<section class="card"><div class="row"><h2>This week</h2><span class="small">Table: <b>${S.table[p.club].p ? myPos + ordinal(myPos) : "–"}</b></span></div>
