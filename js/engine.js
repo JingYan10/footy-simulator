@@ -2321,6 +2321,7 @@ function advanceWeek() {
   loyaltyOffer();
   inquiryWeek();
   renewTaskWeek();
+  noteRenewal();
   const card = cardTier(calcOVR());
   if (card !== 'Bronze' && !(p.cards || []).includes(card)) {
     p.cards = [...(p.cards || []), card];
@@ -2382,6 +2383,12 @@ function veteranRenewal() {
 // earlier, and you can't ask for one earlier.
 const lastYear = () => S.player.years <= 1;
 // A renewal on the table from before this rule (or a board task for one) goes away until then.
+// Remember that your club put a new contract on the table in the last season of your deal. If it
+// never did, it doesn't come looking for you once you are a free agent either.
+function noteRenewal() {
+  const p = S.player;
+  if (!p.loan && lastYear() && S.offers.some(o => o.type === 'renew' && !o.raise && o.club === p.club)) p.renewSeen = S.season;
+}
 function dropEarlyRenewals() {
   const p = S.player;
   if (lastYear() || p.needsContract) return;
@@ -3058,7 +3065,7 @@ function acceptOffer(id) {
 
 function declineOffer(id) {
   const o = S.offers.find(x => x.id === id);
-  if (o && o.type === 'renew' && !o.raise) { changeAff(-4); changeBoard(-4); }
+  if (o && o.type === 'renew' && !o.raise) { changeAff(-4); changeBoard(-4); if (o.club === S.player.club && lastYear()) S.player.renewSeen = S.season; }
   // Saying no to a loyalty deal stings a little, and the club waits three months before thinking about it again.
   if (o && o.clause) {
     S.player.loyalNext = absWeek() + LOYAL_GAP;
@@ -3114,6 +3121,61 @@ function askedOffer() {
   const base = makeOffer(c, 'renew');
   const bump = Math.round(p.wage * (1 + rand(RAISE_MIN, RAISE_MAX)) / 10) * 10;
   return { ...base, raise: true, wage: Math.max(base.wage, bump), years: p.years, endSeason: contractEnd(), status: squadStatus(), promised: false, block: 0, blockFee: 0, clause: 0, roleCap: undefined };
+}
+
+// ---------- asking a top-flight club for a starting role (33–35) ----------
+// At 33 to 35 a top-flight club that offers you rotation or a reserve role can be asked to make you a
+// starter. They go over your last season at your previous club: does he still have it at this level?
+// Realistic bars, not crazy numbers. One ask per offer, and the answer stands.
+const ROLE_ASK_AGES = [33, 35];
+const lastSpell = () => { const r = (S.player.career || []).at(-1); return r && r.apps >= 5 ? r : null; };
+const canAskRole = o => {
+  const a = ageOf(S.player.by), c = S.clubs[o.club];
+  return o.type === 'transfer' && !o.roleAsk && a >= ROLE_ASK_AGES[0] && a <= ROLE_ASK_AGES[1] && c && clubTier(c) === 1 && ROLE_RANK[o.status] < ROLE_RANK.Starter && !!lastSpell();
+};
+// 0 below lo, .5 at mid, 1 from hi.
+const ramp = (v, lo, mid, hi) => v <= lo ? 0 : v < mid ? .5 * (v - lo) / (mid - lo) : v < hi ? .5 + .5 * (v - mid) / (hi - mid) : 1;
+// Your last season judged for your position. A striker with 15 goals and assists in 34 games is
+// decent, 24 is strong; a centre-back about 5 tackles a game and a clean sheet every third game.
+function lastSeasonCase(r) {
+  const pos = r.pos || S.player.pos, n = r.apps, pg = v => (v || 0) / n, ga = r.goals + r.assists;
+  let stat, line;
+  if (pos === 'GK') {
+    stat = .7 * ramp(pg(r.cleanAll), .15, .3, .42) + .3 * ramp(pg(r.saves), 1.5, 2.8, 3.8);
+    line = `${r.cleanAll || 0} clean sheets and ${r.saves || 0} saves in ${n} games`;
+  } else if (TACKLERS.includes(pos)) {
+    const t = pg(r.tackles) / (TACKLE_PAR[pos] / 40);
+    stat = pos === 'CDM' ? .75 * ramp(t, .6, .95, 1.2) + .25 * ramp(pg(ga), .05, .15, .3)
+      : .65 * ramp(t, .6, .95, 1.2) + .35 * ramp(pg(r.cleanAll), .15, .3, .42);
+    line = `${r.tackles || 0} tackles (${pg(r.tackles).toFixed(1)} a game)${pos === 'CDM' ? `, ${ga} goals and assists` : `, ${r.cleanAll || 0} clean sheets`} in ${n} games`;
+  } else {
+    stat = ramp(pg(ga) / (GA_PAR[pos] / 40), 1, 1.8, 2.8);
+    line = `${r.goals} goals and ${r.assists} assists in ${n} games`;
+  }
+  return { stat, rating: ramp(r.avg || 0, 6.5, 6.9, 7.3), line: `${line}, a ${(r.avg || 0).toFixed(2)} average rating`, club: r.club };
+}
+// The numbers count for more from a big league; a full season more than a few games; and the
+// closer you are to their level (and the younger), the easier the yes.
+function roleAskChance(o) {
+  const r = lastSpell(), k = lastSeasonCase(r), c = club(o.club), age = ageOf(S.player.by);
+  const was = S.clubs[r.clubId], l = was && league(was.league);
+  const level = !l ? .5 : l.tier === 1 ? leagueWeight(l) : l.tier === 2 ? .55 : .35;
+  const games = clamp(r.apps / 20, .3, 1);
+  const fit = clamp(1 - Math.max(0, teamStrength(c) - calcOVR() - 2) * .07, .35, 1.05);
+  const ageF = { 33: 1, 34: .9, 35: .8 }[age] || .8;
+  return clamp((.55 * k.stat + .45 * k.rating) * level * games * fit * ageF * .95, .03, .85);
+}
+// Decided the moment you ask (the club's "thinking" is only on screen). Yes: a promised starting
+// place. No: the offer stays as it was.
+function askForStart(id) {
+  const o = S.offers.find(x => x.id === id);
+  if (!o || !canAskRole(o)) return null;
+  const c = club(o.club), k = lastSeasonCase(lastSpell()), yes = Math.random() < roleAskChance(o), was = o.status;
+  o.roleAsk = yes ? 'yes' : 'no';
+  if (yes) { o.status = 'Starter'; o.promised = true; if (o.roleCap) o.roleCap = 'Starter'; }
+  msg(yes ? `${c.name} agreed to make you a starter after looking at your last season (${k.line}).` : `${c.name} looked at your last season (${k.line}) and are sticking with a ${was.toLowerCase()} role.`, yes ? 'good' : 'bad');
+  save();
+  return { yes, line: k.line, from: k.club, club: c.name, mgr: c.mgr, was };
 }
 
 // Ask the club for a new deal. Needs the board and manager on side; otherwise it backfires a little.
@@ -3481,6 +3543,9 @@ function endSeason() {
   expireOffers('transfer');
   S.offerRerolls = 3;
   if (p.years <= 0) {
+    noteRenewal();
+    // On loan all season, your own club had no chance to talk to you, so the old rule stands.
+    const silent = !p.loan && p.renewSeen !== S.season;
     if (p.loan) endLoan();
     S.offers = [];
     S.seasonSummary.loanNext = false;
@@ -3490,7 +3555,11 @@ function endSeason() {
     const home = myClub();
     const wanted = (effAff() >= 35 && p.board >= 30) || squadStatus() === 'Key Player';
     const why = wanted ? renewalRefusal() : null;
-    if (why) {
+    if (silent) {
+      // No new contract all season: the club has moved on and doesn't come back for you.
+      msg(`Your contract has expired. ${home.name} never offered you a new deal this season, and they won't now. Find a new club.`, 'bad');
+      notify('bad', 'No new contract', `${home.name} let your contract run out without an offer. Look at the other clubs' offers.`);
+    } else if (why) {
       msg(`Your contract has expired. ${home.name} have decided not to renew it ${why}. Find a new club or retire.`, 'bad');
       notify('bad', 'No new contract', `${home.name} won't renew your contract ${why}. Look at the other offers, or call it a day.`);
     } else if (wanted) {

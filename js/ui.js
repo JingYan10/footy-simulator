@@ -371,7 +371,8 @@ function offersHtml() {
       ${o.block ? `<div class="small flood"><b>Release clause:</b> for ${o.block} year${o.block > 1 ? 's' : ''} after you sign, ${esc(c.name)} block any move and salary talks. Breaking it costs ${money(o.blockFee)}.</div>` : ''}
       <div class="loyal ${o.type === 'transfer' ? 'away' : ''}"><p>"${offerPitch(o, c)}"</p><span>— ${esc(c.mgr)}, ${esc(c.name)}</span></div>
       ${talk}
-      <div class="btns"><button class="btn good sm" data-act="accept" data-v="${o.id}">Sign</button><button class="btn sm" data-act="negAsk" data-v="${o.id}" ${canNegotiate(o) ? '' : 'disabled'}>Negotiate</button><button class="btn sm" data-act="decline" data-v="${o.id}">Decline</button></div>
+      ${canAskRole(o) ? `<div class="small muted">At ${ageOf(S.player.by)}, ${esc(c.name)} see you as ${o.status.toLowerCase()}. You can ask to be a starter once: they will judge your last season at ${esc(lastSpell().club)}.</div>` : o.roleAsk === 'yes' ? '<div class="small good">You asked to start, and they said yes.</div>' : o.roleAsk === 'no' ? `<div class="small bad">You asked to start. They said no: ${o.status.toLowerCase()} it is.</div>` : ''}
+      <div class="btns">${canAskRole(o) ? `<button class="btn sm" data-act="roleAsk" data-v="${o.id}">Ask to start</button>` : ''}<button class="btn good sm" data-act="accept" data-v="${o.id}">Sign</button><button class="btn sm" data-act="negAsk" data-v="${o.id}" ${canNegotiate(o) ? '' : 'disabled'}>Negotiate</button><button class="btn sm" data-act="decline" data-v="${o.id}">Decline</button></div>
     </div>`;
   }).join('')}${refresh}</section>`;
 }
@@ -1630,6 +1631,29 @@ function showSummerMatchday() {
     <div class="btns"><button class="btn primary block" data-act="summerKick">Kick off</button><button class="btn block" data-act="close">Back</button></div>`);
 }
 
+// Asking a top-flight club to make you a starter (33–35). The answer is decided straight away; the
+// club takes a few seconds to "talk it over" on screen first.
+const ROLE_ASK_WAIT = 3200;
+function showRoleAsk(id) {
+  const o = S.offers.find(x => x.id === id);
+  if (!o || !canAskRole(o)) return;
+  const c = club(o.club), r = askForStart(id);
+  if (!r) return;
+  openModal(`<h3>Asking to start</h3><p style="margin:0">You tell ${esc(c.mgr)} you want to start, not sit on the bench. He goes over your last season at ${esc(r.from)}: ${esc(r.line)}.</p>
+    <p class="flood" style="margin:0;text-align:center"><b class="role-wait">${esc(c.name)} are talking it over</b></p>`);
+  const label = modal.querySelector('.role-wait');
+  let dots = 0;
+  const tick = setInterval(() => { if (!label.isConnected) { clearInterval(tick); return; } dots = (dots + 1) % 4; label.textContent = `${c.name} are talking it over${'.'.repeat(dots)}`; }, 400);
+  setTimeout(() => {
+    clearInterval(tick);
+    render();
+    if (!label.isConnected) return;
+    openModal(r.yes
+      ? `<h3 class="good">They said yes</h3><p style="margin:0">“We've seen the numbers: ${esc(r.line)}. You've still got it at this level. Sign, and you start.” — ${esc(r.mgr)}</p><button class="btn primary block" data-act="close">Great</button>`
+      : `<h3 class="bad">They said no</h3><p style="margin:0">“We respect what you did last season (${esc(r.line)}), but at this level we see you as ${r.was.toLowerCase()}. The offer stands as it is.” — ${esc(r.mgr)}</p><button class="btn primary block" data-act="close">OK</button>`);
+  }, ROLE_ASK_WAIT);
+}
+
 function showOrderSheet() {
   const o = S.player.order;
   openModal(`<h3>Manager's plan</h3><p style="margin:0">Before the game, ${myClub().mgr} pulls you aside: “${esc(o.text)}”</p>
@@ -1800,6 +1824,7 @@ document.addEventListener('click', e => {
     case "askContract": { const r = requestContract(); toast(r === "offer" ? (S.offers.some(o => o.raise) ? "Pay rise offered" : "New contract offered") : r === "overpaid" ? "Already paid above your value" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : r === "notyet" ? "Only in the last season of your contract" : "Not possible right now"); render(); return; }
     case 'summerPlay': doSummerPlay(); return;
     case 'summerMatchday': showSummerMatchday(); return;
+    case 'roleAsk': showRoleAsk(v); return;
     case 'summerKick': closeModal(); doSummerPlay(); return;
     case 'soShoot': { const [col, row] = v.split(',').map(Number); soStep({ col, row }); return; }
     case 'soDive': soStep({ col: +v }); return;
