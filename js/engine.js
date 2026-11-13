@@ -641,12 +641,12 @@ const footAssist = () => ({ strong: 1.15, inverted: .87 }[footSide()] || 1);
 // up to 20% more.
 const GA_SCALE = .9;
 const oppEdge = (mine, opp) => (clubTier(opp) === 1 ? .9 : 1) * clamp(Math.exp((teamStrength(mine) - teamStrength(opp)) / 30), .8, 1);
-function declineFactor(age = ageOf(S.player.by)) { return age > VET_AGE ? 1.2 + (age - VET_AGE - 1) * .15 : 1; }
+function declineFactor(age = ageOf(S.player.by)) { return age > VET_AGE ? 1.1 + (age - VET_AGE - 1) * .1 : 1; }
 // Saudi and MLS football is gentler on an old body: veterans decline about 30% slower there.
 // Saudi Arabia and the MLS are kinder on ageing legs: ageing and bad games cost 60% less there.
 const vetLeagueEase = () => S.player.club && richLeague(myClub()) ? .4 : 1;
 // OVR lost at each birthday from 34 (before kit and league): a steady fade that quickens a little each year.
-const BIRTHDAY_DROP = { 34: 1.5, 35: 2.5, 36: 3.5, 37: 4, 38: 5, 39: 6 };
+const BIRTHDAY_DROP = { 34: 1, 35: 1.8, 36: 2.5, 37: 3, 38: 3.8, 39: 4.5 };
 
 // The card stats a player of this position and OVR typically has (initAttrs without the random
 // spread). Used for Icon cards of old careers that were saved without any stats.
@@ -1449,7 +1449,7 @@ const GK_GROWTH = 1.25;
 const leagueGrowth = (c = myClub()) => SLOW_GROWTH[league(c.league).nat] || 1;
 function growthFactor(lowBoost = true) {
   const age = ageOf(S.player.by), ovr = calcOVR();
-  const ageF = age <= 21 ? 1.2 : age <= 25 ? 1 : age <= 29 ? .75 : age <= VET_AGE ? .6 : Math.max(.05, .3 - (age - VET_AGE - 1) * .06);
+  const ageF = age <= 21 ? 1.2 : age <= 25 ? 1 : age <= 29 ? .75 : age <= VET_AGE ? .6 : Math.max(.1, .4 - (age - VET_AGE - 1) * .06);
   const low = !lowBoost ? 1 : ovr < 60 ? 2.2 : 1;
   // Keeper ratings are spread differently, so goalkeepers level up about 25% faster.
   return ageF * low * leagueGrowth() * clamp(Math.pow(Math.max(0, MAX_OVR - ovr) / 20, 1.3), .06, 1) * eliteSlow(ovr) * (S.player.pos === 'GK' ? GK_GROWTH : 1);
@@ -3303,8 +3303,10 @@ function performanceReview(st, avg, awards) {
   } else if (age >= 22 && !st.missed) { d -= .6; notes.push('too few games'); }
   awards.forEach(a => { const v = awardValue(a); if (v) { d += v; notes.push(a); } });
   d = Math.min(d, 5);
+  // How good the season was before age is taken into account: a strong one also slows the birthday fade.
+  const form = Math.max(0, d);
   // Gains shrink after 30 and on the way to 91; teenagers are judged gently, older players harder.
-  const ageF = age <= 25 ? 1 : age <= VET_AGE ? .9 : Math.max(.1, .5 - (age - VET_AGE - 1) * .1);
+  const ageF = age <= 25 ? 1 : age <= VET_AGE ? .9 : Math.max(.25, .7 - (age - VET_AGE - 1) * .1);
   d = d > 0 ? d * ageF * clamp((MAX_OVR - ovr) / 8, .2, 1) * eliteSlow(ovr) * (p.pos === 'GK' ? GK_GROWTH : 1) * PERF_GAIN : d * (age <= 20 ? .3 : declineFactor(age));
   // Injuries: missing a quarter of the league games always costs OVR, more the longer you
   // were out and the older you are. A shorter spell out only hurts if you came back below par.
@@ -3322,7 +3324,7 @@ function performanceReview(st, avg, awards) {
   } else if (missed >= 5) notes.push(`bounced back from ${missed} games out injured`);
   if (d > 0) d = Math.min(d, Math.max(0, MAX_OVR - ovr));
   nudgeOvr(d);
-  return { change: Math.round(d * 10) / 10, notes };
+  return { change: Math.round(d * 10) / 10, notes, form };
 }
 
 // ---------- individual accolades ----------
@@ -3508,7 +3510,9 @@ function endSeason() {
   // Arabia and the MLS, and with good kit). Pace and reflexes go a little quicker than the rest.
   const nextAge = age + 1, sum = S.seasonSummary, rawBefore = rawOVR();
   if (nextAge > VET_AGE) {
-    const rate = (BIRTHDAY_DROP[nextAge] || 6 + (nextAge - 39)) * (1 - .06 * p.equip) * vetLeagueEase();
+    // A strong season keeps you sharp: up to 45% less fade after a great one.
+    sum.formShield = clamp((review.form || 0) * .15, 0, .45);
+    const rate = (BIRTHDAY_DROP[nextAge] || 4.5 + (nextAge - 39) * .8) * (1 - .06 * p.equip) * vetLeagueEase() * (1 - sum.formShield);
     attrKeys(p.pos).forEach(k => {
       const fast = ['PAC', 'REF'].includes(k) ? 1.3 : 1;
       p.attrs[k] = clamp(p.attrs[k] - rand(.8, 1.2) * rate * fast, 20, 99);

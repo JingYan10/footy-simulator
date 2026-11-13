@@ -372,7 +372,7 @@ function offersHtml() {
       <div class="loyal ${o.type === 'transfer' ? 'away' : ''}"><p>"${offerPitch(o, c)}"</p><span>— ${esc(c.mgr)}, ${esc(c.name)}</span></div>
       ${talk}
       ${canAskRole(o) ? `<div class="small muted">At ${ageOf(S.player.by)}, ${esc(c.name)} see you as ${o.status.toLowerCase()}. You can ask to be a starter once: they will judge your last season at ${esc(lastSpell().club)}.</div>` : o.roleAsk === 'yes' ? '<div class="small good">You asked to start, and they said yes.</div>' : o.roleAsk === 'no' ? `<div class="small bad">You asked to start. They said no: ${o.status.toLowerCase()} it is.</div>` : ''}
-      <div class="btns">${canAskRole(o) ? `<button class="btn sm" data-act="roleAsk" data-v="${o.id}">Ask to start</button>` : ''}<button class="btn good sm" data-act="accept" data-v="${o.id}">Sign</button><button class="btn sm" data-act="negAsk" data-v="${o.id}" ${canNegotiate(o) ? '' : 'disabled'}>Negotiate</button><button class="btn sm" data-act="decline" data-v="${o.id}">Decline</button></div>
+      <div class="btns">${canAskRole(o) ? `<button class="btn sm" data-act="roleAsk" data-v="${o.id}">Ask for more play time</button>` : ''}<button class="btn good sm" data-act="accept" data-v="${o.id}">Sign</button><button class="btn sm" data-act="negAsk" data-v="${o.id}" ${canNegotiate(o) ? '' : 'disabled'}>Negotiate</button><button class="btn sm" data-act="decline" data-v="${o.id}">Decline</button></div>
     </div>`;
   }).join('')}${refresh}</section>`;
 }
@@ -684,7 +684,7 @@ function ovrBreakdown(sum) {
   const rows = [];
   if (sum.seasonGain != null) rows.push(`Matches and training: <b class="${cls(sum.seasonGain)}">${sign(sum.seasonGain)}</b>`);
   if (sum.review) rows.push(`Performance review: <b class="${cls(sum.review.change)}">${sign(sum.review.change)}</b>${sum.review.notes.length ? ` (${esc(sum.review.notes.join(', '))})` : ''}`);
-  if (sum.ageLoss > 0) rows.push(`Ageing, turning ${sum.ageTo}: <b class="bad">−${sum.ageLoss}</b>. From 34 your body slows down a little more every birthday.`);
+  if (sum.ageLoss > 0) rows.push(`Ageing, turning ${sum.ageTo}: <b class="bad">−${sum.ageLoss}</b>. From 34 your body slows down a little more every birthday${sum.formShield >= .05 ? `, but your strong season kept you sharp: ${Math.round(sum.formShield * 100)}% less than it would have been` : ''}.`);
   return rows.map(r => `<div class="small muted">${r}</div>`).join('');
 }
 
