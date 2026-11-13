@@ -670,6 +670,11 @@ td.clubcrest .crest { margin: 0; }
 /* Shirt numbers on the team sheet sit on a little shirt instead of a circle. */
 .lp-chip b.shirt { width: 34px; height: 30px; border-radius: 0; padding-top: 5px; place-items: start center;
   clip-path: polygon(30% 0, 40% 0, 50% 12%, 60% 0, 70% 0, 100% 20%, 88% 42%, 78% 36%, 78% 100%, 22% 100%, 22% 36%, 12% 42%, 0 20%); }
+/* Your shirt number beside the club in the career history, on the same little shirt. */
+.clubline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.clubline .club { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shirt-tag { display: grid; flex: none; place-items: start center; width: 24px; height: 21px; padding-top: 4px; background: #eef2f7; color: #0c1524; font: 800 10px var(--display);
+  clip-path: polygon(30% 0, 40% 0, 50% 12%, 60% 0, 70% 0, 100% 20%, 88% 42%, 78% 36%, 78% 100%, 22% 100%, 22% 36%, 12% 42%, 0 20%); }
 /* Competition logos in the career tables: shown whole, at badge height. */
 .comp-logo { height: 18px; width: auto; max-width: 40px; object-fit: contain; flex: none; }
 .comp-badges .comp-logo { height: 16px; max-width: 34px; }

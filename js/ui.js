@@ -14,6 +14,8 @@ const avgRating = st => rateBox(st.apps ? st.rsum / st.apps : null);
 // A rating in a coloured box, SofaScore style: red under 6, orange to 6.5, yellow to 7, green to 8,
 // teal to 9, blue from 9, gray when there is no rating yet.
 const rateTier = r => r >= 9 ? 'r9' : r >= 8 ? 'r8' : r >= 7 ? 'r7' : r >= 6.5 ? 'r65' : r >= 6 ? 'r6' : 'r5';
+// The shirt number you wore, on a little shirt like the team sheet's.
+const shirtTag = no => `<b class="shirt-tag" title="Shirt number">${no}</b>`;
 const rateBox = (r, digits = 2) => r == null ? '<span class="rate-box none">–</span>' : `<span class="rate-box ${rateTier(r)}">${r.toFixed(digits)}</span>`;
 // The version tag the phone page loads this script with (artifact.html, ?v=...), reused on logo
 // images so a recoloured or replaced logo shows up after a publish instead of a cached old one.
@@ -1025,14 +1027,14 @@ function clubStints(rec) {
   rec.career.forEach(r => {
     const last = stints[stints.length - 1];
     if (last && last.club === r.club && r.season - last.to <= 1) {
-      last.to = r.season; last.seasons.add(r.season);
+      last.to = r.season; last.seasons.add(r.season); if (r.no) last.nos.add(r.no);
       last.apps += r.apps; last.goals += r.goals; last.assists += r.assists; last.rsum += r.avg * r.apps; last.saves += r.saves || 0; last.clean += r.cleanAll || 0;
-    } else stints.push({ club: r.club, clubId: r.clubId, league: r.league, from: r.season, to: r.season, seasons: new Set([r.season]), apps: r.apps, goals: r.goals, assists: r.assists, rsum: r.avg * r.apps, saves: r.saves || 0, clean: r.cleanAll || 0 });
+    } else stints.push({ club: r.club, clubId: r.clubId, league: r.league, from: r.season, to: r.season, seasons: new Set([r.season]), nos: new Set(r.no ? [r.no] : []), apps: r.apps, goals: r.goals, assists: r.assists, rsum: r.avg * r.apps, saves: r.saves || 0, clean: r.cleanAll || 0 });
   });
   if (!stints.length) return '';
   const cards = stints.slice().reverse().map(s => {
     const n = s.seasons.size, span = s.from === s.to ? seasonLabel(s.from) : `${seasonLabel(s.from)} – ${seasonLabel(s.to)}`;
-    return `<div class="stint"><div class="row"><div class="clubcell">${rowCrest(s)}<div style="min-width:0"><b class="club">${esc(s.club)}</b><div class="small muted">${span} · ${n} season${n !== 1 ? 's' : ''}</div></div></div></div>
+    return `<div class="stint"><div class="row"><div class="clubcell">${rowCrest(s)}<div style="min-width:0"><div class="clubline"><b class="club">${esc(s.club)}</b>${[...s.nos].map(shirtTag).join("")}</div><div class="small muted">${span} · ${n} season${n !== 1 ? 's' : ''}</div></div></div></div>
       <div class="spellstats"><span><b>${s.apps}</b> apps</span><span><b>${s.goals}</b> G</span><span><b>${s.assists}</b> A</span>${gkSpans(rec.pos, s.saves, s.clean)}<span>${rateBox(s.apps ? s.rsum / s.apps : null)}</span></div></div>`;
   }).join('');
   return `<section class="card"><h2>Clubs</h2><p class="small muted" style="margin:0">Every spell at a club, all competitions added up.</p>${cards}</section>`;
@@ -1536,7 +1538,7 @@ function careerHistory(p = S.player) {
   const ORDER = { league: 0, cup: 1, euro: 2 };
   const seasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a).map(s => {
     const spells = bySeason[s];
-    const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><b class="club">${esc(r.club)}</b><div class="small muted">${esc(r.league)}</div>${r.pos ? `<div class="posline"><span class="pos-main" title="Main position">${r.pos}</span>${(r.alts || []).length ? `<span class="pos-also">also</span>${r.alts.map(x => `<span class="pos-alt" title="Secondary position">${x}</span>`).join('')}` : ''}</div>` : ''}</div></div>
+    const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><div class="clubline"><b class="club">${esc(r.club)}</b>${r.no ? shirtTag(r.no) : ""}</div><div class="small muted">${esc(r.league)}</div>${r.pos ? `<div class="posline"><span class="pos-main" title="Main position">${r.pos}</span>${(r.alts || []).length ? `<span class="pos-also">also</span>${r.alts.map(x => `<span class="pos-alt" title="Secondary position">${x}</span>`).join('')}` : ''}</div>` : ''}</div></div>
       <div class="spellstats"><span><b>${r.apps}</b> apps</span><span><b>${r.goals}</b> G</span><span><b>${r.assists}</b> A</span>${gkSpans(p.pos, r.saves, r.cleanAll)}<span>${rateBox(r.apps ? r.avg : null)}</span></div></div>`).join('');
     const clubParts = spells.map(r => {
       const list = Object.entries(r.comps || {}).filter(([, c]) => c.kind !== 'nat').sort((a, b) => ORDER[a[1].kind] - ORDER[b[1].kind]);
