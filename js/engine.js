@@ -646,7 +646,7 @@ function declineFactor(age = ageOf(S.player.by)) { return age > VET_AGE ? 1.1 + 
 // Saudi Arabia and the MLS are kinder on ageing legs: ageing and bad games cost 60% less there.
 const vetLeagueEase = () => S.player.club && richLeague(myClub()) ? .4 : 1;
 // OVR lost at each birthday from 34 (before kit and league): a steady fade that quickens a little each year.
-const BIRTHDAY_DROP = { 34: 1, 35: 1.8, 36: 2.5, 37: 3, 38: 3.8, 39: 4.5 };
+const BIRTHDAY_DROP = { 34: .4, 35: .7, 36: .9, 37: 1.2, 38: 1.5, 39: 2 };
 
 // The card stats a player of this position and OVR typically has (initAttrs without the random
 // spread). Used for Icon cards of old careers that were saved without any stats.
@@ -3510,9 +3510,9 @@ function endSeason() {
   // Arabia and the MLS, and with good kit). Pace and reflexes go a little quicker than the rest.
   const nextAge = age + 1, sum = S.seasonSummary, rawBefore = rawOVR();
   if (nextAge > VET_AGE) {
-    // A strong season keeps you sharp: up to 45% less fade after a great one.
-    sum.formShield = clamp((review.form || 0) * .15, 0, .45);
-    const rate = (BIRTHDAY_DROP[nextAge] || 4.5 + (nextAge - 39) * .8) * (1 - .06 * p.equip) * vetLeagueEase() * (1 - sum.formShield);
+    // A strong season keeps you sharp: up to 60% less fade after a great one.
+    sum.formShield = clamp((review.form || 0) * .25, 0, .6);
+    const rate = (BIRTHDAY_DROP[nextAge] || 2 + (nextAge - 39) * .4) * (1 - .06 * p.equip) * vetLeagueEase() * (1 - sum.formShield);
     attrKeys(p.pos).forEach(k => {
       const fast = ['PAC', 'REF'].includes(k) ? 1.3 : 1;
       p.attrs[k] = clamp(p.attrs[k] - rand(.8, 1.2) * rate * fast, 20, 99);
