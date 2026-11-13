@@ -10,12 +10,12 @@ let careerSub = 'career'; // Career tab: 'career' (profile, this season, your ca
 const draft = { name: '', nat: 'ENG', pos: 'ST', birth: '2010-01-01', foot: 'R' };
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const avgRating = st => st.apps ? (st.rsum / st.apps).toFixed(2) : '–';
+const avgRating = st => rateBox(st.apps ? st.rsum / st.apps : null);
 // A rating in a coloured box, SofaScore style: red under 6, orange to 6.5, yellow to 7, green to 8,
 // dark green to 9, blue from 9.
 const rateTier = r => r >= 9 ? 'r9' : r >= 8 ? 'r8' : r >= 7 ? 'r7' : r >= 6.5 ? 'r65' : r >= 6 ? 'r6' : 'r5';
 const rateBox = (r, digits = 2) => `<span class="rate-box ${rateTier(r)}">${r.toFixed(digits)}</span>`;
-// The version tag the phone page loads this script with (artifact.html, ?v=...), reused on logo
+const rateBox = (r, digits = 2) => r == null ? '<span class="rate-box none">–</span>' : `<span class="rate-box ${rateTier(r)}">${r.toFixed(digits)}</span>`;
 // images so a recoloured or replaced logo shows up after a publish instead of a cached old one.
 const ASSET_V = ((document.currentScript && document.currentScript.src.match(/[?&]v=(\d+)/)) || [])[1] || '';
 
@@ -668,7 +668,7 @@ function viewOffseason() {
       <h2>Season ${seasonLabel(sum.season)} review</h2>
       <div class="row"><b style="font:800 24px var(--display)">${sum.club}</b><span>Finished <b>${sum.pos}${ordinal(sum.pos)}</b></span></div>
       ${sum.clubs && sum.clubs.length > 1 ? `<div class="small muted">This season: ${sum.clubs.map(esc).join(' → ')}. Stats cover all of them.</div>` : ''}
-      <div class="${statGrid(p.pos)}"><div><b>${sum.apps}</b><small>Apps</small></div><div><b>${sum.goals}</b><small>Goals</small></div><div><b>${sum.assists}</b><small>Assists</small></div>${gkCells(p.pos, sum.saves, sum.cleanAll)}<div><b>${sum.apps ? sum.avg.toFixed(1) : '–'}</b><small>Rating</small></div></div>
+      <div class="${statGrid(p.pos)}"><div><b>${sum.apps}</b><small>Apps</small></div><div><b>${sum.goals}</b><small>Goals</small></div><div><b>${sum.assists}</b><small>Assists</small></div>${gkCells(p.pos, sum.saves, sum.cleanAll)}<div><b>${rateBox(sum.apps ? sum.avg : null)}</b><small>Rating</small></div></div>
       ${sum.cup && sum.cup.apps ? `<div class="small muted">Cups: ${sum.cup.apps} apps · ${sum.cup.goals} goals · ${sum.cup.assists} assists</div>` : ''}
       ${sum.missed ? `<div class="small bad">Missed ${sum.missed} league game${sum.missed !== 1 ? 's' : ''} injured</div>` : ''}
       <div class="small">OVR ${sum.ovrStart} → <b>${sum.ovrEnd}</b> <span class="${delta >= 0 ? 'good' : 'bad'}">(${delta >= 0 ? '+' : ''}${delta})</span></div>
@@ -1033,7 +1033,7 @@ function clubStints(rec) {
   const cards = stints.slice().reverse().map(s => {
     const n = s.seasons.size, span = s.from === s.to ? seasonLabel(s.from) : `${seasonLabel(s.from)} – ${seasonLabel(s.to)}`;
     return `<div class="stint"><div class="row"><div class="clubcell">${rowCrest(s)}<div style="min-width:0"><b class="club">${esc(s.club)}</b><div class="small muted">${span} · ${n} season${n !== 1 ? 's' : ''}</div></div></div></div>
-      <div class="spellstats"><span><b>${s.apps}</b> apps</span><span><b>${s.goals}</b> G</span><span><b>${s.assists}</b> A</span>${gkSpans(rec.pos, s.saves, s.clean)}<span><b>${s.apps ? (s.rsum / s.apps).toFixed(2) : '–'}</b></span></div></div>`;
+      <div class="spellstats"><span><b>${s.apps}</b> apps</span><span><b>${s.goals}</b> G</span><span><b>${s.assists}</b> A</span>${gkSpans(rec.pos, s.saves, s.clean)}<span>${rateBox(s.apps ? s.rsum / s.apps : null)}</span></div></div>`;
   }).join('');
   return `<section class="card"><h2>Clubs</h2><p class="small muted" style="margin:0">Every spell at a club, all competitions added up.</p>${cards}</section>`;
 }
@@ -1365,7 +1365,7 @@ function resultsView() {
     const gh = r.h ? r.gh : r.isHome ? r.gf : r.ga, ga = r.h ? r.gaH : r.isHome ? r.ga : r.gf;
     const won = r.winner ? myTeams().includes(r.winner) : null;
     const res = r.gf > r.ga || (r.gf === r.ga && won) ? ['W', 'good'] : r.gf < r.ga || won === false ? ['L', 'bad'] : ['D', 'draw'];
-    const me = r.mins ? `${r.mins}' · ${r.start ? 'Started' : 'Sub'} · ${r.goals} G · ${r.assists} A · <b>${r.rating ? r.rating.toFixed(1) : '–'}</b>` : r.rested ? 'Rested' : 'Did not play';
+    const me = r.mins ? `${r.mins}' · ${r.start ? 'Started' : 'Sub'} · ${r.goals} G · ${r.assists} A · ${rateBox(r.rating || null, 1)}` : r.rested ? 'Rested' : 'Did not play';
     const goals = r.scorers && r.scorers.length ? `<div class="scorers">${goalTimeline(r.scorers)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
     return `<details class="result ${r.comp === 'Champions League' ? 'ucl' : ''}"><summary>
         <span class="rmeta"><span class="small muted">Wk ${Math.min(r.week, SEASON_WEEKS)}</span><span class="rcomp ${r.kind || 'league'}">${esc(r.comp || 'League')}</span>${r.derby ? `<span class="rderby">${esc(r.derby)}</span>` : ''}</span>
@@ -1531,13 +1531,13 @@ function careerHistory(p = S.player) {
   if (!rows.length) return '<section class="card"><h2>Career history</h2><span class="small muted">Your first season is under way.</span></section>';
   const bySeason = {};
   rows.forEach(r => (bySeason[r.season] = bySeason[r.season] || []).push(r));
-  const line = (n, c) => `<tr><td><span class="comp-name">${compBadge(n, c.kind)}${esc(n)}</span></td><td class="r">${c.mins != null ? c.mins : '–'}</td><td class="r">${c.apps}</td><td class="r">${c.goals}</td><td class="r">${c.assists}</td><td class="r">${c.apps ? rateBox(c.rsum / c.apps) : '–'}</td></tr>`;
+  const line = (n, c) => `<tr><td><span class="comp-name">${compBadge(n, c.kind)}${esc(n)}</span></td><td class="r">${c.mins != null ? c.mins : '–'}</td><td class="r">${c.apps}</td><td class="r">${c.goals}</td><td class="r">${c.assists}</td><td class="r">${rateBox(c.apps ? c.rsum / c.apps : null)}</td></tr>`;
   const compTable = list => `<div class="tablewrap"><table class="comps"><thead><tr><th><span class="comp-head">Competition<span class="comp-badges">${list.map(([n, c]) => compBadge(n, c.kind)).join('')}</span></span></th><th class="r" title="Minutes played">MP</th><th class="r">App</th><th class="r">G</th><th class="r">A</th><th class="r">Avg</th></tr></thead><tbody>${list.map(([n, c]) => line(n, c)).join('')}</tbody></table></div>`;
   const ORDER = { league: 0, cup: 1, euro: 2 };
   const seasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a).map(s => {
     const spells = bySeason[s];
     const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><b class="club">${esc(r.club)}</b><div class="small muted">${esc(r.league)}</div>${r.pos ? `<div class="posline"><span class="pos-main" title="Main position">${r.pos}</span>${(r.alts || []).length ? `<span class="pos-also">also</span>${r.alts.map(x => `<span class="pos-alt" title="Secondary position">${x}</span>`).join('')}` : ''}</div>` : ''}</div></div>
-      <div class="spellstats"><span><b>${r.apps}</b> apps</span><span><b>${r.goals}</b> G</span><span><b>${r.assists}</b> A</span>${gkSpans(p.pos, r.saves, r.cleanAll)}<span>${r.apps ? rateBox(r.avg) : '<b>–</b>'}</span></div></div>`).join('');
+      <div class="spellstats"><span><b>${r.apps}</b> apps</span><span><b>${r.goals}</b> G</span><span><b>${r.assists}</b> A</span>${gkSpans(p.pos, r.saves, r.cleanAll)}<span>${rateBox(r.apps ? r.avg : null)}</span></div></div>`).join('');
     const clubParts = spells.map(r => {
       const list = Object.entries(r.comps || {}).filter(([, c]) => c.kind !== 'nat').sort((a, b) => ORDER[a[1].kind] - ORDER[b[1].kind]);
       // Two clubs side by side are too narrow for a table: one line per competition instead.
