@@ -419,14 +419,15 @@ function makeSeason() {
 
 // League numbers, plus a separate line for cup games. missed = league games missed injured.
 // comps splits every game by competition (league, each cup, the national team) for the career history.
-function newStats() { return { apps: 0, starts: 0, goals: 0, assists: 0, rsum: 0, motm: 0, clean: 0, cleanAll: 0, tackles: 0, saves: 0, missed: 0, cup: { apps: 0, goals: 0, assists: 0, rsum: 0 }, comps: {} }; }
+function newStats() { return { apps: 0, starts: 0, mins: 0, goals: 0, assists: 0, rsum: 0, motm: 0, clean: 0, cleanAll: 0, tackles: 0, saves: 0, missed: 0, cup: { apps: 0, mins: 0, goals: 0, assists: 0, rsum: 0 }, comps: {} }; }
 
 // kind: 'league', 'cup', 'euro' or 'nat'.
 // Assists for your country, from every season's competitions (qualifiers, friendlies and tournaments).
 const intlAssists = (p = S.player) => (p.career || []).reduce((s, r) => s + Object.values(r.comps || {}).reduce((t, c) => t + (c.kind === 'nat' ? c.assists || 0 : 0), 0), 0);
-function addComp(comps, name, kind, apps, goals, assists, rsum) {
+// mins: minutes played (older saves have none for their earlier games).
+function addComp(comps, name, kind, apps, goals, assists, rsum, mins = 0) {
   const c = comps[name] = comps[name] || { kind, apps: 0, goals: 0, assists: 0, rsum: 0 };
-  c.apps += apps; c.goals += goals; c.assists += assists; c.rsum += rsum;
+  c.apps += apps; c.goals += goals; c.assists += assists; c.rsum += rsum; c.mins = (c.mins || 0) + mins;
 }
 
 // ---------- spells: moving club mid-season ----------
@@ -444,15 +445,15 @@ function closeSpell() {
 const roundAttrs = a => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, Math.round(v)]));
 function careerRow(st, c) {
   const p = S.player;
-  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, league: league(c.league).name, apps: st.apps + st.cup.apps, tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.seasonPos || p.pos, alts: [...altPositions()], posApps: { ...(st.posApps || {}) }, comps: JSON.parse(JSON.stringify(st.comps || {})), attrs: roundAttrs(p.attrs) };
+  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, no: p.shirt && p.shirt.club === c.id ? p.shirt.no : undefined, league: league(c.league).name, apps: st.apps + st.cup.apps, mins: (st.mins || 0) + ((st.cup && st.cup.mins) || 0), tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.seasonPos || p.pos, alts: [...altPositions()], posApps: { ...(st.posApps || {}) }, comps: JSON.parse(JSON.stringify(st.comps || {})), attrs: roundAttrs(p.attrs) };
 }
 
 function seasonTotals() {
   const p = S.player, all = [...(p.seasonSpells || []), p.st];
   const t = newStats();
   all.forEach(s => {
-    ['apps', 'starts', 'goals', 'assists', 'rsum', 'motm', 'clean', 'cleanAll', 'tackles', 'saves', 'missed'].forEach(k => { t[k] += s[k] || 0; });
-    ['apps', 'goals', 'assists', 'rsum'].forEach(k => { t.cup[k] += (s.cup && s.cup[k]) || 0; });
+    ['apps', 'starts', 'mins', 'goals', 'assists', 'rsum', 'motm', 'clean', 'cleanAll', 'tackles', 'saves', 'missed'].forEach(k => { t[k] += s[k] || 0; });
+    ['apps', 'mins', 'goals', 'assists', 'rsum'].forEach(k => { t.cup[k] += (s.cup && s.cup[k]) || 0; });
   });
   return t;
 }
@@ -605,7 +606,7 @@ const vetForm = (age = ageOf(S.player.by)) => Math.max(.5, 1 - vetYears(age) * .
 const rustLevel = () => Math.min(S.player.rust || 0, 5) / 5;
 const rustPenalty = () => (S.player.rust > 0 ? .3 + rustLevel() * .5 : 0);
 const rustForm = () => (S.player.rust > 0 ? .8 - rustLevel() * .2 : 1);
-const matchForm = () => vetForm() * rustForm() * adjustForm();
+const matchForm = () => vetForm() * rustForm() * adjustForm() * chemForm();
 
 // ---------- attributes in matches ----------
 // Your stats decide what you do with the ball, measured against what a typical player of your
@@ -1360,10 +1361,119 @@ function rebalanceAttrs(fromPos, fromOvr) {
   p.rebalanceV = 3;
 }
 
+// ---------- shirt numbers ----------
+// Every club squad wears numbers the usual way: 1 in goal, 2 and 3 the full-backs, 4 and 5 the
+// centre-backs, 6 the holding midfielder, 8 the central midfielder, 10 the playmaker, 7 and 11 the
+// wingers, 9 the striker. The better player gets the classic number; backup keepers get 13, 25 or
+// 31; everyone else a free number from 12 up. You pick a free number when you join a club.
+const SHIRT_PREF = { GK: [1], RB: [2], LB: [3], CB: [4, 5, 15], CDM: [6, 16], CM: [8, 14], CAM: [10, 20], RM: [7, 17], LM: [11, 18], RW: [7, 17], LW: [11, 18], ST: [9, 19] };
+const BACKUP_GK = [13, 25, 31, 12, 30];
+// Second choices when the classic numbers are taken, offered first in the picker.
+const SHIRT_ALT = { GK: [], RB: [12, 22, 24, 32], LB: [12, 21, 23, 26], CB: [6, 23, 24, 33], CDM: [16, 18, 21, 28], CM: [16, 18, 20, 21], CAM: [20, 21, 22, 30], RM: [17, 27, 47], LM: [18, 23, 28], RW: [17, 27, 77], LW: [18, 21, 27], ST: [19, 29, 39, 99] };
+function squadNumbers(c) {
+  if (!c || !c.players) return;
+  const taken = new Set(c.players.filter(pl => pl.no).map(pl => pl.no));
+  const mine = S.player.shirt && S.player.shirt.club === c.id ? S.player.shirt.no : null;
+  if (mine) taken.add(mine);
+  c.players.filter(pl => !pl.no).sort((a, b) => b.r - a.r).forEach(pl => {
+    const prefs = pl.pos === 'GK' && taken.has(1) ? BACKUP_GK : SHIRT_PREF[pl.pos] || [];
+    let no = prefs.find(n => !taken.has(n));
+    for (let k = 0; !no && k < 200; k++) { const n = 12 + strHash(`${c.id}|${pl.n}|${k}`) % 33; if (!taken.has(n)) no = n; }
+    pl.no = no || 99;
+    taken.add(pl.no);
+  });
+}
+// Numbers you can take at a club: 1 to 99, none a teammate wears. Those that suit your position first.
+function freeShirts(c = myClub()) {
+  squadNumbers(c);
+  const taken = new Set(c.players.map(pl => pl.no));
+  const pos = S.player.pos, pref = [...new Set([...(SHIRT_PREF[pos] || []), ...(pos === 'GK' ? BACKUP_GK : SHIRT_ALT[pos] || [])])].filter(n => !taken.has(n));
+  const rest = Array.from({ length: 99 }, (_, i) => i + 1).filter(n => !taken.has(n) && !pref.includes(n));
+  return { pref, rest };
+}
+const needShirt = () => { const p = S.player; return S.phase !== 'retired' && p.club && !p.needsContract && (!p.shirt || p.shirt.club !== p.club || p.shirt.repick); };
+function pickShirt(no) {
+  const p = S.player, c = myClub();
+  const { pref, rest } = freeShirts(c);
+  if (![...pref, ...rest].includes(no)) return false;
+  p.shirt = { club: c.id, no };
+  msg(`You will wear the number ${no} shirt at ${c.name}.`, 'good');
+  save();
+  return true;
+}
+// Known for a number: the shirt you wore in the most games, once that is 300 or more.
+function signatureShirt(rec) {
+  const games = {};
+  (rec.career || []).forEach(r => { if (r.no) games[r.no] = (games[r.no] || 0) + r.apps; });
+  const best = Object.entries(games).sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= 300 ? { no: +best[0], apps: best[1] } : null;
+}
+
+// A rare ask from a star teammate: a team-mate in great form wants your number. Each team-mate asks
+// once at most. Say yes and you pick another free number, and the two of you click: your scoring
+// and assist chances go up a touch while you play together. Say no and he sulks: chances drop a
+// touch for 12 weeks.
+const SHIRT_ASK_CHANCE = .004, SHIRT_CHEM = 1.03, SHIRT_SNUB = .98, SHIRT_SNUB_WEEKS = 12;
+function shirtRequestWeek() {
+  const p = S.player, c = myClub();
+  if (S.decision || !p.shirt || p.shirt.club !== c.id || p.loan || Math.random() >= SHIRT_ASK_CHANCE) return;
+  squadNumbers(c);
+  const asked = p.shirtAsked = p.shirtAsked || [], strength = teamStrength(c);
+  const star = c.players.filter(pl => !asked.includes(pl.n) && pl.no !== p.shirt.no && ((pl.g || 0) + (pl.as || 0) >= 6 || pl.r >= strength + 3)).sort((a, b) => b.r - a.r)[0];
+  if (!star) return;
+  asked.push(star.n);
+  S.decision = { type: 'shirt', name: star.n, text: `${star.n} (${star.pos}, ${star.r}) has been flying this season and asks if he can have your number ${p.shirt.no} shirt. He will only ask once.` };
+}
+// Chemistry with team-mates over shirts: x1.03 while your shirt-swap partner is still at the club,
+// x0.98 while a snubbed team-mate is still sulking.
+function chemForm() {
+  const p = S.player, c = p.club && S.clubs[p.club];
+  let f = 1;
+  if (p.shirtChem && c && p.shirtChem.club === c.id && c.players.some(pl => pl.n === p.shirtChem.name)) f *= SHIRT_CHEM;
+  if (p.shirtSnub && c && p.shirtSnub.club === c.id && absWeek() < p.shirtSnub.until) f *= SHIRT_SNUB;
+  return f;
+}
+// The other way round: you ask a team-mate for his shirt. He is likelier to say yes the better you
+// are next to him and the bigger your name. Yes: you swap numbers and click on the pitch (as above).
+// No: you are the one left sulking (as above). Each team-mate is asked once at most, either way.
+const canAskShirt = () => { const p = S.player; return !!(p.shirt && p.shirt.club === p.club && !p.shirt.repick && !p.loan && S.phase !== 'retired'); };
+const shirtAskOdds = pl => clamp(.35 + (calcOVR() - pl.r) * .04 + (S.player.rep || 0) / 400, .1, .85);
+function askTeammateShirt(name) {
+  const p = S.player, c = myClub(), mate = c.players.find(pl => pl.n === name), asked = p.shirtAsked = p.shirtAsked || [];
+  if (!canAskShirt() || !mate || asked.includes(name)) return null;
+  asked.push(name);
+  const yes = Math.random() < shirtAskOdds(mate), mine = p.shirt.no, his = mate.no;
+  if (yes) {
+    mate.no = mine;
+    p.shirt = { club: c.id, no: his };
+    p.shirtChem = { club: c.id, name };
+    msg(`${name} handed you his number ${his} shirt and took your ${mine}. You two click on the pitch now.`, 'good');
+  } else {
+    p.shirtSnub = { club: c.id, name, until: absWeek() + SHIRT_SNUB_WEEKS };
+    msg(`${name} said no to giving up his number ${his}. You are not happy about it, and the dressing room can feel it.`, 'bad');
+  }
+  save();
+  return { yes, name, his, mine };
+}
+function resolveShirtAsk(d, yes) {
+  const p = S.player, c = myClub(), mate = c.players.find(pl => pl.n === d.name);
+  if (yes && mate) {
+    const old = mate.no;
+    mate.no = p.shirt.no;
+    p.shirt = { club: c.id, no: p.shirt.no, repick: true, free: old };
+    p.shirtChem = { club: c.id, name: mate.n };
+    msg(`You gave ${mate.n} your shirt. He won't forget it: you two click on the pitch now. Pick a new number.`, 'good');
+  } else {
+    p.shirtSnub = { club: c.id, name: d.name, until: absWeek() + SHIRT_SNUB_WEEKS };
+    msg(`You kept your number. ${d.name} is not happy about it, and the dressing room can feel it.`, 'bad');
+  }
+}
+
 function resolveDecision(choice) {
   const d = S.decision, p = S.player;
   if (!d) return;
   if (d.type === 'position') resolvePositionAsk(d, choice === 'accept');
+  else if (d.type === 'shirt') resolveShirtAsk(d, choice === 'yes');
   else if (d.type === 'recall') {
     if (choice === 'return') recallLoan();
     else { p.loan.parentAff = clamp(p.loan.parentAff - 8, 0, 100); msg(`You asked to stay on loan. ${club(d.club).mgr} is disappointed (−8 when you return).`, 'bad'); }
@@ -2048,12 +2158,12 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   const boots = sponsorDeals().find(d => d.goalBonus);
   if (boots && user.goals) p.money += boots.goalBonus * user.goals;
   const st = p.st, line = cup ? st.cup : st;
-  line.apps++; line.goals += user.goals; line.assists += user.assists; line.rsum += rating;
+  line.apps++; line.goals += user.goals; line.assists += user.assists; line.rsum += rating; line.mins = (line.mins || 0) + (user.mins || 0);
   // Every game counts towards the position you played in it (for the retirement Icon card).
   const mp = matchRole(); st.posApps = st.posApps || {}; st.posApps[mp] = (st.posApps[mp] || 0) + 1;
   // Games the manager's shape put you in another role: enough of them and he asks you to switch.
   if (mp !== matchPos() && user.start && !planBWeek(myClub())) { st.shapeApps = st.shapeApps || {}; st.shapeApps[mp] = (st.shapeApps[mp] || 0) + 1; }
-  addComp(st.comps = st.comps || {}, comp ? comp.name : league(myClub().league).name, comp ? comp.kind : 'league', 1, user.goals, user.assists, rating);
+  addComp(st.comps = st.comps || {}, comp ? comp.name : league(myClub().league).name, comp ? comp.kind : 'league', 1, user.goals, user.assists, rating, user.mins || 0);
   if (!cup && user.start) st.starts++;
   const conceded = isHome ? res.ga : res.gh;
   const clean = conceded === 0 && ['GK', 'DEF'].includes(POS_GROUP[p.pos]) && user.mins >= 60;
@@ -2322,6 +2432,7 @@ function advanceWeek() {
   inquiryWeek();
   renewTaskWeek();
   noteRenewal();
+  shirtRequestWeek();
   const card = cardTier(calcOVR());
   if (card !== 'Bronze' && !(p.cards || []).includes(card)) {
     p.cards = [...(p.cards || []), card];
@@ -3473,7 +3584,7 @@ function endSeason() {
     for (let i = 0; i < caps; i++) { if (Math.random() < rate) g++; if (Math.random() < rate * .7) a++; }
     p.caps += caps;
     p.intlGoals = (p.intlGoals || 0) + g;
-    addComp(st.comps = st.comps || {}, `${natName(p.nat)} (qualifiers & friendlies)`, 'nat', caps, g, a, caps * rand(6.6, 7.2));
+    addComp(st.comps = st.comps || {}, `${natName(p.nat)} (qualifiers & friendlies)`, 'nat', caps, g, a, caps * rand(6.6, 7.2), Math.round(caps * rand(60, 85)));
     awards.push(`${caps} caps for ${natName(p.nat)} (qualifiers and friendlies)`);
   }
   (S.cupWins || []).forEach(w => awards.push(w));
@@ -4112,11 +4223,12 @@ function loadArchive() { try { return JSON.parse(localStorage.getItem(ARCHIVE_KE
 // ---------- legacy ----------
 // Per club across a whole career (loans left out): seasons, apps, G/A and league titles. A club
 // names you a legend after more than 5 seasons, 100+ goals and assists and more than 150 games.
-// Keepers need 100 clean sheets (all competitions) there instead of 100 goals and assists.
+// Keepers need 100 clean sheets (all competitions) there instead of 100 goals and assists;
+// defenders need either 80 clean sheets or the 100 goals and assists.
 // Playing for both sides of a rivalry (say Real Madrid and Barcelona) rules you out as a legend at both.
-const LEGEND = { seasons: 5, ga: 100, clean: 100, apps: 150 };
+const LEGEND = { seasons: 5, ga: 100, clean: 100, defClean: 80, apps: 150 };
 function clubLegacy(rec) {
-  const byClub = {}, gk = POS_GROUP[rec.pos] === 'GK';
+  const byClub = {}, gk = POS_GROUP[rec.pos] === 'GK', def = POS_GROUP[rec.pos] === 'DEF';
   rec.career.filter(r => !/\(loan\)/.test(r.club)).forEach(r => {
     const c = byClub[r.club] = byClub[r.club] || { club: r.club, clubId: r.clubId, seasons: new Set(), apps: 0, goals: 0, assists: 0, clean: 0, titles: {} };
     c.seasons.add(r.season); c.apps += r.apps; c.goals += r.goals; c.assists += r.assists; c.clean += r.cleanAll || 0;
@@ -4125,8 +4237,9 @@ function clubLegacy(rec) {
   });
   const names = Object.keys(byClub), rivalsOf = n => names.filter(m => m !== n && RIVALRIES.some(([x, y]) => (x === n && y === m) || (x === m && y === n)));
   return Object.values(byClub).map(c => {
-    const earned = c.seasons.size > LEGEND.seasons && (gk ? c.clean >= LEGEND.clean : c.goals + c.assists >= LEGEND.ga) && c.apps > LEGEND.apps, rivals = rivalsOf(c.club);
-    return { ...c, seasons: c.seasons.size, ga: c.goals + c.assists, gk, rivals, earned, legend: earned && !rivals.length };
+    const numbers = gk ? c.clean >= LEGEND.clean : c.goals + c.assists >= LEGEND.ga || (def && c.clean >= LEGEND.defClean);
+    const earned = c.seasons.size > LEGEND.seasons && numbers && c.apps > LEGEND.apps, rivals = rivalsOf(c.club);
+    return { ...c, seasons: c.seasons.size, ga: c.goals + c.assists, gk, def, rivals, earned, legend: earned && !rivals.length };
   })
     .sort((a, b) => b.apps - a.apps);
 }
@@ -4168,9 +4281,64 @@ function retiredRecord() {
     startYear: baseYear(),
     id: p.careerId || (p.careerId = Date.now()), name: p.name, nat: p.nat, pos: p.pos, career: p.career, trophies: p.trophies, awards: p.awards,
     caps: p.caps, intlGoals: p.intlGoals || 0, attrs: roundAttrs(p.attrs), money: p.money, by: p.by, lastClub: p.club ? myClub().name : '–', retiredAge: ageOf(p.by),
-    peak: Math.max(calcOVR(), ...p.career.map(r => r.ovr)),
+    peak: Math.max(calcOVR(), ...p.career.map(r => r.ovr)), rep: Math.round(p.rep),
   };
 }
+// ---------- card status at retirement ----------
+// Like EA's Icons and Heroes: a Legacy score from what you won and how good you were, plus a fans'
+// vote, decides whether your retirement card is an Icon, a Hero or a plain card.
+// Trophies: the first matching line counts; a league title is a trophy named after the league you
+// played in that season; anything else is a domestic cup.
+const LEGACY_TROPHY = [[/Club World Cup/, 6], [/World Cup( \d{4})?$/, 12], [/Champions League/, 12],
+  [/European Championship|Euro|Copa América|Africa Cup|Asian Cup|Gold Cup|Nations League/, 8], [/Europa League|Conference League|Libertadores/, 5]];
+const LEGACY_AWARD = [[/Ballon d'Or/, 25], [/The Best|Golden Shoe|Yashin/, 8], [/Golden Boot|Player of the (Season|Year)|Golden Ball|Top Scorer/, 4], [/Team of the Season|World 11/, 1]];
+// Icon: 120+ with 60%+ of the fans behind you, or 180+ whatever they say. Hero: 50+ with 50%+ of
+// the fans, or a legend at any club whatever the score (with a peak OVR of 75 or more).
+const ICON_SCORE = 120, ICON_ANY = 180, ICON_VOTE = 60, HERO_SCORE = 50, HERO_VOTE = 50, HERO_LEGEND_PEAK = 75;
+function legacyScore(rec) {
+  const groups = {};
+  const add = (label, pts) => { const g = groups[label] = groups[label] || { label, n: 0, pts: 0 }; g.n++; g.pts += pts; };
+  (rec.trophies || []).forEach(t => {
+    if ((rec.career || []).some(r => r.season === t.season && r.league === t.name)) { add('league title', 5); return; }
+    const hit = LEGACY_TROPHY.find(([re]) => re.test(t.name));
+    if (hit) add(t.name.replace(/ \d{4}$/, ''), hit[1]); else add('domestic cup', 2);
+  });
+  (rec.awards || []).forEach(a => { const hit = LEGACY_AWARD.find(([re]) => re.test(a.name)); add(hit ? a.name.replace(/ \d{4}$/, '') : 'other award', hit ? hit[1] : 2); });
+  const legends = clubLegacy(rec).filter(c => c.legend);
+  legends.forEach(c => add(`legend at ${c.club}`, 10));
+  if ((rec.caps || 0) >= 10) groups.caps = { label: `${rec.caps} caps`, n: 1, pts: Math.floor(rec.caps / 10) };
+  if ((rec.peak || 0) > 80) groups.peak = { label: `peak OVR ${rec.peak}`, n: 1, pts: (rec.peak - 80) * 2 };
+  const parts = Object.values(groups).sort((a, b) => b.pts - a.pts);
+  return { score: parts.reduce((s, g) => s + g.pts, 0), parts };
+}
+// The fans' vote: what fans remember is years at the top, not one big night. Seasons you ended at
+// 85+ OVR, seasons with a standout award (Golden Boot, Player of the Season, Team of the Season...),
+// the biggest trophies, legend status and a long one-club career lift it; playing for a club's
+// rivals drags it down. Reputation is only a small bonus, so maxing it out decides nothing. A little
+// luck, the same every time for the same career.
+const STANDOUT = /Golden Boot|Golden Shoe|Top Scorer|Top Assists|Player of the (Season|Year)|Golden Ball|Team of the Season|World 11|Ballon d'Or|The Best|Yashin/;
+const BIG_ONES = /World Cup( \d{4})?$|Champions League|European Championship|Copa América|Africa Cup|Asian Cup/;
+function fanVote(rec) {
+  const clubs = clubLegacy(rec), legends = clubs.filter(c => c.legend).length;
+  const elite = new Set((rec.career || []).filter(r => (r.ovr || 0) >= 85).map(r => r.season)).size;
+  const standout = new Set((rec.awards || []).filter(a => STANDOUT.test(a.name)).map(a => a.season ?? a.name)).size;
+  const big = (rec.trophies || []).filter(t => BIG_ONES.test(t.name) && !/Club World Cup/.test(t.name)).length;
+  const oneClub = clubs.length === 1 && clubs[0].seasons >= 8, rivals = clubs.some(c => c.rivals.length);
+  const luck = strHash(`${rec.id}|${rec.name}|vote`) % 13 - 6;
+  const vote = 10 + Math.min(40, elite * 5) + Math.min(24, standout * 4) + Math.min(12, big * 3) + legends * 8
+    + (oneClub ? 10 : 0) - (rivals ? 10 : 0) + (rec.rep || 0) / 10 + luck;
+  const notes = [elite && `${elite} season${elite > 1 ? 's' : ''} at 85+`, standout && `${standout} standout season${standout > 1 ? 's' : ''}`,
+    big && `${big} major trophies`.replace(/^1 major trophies/, '1 major trophy'), legends && 'club legend', oneClub && 'one-club player', rivals && 'played for rivals'].filter(Boolean);
+  return { vote: Math.round(clamp(vote, 3, 98)), notes };
+}
+function cardStatus(rec) {
+  const { score, parts } = legacyScore(rec), { vote, notes: voteNotes } = fanVote(rec), legend = clubLegacy(rec).some(c => c.legend) && (rec.peak || 0) >= HERO_LEGEND_PEAK;
+  const status = score >= ICON_ANY || (score >= ICON_SCORE && vote >= ICON_VOTE) ? 'icon'
+    : (score >= HERO_SCORE && vote >= HERO_VOTE) || legend ? 'hero' : 'base';
+  const tier = (rec.peak || 0) >= 75 ? 'gold' : (rec.peak || 0) >= 65 ? 'silver' : 'bronze';
+  return { status, tier, score, parts, vote, voteNotes };
+}
+
 // The retirement Icon card, the way EA FC does its Icons: the OVR is your average across the seasons
 // you were 25 to 33 (your peak OVR if you retired before 25), and the positions are the three you
 // played most games in. Games from before positions were counted per game go to that

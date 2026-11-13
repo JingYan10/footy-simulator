@@ -6,6 +6,7 @@ let tab = 'home';
 let clubView = 'table';
 let viewLeague = null;
 let honTab = 'ind';
+let careerSub = 'career'; // Career tab: 'career' (profile, this season, your card) or 'history' (career history, honours)
 const draft = { name: '', nat: 'ENG', pos: 'ST', birth: '2010-01-01', foot: 'R' };
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -184,6 +185,8 @@ function render() {
   if (chip) chip.parentElement.scrollLeft = chip.offsetLeft - chip.parentElement.offsetLeft - 24;
   window.scrollTo(0, scrollY);
   nextPopup();
+  // New club, or you gave your shirt away: pick a number before anything else.
+  if (needShirt() && modal.hidden && !POPUPS.length && !S.decision) showShirtPicker();
 }
 
 // ---------- home ----------
@@ -228,8 +231,11 @@ document.addEventListener('error', e => {
   // Each image steps through the file types on its own; the same club can be on screen twice.
   const id = img.dataset.club, next = +img.dataset.ext + 1;
   if (next < LOGO_EXTS.length) {
+    // The save may be gone by now (back to the start screen): then there is nothing left to retry.
+    const c = id.startsWith('db:') ? dbClubCache[id.slice(3)] : S && S.clubs && S.clubs[id];
+    if (!c) return;
     img.dataset.ext = next;
-    img.src = logoUrl(id.startsWith('db:') ? dbClubCache[id.slice(3)] : club(id), LOGO_EXTS[next]);
+    img.src = logoUrl(c, LOGO_EXTS[next]);
   } else {
     if (logoState[id] === undefined) logoState[id] = -1;
     img.parentElement.classList.remove('haslogo');
@@ -738,28 +744,239 @@ function retiredHtml(rec, newAct = 'menu') {
     <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + iconCardHtml(rec) + legacyCard(rec) + clubStints(rec) + careerTables(rec);
 }
 
+// The Icon card's art: a gold-rimmed card with curled top corners and a pointed base, white marble
+// inside with fine gold veins, and one of three gold designs on top (ICON_STYLES). Each retired
+// career gets one of them at random, kept for that career.
+const IC_W = 230, IC_H = 330;
+const IC_SHAPE = 'M0 46C17 46 27 36 27 17C62 19 92 13 115 3C138 13 168 19 203 17C203 36 213 46 230 46V270C230 290 214 299 190 305C160 312 132 317 115 329C98 317 70 312 40 305C16 299 0 290 0 270Z';
+// A small seeded random source, so each design is drawn the same way every time.
+const seededRnd = seed => { let s = seed; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; };
+const ICON_STYLES = [
+  // Gilded chevrons: two gold bars sweeping down from the top right, a white streak, a faint band.
+  () => `<path d="M232 20L120 132L136 148L232 52Z" fill="url(#icGold)" opacity=".9"/>
+    <path d="M232 64L150 146L160 156L232 84Z" fill="url(#icGold)" opacity=".7"/>
+    <path d="M-2 196L110 84L118 92L-2 212Z" fill="#fff" opacity=".55"/>
+    <path d="M-2 250L230 214V226L-2 262Z" fill="#c9a24a" opacity=".18"/>`,
+  // Gold shards: a burst of angular gold splinters behind the player, lit on one face.
+  () => {
+    const rnd = seededRnd(41), cx = 150, cy = 118;
+    const shards = Array.from({ length: 10 }, (_, i) => {
+      const a = i / 10 * Math.PI * 2 + rnd() * .35, len = 55 + rnd() * 65, w = .2 + rnd() * .16;
+      const p = (ang, r) => `${(cx + Math.cos(ang) * r).toFixed(1)} ${(cy + Math.sin(ang) * r).toFixed(1)}`;
+      const tip = p(a, len), l = p(a - w, len * .45), r = p(a + w, len * .45);
+      return `<path d="M${cx} ${cy}L${l}L${tip}Z" fill="url(#icGold)" opacity="${(.55 + rnd() * .4).toFixed(2)}"/><path d="M${cx} ${cy}L${r}L${tip}Z" fill="#fff4cf" opacity=".7"/>`;
+    }).join('');
+    return `${shards}<path d="M-2 290L232 150" stroke="#c9a24a" stroke-width="1.4" opacity=".6"/><path d="M-2 300L232 160" stroke="#fff" stroke-width="4" opacity=".6"/>`;
+  },
+  // Gold sunrise: thin rays fanning from the bottom left and gold rings around the top right.
+  () => {
+    const rays = Array.from({ length: 11 }, (_, i) => {
+      const a0 = -Math.PI / 2 + i * .15, a1 = a0 + .06, R = 420;
+      return `<path d="M-10 340L${(-10 + Math.cos(a0) * R).toFixed(0)} ${(340 + Math.sin(a0) * R).toFixed(0)}L${(-10 + Math.cos(a1) * R).toFixed(0)} ${(340 + Math.sin(a1) * R).toFixed(0)}Z" fill="#d9b45a" opacity="${i % 2 ? .16 : .3}"/>`;
+    }).join('');
+    const rings = [34, 50, 64].map((r, i) => `<circle cx="178" cy="88" r="${r}" fill="none" stroke="url(#icGold)" stroke-width="${[7, 3, 1.5][i]}" opacity="${[.85, .7, .6][i]}"/>`).join('');
+    return `${rays}${rings}<path d="M-2 232L232 196V204L-2 240Z" fill="url(#icGold)" opacity=".5"/>`;
+  },
+];
+const iconArt = (style = 0) => {
+  // Gold veins: a few long wandering cracks, from a fixed seed so every card matches.
+  const rnd = seededRnd(7);
+  const veins = Array.from({ length: 9 }, () => {
+    let x = rnd() * IC_W, y = rnd() * IC_H, d = `M${x.toFixed(0)} ${y.toFixed(0)}`;
+    const dir = rnd() * Math.PI * 2;
+    for (let k = 0; k < 7; k++) { x += Math.cos(dir + (rnd() - .5) * 1.4) * 16; y += Math.sin(dir + (rnd() - .5) * 1.4) * 16; d += `L${x.toFixed(0)} ${y.toFixed(0)}`; }
+    return `<path d="${d}" stroke-width="${(.4 + rnd() * .7).toFixed(2)}"/>`;
+  }).join('');
+  return `<svg class="ic-art" viewBox="0 0 ${IC_W} ${IC_H}" aria-hidden="true">
+    <defs>
+      <linearGradient id="icGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff2c2"/><stop offset=".3" stop-color="#d9a945"/><stop offset=".55" stop-color="#9c6a1c"/><stop offset=".8" stop-color="#f3d27e"/><stop offset="1" stop-color="#a8761f"/></linearGradient>
+      <linearGradient id="icMarble" x1="0" y1="0" x2=".6" y2="1"><stop offset="0" stop-color="#fbfaf6"/><stop offset=".45" stop-color="#ecebe6"/><stop offset=".7" stop-color="#f8f7f2"/><stop offset="1" stop-color="#dcdad3"/></linearGradient>
+      <clipPath id="icInner"><path d="${IC_SHAPE}" transform="translate(7 7) scale(${(IC_W - 14) / IC_W} ${(IC_H - 14) / IC_H})"/></clipPath>
+    </defs>
+    <path d="${IC_SHAPE}" fill="url(#icGold)"/>
+    <g clip-path="url(#icInner)">
+      <rect width="${IC_W}" height="${IC_H}" fill="url(#icMarble)"/>
+      <g fill="none" stroke="#c9a24a" opacity=".55">${veins}</g>
+      ${ICON_STYLES[style % ICON_STYLES.length]()}
+    </g>
+    <path d="${IC_SHAPE}" transform="translate(11 11) scale(${(IC_W - 22) / IC_W} ${(IC_H - 22) / IC_H})" fill="none" stroke="#d9b45a" stroke-width="1.2" opacity=".8"/>
+  </svg>`;
+};
+// The base card's outline: the same pointed base, but a smooth top that rises gently to the middle,
+// with rounded corners.
+const BC_SHAPE = 'M0 38C0 20 10 12 28 11C62 9 92 7 115 3C138 7 168 9 202 11C220 12 230 20 230 38V270C230 290 214 299 190 305C160 312 132 317 115 329C98 317 70 312 40 305C16 299 0 290 0 270Z';
+// The base card's art for an ongoing career: the same frame shape, all in gold, with a soft
+// triangle pattern and a wide pale-gold chevron across it.
+// Gold, silver and bronze: rim, fill, the triangle pattern, the chevron, the band and the inner line.
+const BASE_TIERS = {
+  gold: { rim: ['#fff0b8', '#c9982f', '#8e6114', '#e9c467', '#9d6f1a'], fill: ['#f6e3a1', '#e2c172', '#c99d47'], tri: '#fff8dc', chev: '#fff6d2', band: '#a87b25', line: '#fff1c0' },
+  silver: { rim: ['#ffffff', '#b9c0c8', '#6f7780', '#e3e7eb', '#7d858e'], fill: ['#f1f3f5', '#cfd5db', '#a9b1ba'], tri: '#ffffff', chev: '#ffffff', band: '#6f7780', line: '#ffffff' },
+  bronze: { rim: ['#ffd9b0', '#b87333', '#7a4419', '#e0a46b', '#8a4f22'], fill: ['#f0c9a0', '#cf9a68', '#a86d3f'], tri: '#fff0dc', chev: '#ffe9cf', band: '#7a4419', line: '#ffe3c4' },
+};
+const baseArt = (tier = 'gold') => {
+  const T = BASE_TIERS[tier] || BASE_TIERS.gold, id = `bc-${tier}`;
+  const tri = [];
+  for (let y = 0; y < IC_H; y += 22) for (let x = (y / 22) % 2 ? -12 : 0; x < IC_W; x += 24) {
+    tri.push(`<path d="M${x} ${y + 22}L${x + 12} ${y}L${x + 24} ${y + 22}Z" opacity="${(((x * 7 + y * 3) % 5) / 40 + .03).toFixed(3)}"/>`);
+  }
+  const stops = (list, at) => list.map((c, i) => `<stop offset="${at[i]}" stop-color="${c}"/>`).join('');
+  return `<svg class="ic-art" viewBox="0 0 ${IC_W} ${IC_H}" aria-hidden="true">
+    <defs>
+      <linearGradient id="${id}Rim" x1="0" y1="0" x2="1" y2="1">${stops(T.rim, [0, .35, .6, .85, 1])}</linearGradient>
+      <linearGradient id="${id}Fill" x1="0" y1="0" x2=".7" y2="1">${stops(T.fill, [0, .5, 1])}</linearGradient>
+      <clipPath id="${id}Inner"><path d="${BC_SHAPE}" transform="translate(7 7) scale(${(IC_W - 14) / IC_W} ${(IC_H - 14) / IC_H})"/></clipPath>
+    </defs>
+    <path d="${BC_SHAPE}" fill="url(#${id}Rim)"/>
+    <g clip-path="url(#${id}Inner)">
+      <rect width="${IC_W}" height="${IC_H}" fill="url(#${id}Fill)"/>
+      <g fill="${T.tri}">${tri.join('')}</g>
+      <path d="M-4 40L115 210L234 40V82L115 252L-4 82Z" fill="${T.chev}" opacity=".35"/>
+      <path d="M-4 236H234V240H-4Z" fill="${T.band}" opacity=".35"/>
+    </g>
+    <path d="${BC_SHAPE}" transform="translate(11 11) scale(${(IC_W - 22) / IC_W} ${(IC_H - 22) / IC_H})" fill="none" stroke="${T.line}" stroke-width="1.2" opacity=".7"/>
+  </svg>`;
+};
+// Your card as it stands today: current OVR, positions and card stats, with your country and club.
+function baseCardHtml() {
+  const p = S.player, gk = p.pos === 'GK';
+  const order = gk ? ['DIV', 'HAN', 'KIC', 'REF', 'PHY', 'POS'] : ['PAC', 'SHO', 'PAS', 'DRI', 'DEF', 'PHY'];
+  const cells = order.map(k => [gk && k === 'PHY' ? 'SPD' : k, Math.round(p.attrs[k] || 0)]);
+  const flag = typeof FLAG_DATA !== 'undefined' && FLAG_DATA[p.nat] ? `<img class="ic-flag" src="${FLAG_DATA[p.nat]}" alt="${esc(natName(p.nat))}">` : '';
+  return `<section class="card"><h2>Your card</h2>
+    <div class="icon-card base-card">${baseArt()}
+      <div class="ic-top"><div class="ic-ovr"><b>${calcOVR()}</b><span>${p.pos}</span>${altPositions().map(a => `<i>${a}</i>`).join('')}</div></div>
+      <svg class="ic-man" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="20" r="16"/><path d="M14 100V70c0-18 16-30 36-30s36 12 36 30v30z"/></svg>
+      <div class="ic-foot">
+        <div class="ic-name">${esc(p.name)}</div>
+        <div class="ic-row" style="--n:${cells.length}">${cells.map(([k]) => `<small>${k}</small>`).join('')}${cells.map(([, v]) => `<b>${v}</b>`).join('')}</div>
+        <div class="ic-badges">${flag}${p.club && !p.needsContract ? crest(p.club) : ''}</div>
+      </div>
+    </div>
+    <p class="small muted" style="margin:0;text-align:center">Updates as you play: your OVR and card stats today.</p></section>`;
+}
+
+// Hero card art: a slim rectangular card with clipped corners and a small notch at the top, in
+// one of three original designs (HERO_STYLES), picked at random per career like the Icon card.
+// Each design sets its own rim colours and whether the text on it is light or dark.
+const HERO_SHAPE = 'M16 0H98L106 7H124L132 0H214L230 16V314L214 330H16L0 314V16Z';
+const HERO_STYLES = [
+  // Tricolour shards: white marble cut by big angular red and blue panes, with thin gold lines.
+  { dark: false, rim: ['#2a4fb8', '#e9edf5', '#c8202e'], draw: () => {
+    const rnd = seededRnd(19);
+    const panes = Array.from({ length: 7 }, (_, i) => {
+      const left = i % 2 === 0, x0 = left ? -10 : 240, y0 = 20 + i * 26 + rnd() * 10, dx = (left ? 1 : -1) * (90 + rnd() * 70);
+      return `<path d="M${x0} ${y0.toFixed(0)}L${(x0 + dx).toFixed(0)} ${(y0 + 18 + rnd() * 20).toFixed(0)}L${x0} ${(y0 + 50 + rnd() * 30).toFixed(0)}Z" fill="${left ? '#2747a8' : '#c41f2e'}" opacity="${(.55 + rnd() * .35).toFixed(2)}"/>`;
+    }).join('');
+    return `<rect width="230" height="330" fill="url(#hrMarble)"/>${panes}
+      <path d="M30 150L120 110L200 160M60 200L150 140" stroke="#d6ae4f" stroke-width="1" fill="none" opacity=".8"/>
+      <path d="M-5 250L235 190V206L-5 266Z" fill="#fff" opacity=".6"/>`;
+  } },
+  // Storm blue: a deep blue night with a glowing ball of light and forked lightning.
+  { dark: true, rim: ['#1d3f73', '#9cc8f2', '#16325e'], draw: () => {
+    const bolt = (x, y, s) => `<path d="M${x} ${y}l${-8 * s} ${26 * s}l${10 * s} ${-2 * s}l${-12 * s} ${30 * s}" stroke="#bfe3ff" stroke-width="${2 * s}" fill="none" stroke-linejoin="round"/>`;
+    return `<rect width="230" height="330" fill="url(#hrNight)"/>
+      <circle cx="78" cy="96" r="44" fill="url(#hrGlow)"/>
+      <g stroke="#9ed2ff" stroke-width=".8" fill="none" opacity=".7"><circle cx="78" cy="96" r="30"/><path d="M48 96H108M78 66V126M56 76Q78 90 100 76M56 116Q78 102 100 116"/></g>
+      <g opacity=".9">${bolt(150, 20, 1.2)}${bolt(190, 60, .8)}${bolt(120, 150, .7)}</g>
+      <path d="M-5 210L235 170V190L-5 232Z" fill="#5fb0f0" opacity=".25"/>
+      <path d="M-5 236L235 200V206L-5 242Z" fill="#bfe3ff" opacity=".5"/>`;
+  } },
+  // Thunder orange: a burning orange sky, white lightning over a stadium rim and a green pitch.
+  { dark: true, rim: ['#b4501a', '#f6c08a', '#8a3a10'], draw: () => {
+    const bolt = (x, y, s) => `<path d="M${x} ${y}l${10 * s} ${22 * s}l${-9 * s} ${3 * s}l${12 * s} ${28 * s}l${-6 * s} ${-2 * s}l${8 * s} ${20 * s}" stroke="#fff6e0" stroke-width="${2.2 * s}" fill="none" stroke-linejoin="round"/>`;
+    return `<rect width="230" height="330" fill="url(#hrFire)"/>
+      <circle cx="150" cy="70" r="34" fill="#fff3d6" opacity=".9"/><circle cx="150" cy="70" r="52" fill="#ffd28a" opacity=".35"/>
+      <g opacity=".95">${bolt(60, 10, 1.1)}${bolt(185, 110, .8)}${bolt(20, 120, .7)}</g>
+      <path d="M-5 168Q115 120 235 168V184Q115 140 -5 184Z" fill="#3a1606" opacity=".75"/>
+      <path d="M-5 184Q115 150 235 184V330H-5Z" fill="url(#hrPitch)"/>
+      <path d="M-5 220L235 206" stroke="#bff0a8" stroke-width="1" opacity=".4"/>`;
+  } },
+];
+const heroArt = (style = 0) => {
+  const st = HERO_STYLES[style % HERO_STYLES.length], [a, b, c] = st.rim;
+  return `<svg class="ic-art" viewBox="0 0 ${IC_W} ${IC_H}" aria-hidden="true">
+    <defs>
+      <linearGradient id="hrRim${style}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${a}"/><stop offset=".5" stop-color="${b}"/><stop offset="1" stop-color="${c}"/></linearGradient>
+      <linearGradient id="hrMarble" x1="0" y1="0" x2=".6" y2="1"><stop offset="0" stop-color="#fbfbf8"/><stop offset=".5" stop-color="#e9eaee"/><stop offset="1" stop-color="#d9dbe0"/></linearGradient>
+      <linearGradient id="hrNight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b2346"/><stop offset=".6" stop-color="#123a6e"/><stop offset="1" stop-color="#071a33"/></linearGradient>
+      <radialGradient id="hrGlow"><stop offset="0" stop-color="#e6f5ff"/><stop offset=".5" stop-color="#6fc0ff" stop-opacity=".7"/><stop offset="1" stop-color="#2a74c9" stop-opacity="0"/></radialGradient>
+      <linearGradient id="hrFire" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset=".45" stop-color="#ef6a12"/><stop offset="1" stop-color="#7a2a06"/></linearGradient>
+      <linearGradient id="hrPitch" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f8f2e"/><stop offset="1" stop-color="#1d4a17"/></linearGradient>
+      <clipPath id="hrInner"><path d="${HERO_SHAPE}" transform="translate(7 7) scale(${(IC_W - 14) / IC_W} ${(IC_H - 14) / IC_H})"/></clipPath>
+    </defs>
+    <path d="${HERO_SHAPE}" fill="url(#hrRim${style})"/>
+    <g clip-path="url(#hrInner)">${st.draw()}</g>
+    <path d="${HERO_SHAPE}" transform="translate(11 11) scale(${(IC_W - 22) / IC_W} ${(IC_H - 22) / IC_H})" fill="none" stroke="${b}" stroke-width="1" opacity=".7"/>
+  </svg>`;
+};
+// A Hero design for a career, picked at random and kept for it (the same key always gives the same one).
+const heroStyleFor = key => strHash(key + '|hero') % HERO_STYLES.length;
+// The Hero badge, in place of the Icon badge on Hero cards: a dark hexagon with a copper rim and a
+// comet streaking across it, blue to orange, with a small star at its head.
+const HERO_EMBLEM = `<svg class="ic-emblem hero-emblem" viewBox="0 0 40 44" aria-label="Hero">
+  <defs><linearGradient id="hbTail" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#3b6fd6" stop-opacity="0"/><stop offset=".45" stop-color="#5aa8ff"/><stop offset=".8" stop-color="#ff9b45"/><stop offset="1" stop-color="#ffd27a"/></linearGradient>
+  <linearGradient id="hbRim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffcf9a"/><stop offset=".5" stop-color="#b8662a"/><stop offset="1" stop-color="#f0a865"/></linearGradient></defs>
+  <path d="M20 2L37 11.5V32.5L20 42L3 32.5V11.5Z" fill="#141a2b" stroke="url(#hbRim)" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M8 31Q16 25 27 15L29.5 17.5Q19 28 9.5 33Z" fill="url(#hbTail)"/>
+  <path d="M28.5 10.5l1.3 2.8 3 .4-2.2 2.1.5 3-2.6-1.4-2.6 1.4.5-3-2.2-2.1 3-.4z" fill="#ffe2a8"/>
+</svg>`;
+
+// The Icon badge in place of the word, in the style of EA's: a cream shield with a gold rim, three
+// stars over a vintage laced ball, and a laurel wreath around it.
+const ICON_EMBLEM = (() => {
+  const star = (cx, cy, r) => `<path d="${Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 5, d = i % 2 ? r * .45 : r; return `${i ? 'L' : 'M'}${(cx + Math.cos(a) * d).toFixed(2)} ${(cy + Math.sin(a) * d).toFixed(2)}`; }).join('')}Z"/>`;
+  // Leaves along an arc from the bottom of the wreath up each side.
+  const leaves = s => Array.from({ length: 6 }, (_, i) => {
+    // deg runs from just beside the bottom (90°) round and up the side; each leaf lies along the
+    // curve, tipped a little outwards.
+    const deg = 90 - s * (14 + i * 23), a = deg * Math.PI / 180, x = 20 + Math.cos(a) * 11.5, y = 24 + Math.sin(a) * 11.5;
+    return `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="2.7" ry="1.15" transform="rotate(${(deg + 90 + s * 25).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
+  }).join('');
+  return `<svg class="ic-emblem" viewBox="0 0 40 46" aria-label="Icon">
+    <path class="ic-em-shield" d="M7 3h26a4 4 0 0 1 4 4v17c0 10-8 16-17 20C11 40 3 34 3 24V7a4 4 0 0 1 4-4z"/>
+    ${star(13.5, 9.5, 2.6)}${star(20, 8, 3)}${star(26.5, 9.5, 2.6)}
+    ${leaves(-1)}${leaves(1)}
+    <circle cx="20" cy="24" r="7" class="ic-em-ball"/>
+    <path class="ic-em-seam" d="M13.5 21.6Q20 19 26.5 21.6M13.3 26.2Q20 28.8 26.7 26.2M20 20.3V27.5M16.6 17.9Q16 19.6 16.6 21M23.4 17.9Q24 19.6 23.4 21M16.4 27Q15.9 28.6 16.6 30M23.6 27Q24.1 28.6 23.4 30M18.6 18.3h2.8M18.6 19.4h2.8"/>
+  </svg>`;
+})();
+
 // The retirement Icon card: prime OVR, the three positions you played most, and your main club.
 function iconCardHtml(rec) {
   const ic = iconCard(rec), t = careerTotals(rec), top = clubLegacy(rec)[0], gk = ic.pos === 'GK';
-  const nums = gk ? [[t.apps, 'APP'], [t.cleanAll || 0, 'CS'], [t.saves || 0, 'SV'], [rec.trophies.length, 'TTL']]
-    : [[t.apps, 'APP'], [t.goals, 'GOL'], [t.assists, 'AST'], [rec.trophies.length, 'TTL']];
+  const cs = cardStatus(rec), key = `${rec.name}|${rec.by}|${rec.retiredAge}`;
   const why = ic.prime ? `average of your ${ic.prime} season${ic.prime > 1 ? 's' : ''} aged 25 to 33` : 'your peak, as you retired before 25';
-  // Like an EA card: six stats in two columns, averaged the same way as the OVR. Old careers saved
-  // without stats show career numbers instead.
+  // Like an EA card: six stats in a row, labels over numbers, averaged the same way as the OVR. Old
+  // careers saved without stats show career numbers instead.
   const order = ic.stats && ('DIV' in ic.stats ? ['DIV', 'HAN', 'KIC', 'REF', 'PHY', 'POS'] : ['PAC', 'SHO', 'PAS', 'DRI', 'DEF', 'PHY']);
   const label = k => 'DIV' in (ic.stats || {}) && k === 'PHY' ? 'SPD' : k;
-  const statsHtml = order ? `<div class="ic-stats">${[order.slice(0, 3), order.slice(3)].map(col => `<div>${col.map(k => `<div><b>${ic.stats[k]}</b><small>${label(k)}</small></div>`).join('')}</div>`).join('')}</div>` : '';
+  const cells = order ? order.map(k => [label(k), ic.stats[k]])
+    : gk ? [['APP', t.apps], ['CS', t.cleanAll || 0], ['SV', t.saves || 0], ['TTL', rec.trophies.length]]
+    : [['APP', t.apps], ['GOL', t.goals], ['AST', t.assists], ['TTL', rec.trophies.length]];
   const totals = gk ? `${t.apps} apps · ${t.cleanAll || 0} clean sheets · ${t.saves || 0} saves · ${rec.trophies.length} troph${rec.trophies.length === 1 ? 'y' : 'ies'}` : `${t.apps} apps · ${t.goals} goals · ${t.assists} assists · ${rec.trophies.length} troph${rec.trophies.length === 1 ? 'y' : 'ies'}`;
-  return `<section class="card"><h2>Icon card</h2>
-    <div class="icon-card">
-      <div class="ic-top"><div class="ic-ovr"><b>${ic.ovr}</b><span>${ic.pos}</span>${ic.alts.map(a => `<i>${a}</i>`).join('')}</div>
-        <div class="ic-side">${top ? rowCrest(top) : ''}<span class="ic-tag">ICON</span></div></div>
-      <svg class="ic-man" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="34" r="20"/><path d="M12 100c0-24 17-38 38-38s38 14 38 38z"/></svg>
-      <div class="ic-name">${esc(rec.name)}</div>
-      ${statsHtml || `<div class="ic-nums">${nums.map(([v, k]) => `<div><b>${v}</b><small>${k}</small></div>`).join('')}</div>`}
-      <div class="ic-nat">${typeof FLAG_DATA !== 'undefined' && FLAG_DATA[rec.nat] ? `<img src="${FLAG_DATA[rec.nat]}" alt="">` : ''}${esc(natName(rec.nat))}</div>
+  const flag = typeof FLAG_DATA !== 'undefined' && FLAG_DATA[rec.nat] ? `<img class="ic-flag" src="${FLAG_DATA[rec.nat]}" alt="${esc(natName(rec.nat))}">` : '';
+  // Icon: marble art, flag and the Icon badge. Hero: one of the Hero designs, flag and the club you
+  // are remembered at. Otherwise a gold, silver or bronze card by peak OVR, flag and club.
+  const heroStyle = heroStyleFor(key), legendClub = clubLegacy(rec).find(c => c.legend) || top;
+  const look = cs.status === 'icon' ? { cls: '', art: iconArt(strHash(`${key}|style`)), badges: flag + ICON_EMBLEM, title: 'Icon card' }
+    : cs.status === 'hero' ? { cls: `hero-card${HERO_STYLES[heroStyle].dark ? ' dark' : ''}`, art: heroArt(heroStyle), badges: flag + HERO_EMBLEM, title: 'Hero card' }
+    : { cls: 'base-card', art: baseArt(cs.tier), badges: flag + (top ? rowCrest(top) : ''), title: `${cs.tier[0].toUpperCase() + cs.tier.slice(1)} card` };
+  const verdict = cs.status === 'icon' ? 'Icon' : cs.status === 'hero' ? 'Hero' : 'Icon or Hero';
+  // Only what you won is listed here (not peak OVR or caps).
+  const parts = cs.parts.filter(g => !/^peak OVR|caps$/.test(g.label)).slice(0, 4).map(g => `${g.n > 1 ? `${g.n}× ` : ''}${esc(g.label)}`).join(', ');
+  return `<section class="card"><h2>${look.title}</h2>
+    <div class="icon-card ${look.cls}">${look.art}
+      <div class="ic-top"><div class="ic-ovr"><b>${ic.ovr}</b><span>${ic.pos}</span>${ic.alts.map(a => `<i>${a}</i>`).join('')}</div></div>
+      <svg class="ic-man" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="20" r="16"/><path d="M14 100V70c0-18 16-30 36-30s36 12 36 30v30z"/></svg>
+      <div class="ic-foot">
+        <div class="ic-name">${esc(rec.name)}</div>
+        <div class="ic-row" style="--n:${cells.length}">${cells.map(([k]) => `<small>${k}</small>`).join('')}${cells.map(([, v]) => `<b>${v}</b>`).join('')}</div>
+        <div class="ic-badges">${look.badges}</div>
+      </div>
     </div>
-    <p class="small muted" style="margin:0;text-align:center">OVR ${ic.ovr}${statsHtml ? ' and card stats' : ''}: ${why}.<br>${statsHtml ? `${totals}<br>` : ''}Most games: ${ic.apps.map(([k, n]) => `${k} ${n}`).join(' · ')}</p></section>`;
+    <div class="legacy-sum"><div><small>Legacy</small><b>${cs.score}</b></div><div><small>Fans' verdict</small><b>${cs.vote}%</b><span>say ${verdict}</span></div></div>
+    ${parts ? `<p class="small muted" style="margin:0;text-align:center">${parts}</p>` : ''}
+    <p class="small muted" style="margin:0;text-align:center">${order ? `${totals}<br>` : ''}Most games: ${ic.apps.map(([k, n]) => `${k} ${n}`).join(' · ')}</p></section>`;
 }
 
 // Short tags for a finished career: legend status, Ballon d'Ors, and the main clubs' numbers.
@@ -767,6 +984,9 @@ function legacyTags(rec) {
   const clubs = clubLegacy(rec), tags = [];
   clubs.filter(c => c.legend).forEach(c => tags.push(['legend', `${c.club} legend`]));
   ballonDors(rec).forEach(b => tags.push(['gold', `Ballon d'Or ${seasonLabel(b.season)}${b.club ? ` · ${b.club}` : ''}`]));
+  // The shirt you made your own: worn in 300+ games.
+  const shirt = signatureShirt(rec);
+  if (shirt) tags.push(['gold', `Known for the #${shirt.no} shirt · ${shirt.apps} games`]);
   // The legend clubs, or else the club you played most games for.
   (clubs.some(c => c.legend) ? clubs.filter(c => c.legend) : clubs.slice(0, 1)).forEach(c => {
     const titles = Object.entries(c.titles).map(([n, k]) => `${k}× ${n} title${k > 1 ? 's' : ''}`).join(', ');
@@ -820,7 +1040,19 @@ function renderPast() {
   if (!rec) { pastView = null; landing = true; render(); return; }
   // Seasons are labelled from the year that career started.
   labelBase = rec.startYear || START_YEAR;
-  try { app.innerHTML = `<div class="create wrap">${retiredHtml(rec, 'freshStart')}<button class="btn block" data-act="pastBack">Back</button></div>`; } finally { labelBase = null; }
+  try { app.innerHTML = `<div class="create wrap">${retiredHtml(rec, 'freshStart')}<button class="btn block" data-act="pastExport" data-v="${rec.id}">Export this career</button><button class="btn block" data-act="pastBack">Back</button></div>`; } finally { labelBase = null; }
+}
+// A finished career as a file or text, to keep or share. It holds only that career's record (seasons,
+// trophies, awards, card), not a save to carry on playing.
+function showPastExport(id) {
+  const rec = loadArchive().find(r => r.id === id);
+  if (!rec) return;
+  const data = JSON.stringify(rec);
+  let link = '';
+  try { link = URL.createObjectURL(new Blob([data], { type: 'application/json' })); } catch (e) { /* no blob support */ }
+  openModal(`<h3>Export career</h3><p class="small muted" style="margin:0">Download the file, or copy the text below. It is this finished career's record, not a save to keep playing.</p>
+    <textarea class="savebox" readonly>${esc(data)}</textarea>
+    <div class="btns">${link ? `<a class="btn primary sm" href="${link}" download="pitch-to-legend-career-${esc(rec.name.replace(/\W+/g, '-'))}.json">Download file</a>` : ''}<button class="btn sm" data-act="copyPast" data-v="${id}">Copy text</button><button class="btn sm" data-act="close">Close</button></div>`);
 }
 
 // ---------- train ----------
@@ -1269,14 +1501,32 @@ function dbCrest(name) {
 }
 
 // SofaScore-style history: one block per season, clubs side by side, tap for every competition.
+// Each competition shows its logo (COMP_LOGOS, packed in js/logos-tur.js from the Comp_logos
+// folder). Without one it gets a small badge instead: a short code on a colour by kind (league
+// green, cup purple, European blue, national team red).
+// The two MLS conferences share the league's logo.
+const COMP_LOGO_ALIAS = { 'MLS Eastern Conference': 'MLS', 'MLS Western Conference': 'MLS' };
+const compLogo = name => typeof COMP_LOGOS !== 'undefined' ? COMP_LOGOS[COMP_LOGO_ALIAS[name] || name] : null;
+const COMP_KIND_COLOR = { league: '#2f9e62', cup: '#7b4bc4', euro: '#2f6fd1', nat: '#c8323c' };
+const COMP_CODES = { 'Champions League': 'UCL', 'Europa League': 'UEL', 'Conference League': 'UECL', 'Club World Cup': 'CWC', 'World Cup': 'WC', 'European Championship': 'EURO', 'Copa América': 'CA', 'Premier League': 'PL', 'La Liga': 'LL', 'Serie A': 'SA', 'Bundesliga': 'BL', 'Ligue 1': 'L1' };
+function compCode(name) {
+  if (COMP_CODES[name]) return COMP_CODES[name];
+  if (/qualifiers/.test(name)) return 'INT';
+  const words = name.replace(/\(.*\)/, '').split(/[\s-]+/).filter(w => /^[A-Za-zÀ-ÿ0-9]/.test(w) && !['de', 'da', 'del', 'of', 'the'].includes(w.toLowerCase()));
+  return words.length > 1 ? words.slice(0, 3).map(w => w[0]).join('').toUpperCase() : (words[0] || name).slice(0, 3).toUpperCase();
+}
+const compBadge = (name, kind) => compLogo(name)
+  ? `<img class="comp-logo" src="${compLogo(name)}" alt="" title="${esc(name)}">`
+  : `<span class="comp-badge" style="--cb:${COMP_KIND_COLOR[kind] || '#556'}" title="${esc(name)}">${esc(compCode(name))}</span>`;
+
 function careerHistory(p = S.player) {
   const rows = p.career.slice();
   if (p === S?.player && S.phase === 'season' && p.st && p.st.apps + p.st.cup.apps > 0) rows.push({ ...careerRow(p.st, myClub()), live: true });
   if (!rows.length) return '<section class="card"><h2>Career history</h2><span class="small muted">Your first season is under way.</span></section>';
   const bySeason = {};
   rows.forEach(r => (bySeason[r.season] = bySeason[r.season] || []).push(r));
-  const line = (n, c) => `<tr><td>${esc(n)}</td><td class="r">${c.apps}</td><td class="r">${c.goals}</td><td class="r">${c.assists}</td><td class="r">${c.apps ? (c.rsum / c.apps).toFixed(2) : '–'}</td></tr>`;
-  const compTable = list => `<div class="tablewrap"><table class="comps"><thead><tr><th>Competition</th><th class="r">App</th><th class="r">G</th><th class="r">A</th><th class="r">Avg</th></tr></thead><tbody>${list.map(([n, c]) => line(n, c)).join('')}</tbody></table></div>`;
+  const line = (n, c) => `<tr><td><span class="comp-name">${compBadge(n, c.kind)}${esc(n)}</span></td><td class="r">${c.mins != null ? c.mins : '–'}</td><td class="r">${c.apps}</td><td class="r">${c.goals}</td><td class="r">${c.assists}</td><td class="r">${c.apps ? (c.rsum / c.apps).toFixed(2) : '–'}</td></tr>`;
+  const compTable = list => `<div class="tablewrap"><table class="comps"><thead><tr><th><span class="comp-head">Competition<span class="comp-badges">${list.map(([n, c]) => compBadge(n, c.kind)).join('')}</span></span></th><th class="r" title="Minutes played">MP</th><th class="r">App</th><th class="r">G</th><th class="r">A</th><th class="r">Avg</th></tr></thead><tbody>${list.map(([n, c]) => line(n, c)).join('')}</tbody></table></div>`;
   const ORDER = { league: 0, cup: 1, euro: 2 };
   const seasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a).map(s => {
     const spells = bySeason[s];
@@ -1285,7 +1535,7 @@ function careerHistory(p = S.player) {
     const clubParts = spells.map(r => {
       const list = Object.entries(r.comps || {}).filter(([, c]) => c.kind !== 'nat').sort((a, b) => ORDER[a[1].kind] - ORDER[b[1].kind]);
       // Two clubs side by side are too narrow for a table: one line per competition instead.
-      const compact = list.map(([n, c]) => `<div class="compline"><span>${esc(n)}</span><span class="small muted">${c.apps} apps · ${c.goals} G · ${c.assists} A</span></div>`).join('');
+      const compact = list.map(([n, c]) => `<div class="compline"><span class="comp-name">${compBadge(n, c.kind)}${esc(n)}</span><span class="small muted">${c.mins != null ? `${c.mins} min · ` : ''}${c.apps} apps · ${c.goals} G · ${c.assists} A</span></div>`).join('');
       return `<div class="spellcomps">${list.length ? (spells.length > 1 ? compact : compTable(list)) : '<span class="small muted">No breakdown recorded for this season.</span>'}</div>`;
     }).join('');
     const nat = spells.flatMap(r => Object.entries(r.comps || {}).filter(([, c]) => c.kind === 'nat'));
@@ -1340,15 +1590,18 @@ function viewCareer() {
   // In the summer this season is already in the career rows.
   const live = S.phase === 'season' ? p.st : { apps: 0, goals: 0, assists: 0 };
   const value = playerValue();
-  return `<section class="card hero"><h2>Profile</h2>
-      <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div><div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${calledUp() ? 'In squad' : 'Not picked'}</b></div>
+  const seg = `<div class="seg">${[['career', 'Career'], ['history', 'History']].map(([k, l]) => `<button class="${careerSub === k ? 'on' : ''}" data-act="careerSub" data-v="${k}">${l}</button>`).join('')}</div>`;
+  // History: every season and every honour, on their own page.
+  if (careerSub === 'history') return seg + careerTables();
+  return seg + `<section class="card hero"><h2>Profile</h2>
+      <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div>${p.shirt && p.shirt.club === p.club && !p.shirt.repick ? `<div><small>Shirt</small><b>#${p.shirt.no}</b></div>` : ''}<div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${calledUp() ? 'In squad' : 'Not picked'}</b></div>
       <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div title="Transfer value: OVR, position, age, reputation, contract, league and this season's form"><small>Value</small><b>${value ? money(value) : 'Free agent'}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b></div></div>
-      <div class="small muted">${nationNote()}</div></section>
+      <div class="small muted">${nationNote()}</div>${canAskShirt() ? '<button class="btn sm block" data-act="shirtAskList">Ask a teammate for his shirt</button>' : ''}</section>
     <section class="card"><h2>This season</h2><div class="${statGrid(p.pos)}"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div>${gkCells(p.pos, p.st.saves, p.st.cleanAll)}<div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
       ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Cups: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}
       ${(p.seasonSpells || []).length ? `<div class="small muted">These are your numbers at ${esc(myClub().name)}. Earlier spells this season have their own rows in your career history.</div>` : ''}
       <div class="small muted">Career: ${t.apps + live.apps} apps · ${t.goals + live.goals} goals · ${t.assists + live.assists} assists</div></section>
-    ${careerTables()}
+    ${S.phase !== 'retired' ? baseCardHtml() : ''}
     <section class="card"><h2>Game</h2><p class="small muted" style="margin:0">Progress saves automatically on this device. Export a backup to keep it safe or move it to another device.</p>
       <div class="btns"><button class="btn sm" data-act="exportSave">Export save</button><button class="btn sm" data-act="importAsk">Import save</button></div>
       <button class="btn block" data-act="menu">Main menu</button>
@@ -1510,23 +1763,62 @@ function startFx(canvas, kind, lvl = 0) {
   fxFrame = requestAnimationFrame(frame);
 }
 
+// Pick your shirt number at a new club (or after giving yours away): the numbers that suit your
+// position first, then every other free one. Taken numbers are not offered.
+// Your team-mates and their numbers, with the chance each would hand his over. Each can be asked once.
+function showShirtAskList() {
+  if (!canAskShirt()) return;
+  const p = S.player, c = myClub(), asked = p.shirtAsked || [];
+  squadNumbers(c);
+  const rows = c.players.slice().sort((a, b) => a.no - b.no).map(pl => {
+    const done = asked.includes(pl.n);
+    return `<button class="house" data-act="shirtAsk" data-v="${esc(pl.n)}" ${done ? 'disabled' : ''}><span><b>#${pl.no} ${esc(pl.n)}</b> <span class="small muted">${pl.pos} ${pl.r}</span><br><span class="small muted">${done ? 'Already asked' : `About ${Math.round(shirtAskOdds(pl) * 100)}% he says yes`}</span></span></button>`;
+  }).join('');
+  openModal(`<h3>Ask for a shirt</h3><p style="margin:0">You wear #${p.shirt.no}. If he says yes you swap numbers and click on the pitch (scoring and assists up a touch). If he says no, you'll be sulking for a while (down a touch). You can only ask each team-mate once.</p>
+    <div class="inbox">${rows}</div><button class="btn block" data-act="close">Back</button>`);
+}
+// Asking takes him a moment to answer.
+function doShirtAsk(name) {
+  const r = askTeammateShirt(name);
+  if (!r) return;
+  openModal(`<h3>Asking ${esc(name)}</h3><p class="flood" style="margin:0;text-align:center"><b>He's thinking about it…</b></p>`);
+  setTimeout(() => {
+    render();
+    openModal(r.yes
+      ? `<h3 class="good">He said yes</h3><p style="margin:0">${esc(name)} hands you the #${r.his} shirt and takes your #${r.mine}. You two click on the pitch now.</p><button class="btn primary block" data-act="close">Great</button>`
+      : `<h3 class="bad">He said no</h3><p style="margin:0">${esc(name)} is keeping his #${r.his}. You're not happy about it, and the dressing room can feel it for a while.</p><button class="btn primary block" data-act="close">OK</button>`);
+  }, 1500);
+}
+
+function showShirtPicker() {
+  const p = S.player, c = myClub(), { pref, rest } = freeShirts(c);
+  const btn = n => `<button class="shirt-no ${pref.includes(n) ? 'pref' : ''}" data-act="shirtPick" data-v="${n}">${n}</button>`;
+  openModal(`<h3>Pick your shirt number</h3><p style="margin:0">${p.shirt && p.shirt.repick ? `You gave your shirt away. Choose a new number at ${esc(c.name)}.` : `Welcome to ${esc(c.name)}. Choose a number from the ones still free in the squad.`}</p>
+    ${pref.length ? `<div class="small muted">Suits a ${POS_NAMES[p.pos].toLowerCase()}</div><div class="shirt-grid">${pref.map(btn).join('')}</div>` : ''}
+    <div class="small muted">Other free numbers</div><div class="shirt-grid">${rest.map(btn).join('')}</div>`);
+}
+
 function showDecision() {
   const d = S.decision;
   const opts = d.type === 'position'
     ? [['accept', `Play as ${d.to}`, d.early ? `Your main position from next season (manager +3)` : `Added beside your main position (manager +3)`], ['refuse', `Stay a ${S.player.pos}`, 'He will be unhappy (−5) and play you a little less this season']]
     : d.type === 'recall'
     ? [['return', 'Go back now', 'Your loan ends and you rejoin the squad straight away'], ['stay', 'Ask to stay on loan', `${club(d.club).mgr} will be disappointed (−8 when you return)`]]
+    : d.type === 'shirt'
+    ? [['yes', 'Give him the shirt', 'You pick another number; you two click on the pitch (scoring and assists up a touch while you play together)'], ['no', 'Keep your number', 'He sulks: scoring and assists down a touch for about 12 weeks']]
     : d.type === 'rumour'
     ? [['deny', 'Deny it publicly', 'The manager likes loyalty (+3)'], ['silent', 'Say nothing', 'He wonders why you stayed quiet (−1)']]
     : [['reject', 'Reject them', `Show you are committed (+${d.rival ? 8 : 4}${d.rival ? ', rivals!' : ''})`], ['listen', 'Tell your agent to listen', 'They may bid in the window (−2)']];
-  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
+  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?', shirt: 'He wants your shirt' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
     <div class="inbox">${opts.map(([v, l, s]) => `<button class="house" data-act="decide" data-v="${v}"><span><b>${l}</b><br><span class="small muted">${s}</span></span></button>`).join('')}</div>`);
 }
 
 // Matchday: both team sheets in each club's formation, with the bench, and where you fit in. Fit players only.
 function teamSheet(c, me, shapeKey) {
   const f = shapeKey || weekFormation(c), shape = FORMATIONS[f], ROLES = { GK: ['GK'], DEF: shape.DEF, MID: shape.MID, FWD: shape.FWD };
-  const avail = c.players.filter(pl => !pl.inj).map(pl => ({ n: pl.n, pos: pl.pos, r: pl.r }));
+  // Real clubs wear shirt numbers; national teams and other made-up sides show OVR instead.
+  if (S.clubs[c.id] === c) squadNumbers(c);
+  const avail = c.players.filter(pl => !pl.inj).map(pl => ({ n: pl.n, pos: pl.pos, r: pl.r, no: pl.no }));
   // Fill the shape by role where the squad allows, then the best of the rest in that line.
   // Each line keeps the shape's slots in order, left to right (LM, CM, CM, RM), so a player is drawn
   // where his slot is, whatever his own position.
@@ -1560,7 +1852,8 @@ const roleText = (pos, role) => (pos === 'LB' || pos === 'RB') && (role === 'LM'
 const shortN = n => { const w = n.split(' '); return w.length > 1 ? w.slice(1).join(' ') : n; };
 function pitchHtml(sheet) {
   // Each chip is labelled with the slot it plays (a right midfielder on the right wing shows RW).
-  const chip = ({ pl, role }) => `<div class="lp-chip ${pl.me ? 'me' : ''}"><b class="num">${pl.r}</b><span>${esc(shortN(pl.n))}</span><small>${role || pl.pos}</small></div>`;
+  // Matchday shows shirt numbers (OVR for sides without them).
+  const chip = ({ pl, role }) => `<div class="lp-chip ${pl.me ? 'me' : ''}"><b class="num${pl.no ? ' shirt' : ''}">${pl.no || pl.r}</b><span>${esc(shortN(pl.n))}</span><small>${role || pl.pos}</small></div>`;
   const cells = g => sheet.xi[g].map((pl, k) => ({ pl, role: (sheet.slots || {})[g]?.[k] }));
   let rows = ['FWD', 'MID', 'DEF', 'GK'].map(cells);
   // A 4-2-3-1 is drawn as one: the striker, then the wide men either side of the No. 10, then the two holders.
@@ -1584,13 +1877,13 @@ function showMatchday() {
   const sel = p.injured || rested ? { mins: 0, start: false } : cup ? cupSelection(efx) : leagueSel;
   // A new role in the manager's shape gets its own alert first; the team sheet opens when you close it.
   if (sel.start && shapeRoleNote()) { tellShapeRole(); if (POPUPS.length) { matchdayNext = true; nextPopup(); return; } }
-  const me = { n: p.name, pos: matchPos(), r: calcOVR(), me: true, start: !!sel.start, squad: !p.injured };
+  const me = { n: p.name, pos: matchPos(), r: calcOVR(), no: p.shirt && p.shirt.club === p.club ? p.shirt.no : null, me: true, start: !!sel.start, squad: !p.injured };
   const mine = teamSheet(myClub(), me), opp = teamSheet(club(fx.opp), null);
   const where = p.injured ? '<span class="bad">You are injured and miss this one.</span>'
     : rested ? `<span class="bad">You need ${TWO_GAME_ENERGY}+ energy to play twice this week, so you rest for this one.</span>`
     : sel.start ? `<span class="good">You start ${matchRole() !== matchPos() ? `${roleText(matchPos(), matchRole())} in ${esc(myClub().mgr)}'s ${weekFormation(myClub())}` : `as ${POS_NAMES[matchPos()].toLowerCase()}`}.</span>`
     : sel.mins ? '<span class="flood">You start on the bench, but should get on.</span>' : '<span class="muted">You are on the bench.</span>';
-  const benchHtml = s => s.bench.map(pl => `<span class="${pl.me ? 'me' : ''}">${esc(shortN(pl.n))} <small>${pl.pos} ${pl.r}</small></span>`).join('');
+  const benchHtml = s => s.bench.map(pl => `<span class="${pl.me ? 'me' : ''}">${esc(shortN(pl.n))} <small>${pl.pos} ${pl.no ? `#${pl.no}` : pl.r}</small></span>`).join('');
   const home = fx.isHome ? myClub() : club(fx.opp), away = fx.isHome ? club(fx.opp) : myClub();
   const cupName = efx && efx.t.name.replace(/ \d{4}$/, '');
   const title = cup ? `${esc(cupName)} · ${efx.stage}` : `Matchday ${S.week}`;
@@ -1614,13 +1907,13 @@ function showSummerMatchday() {
   const opp = f[0] === me ? f[1] : f[0], isHome = f[0] === me, sel = summerPick(me);
   const mySide = tourSide(me), oppSide = tourSide(opp), nation = isNation(me);
   const pos = nation ? p.pos : matchPos(), role = shapeRole(pos, mySide);
-  const meChip = { n: p.name, pos, r: calcOVR(), me: true, start: !!sel.start, squad: !sel.free };
+  const meChip = { n: p.name, pos, r: calcOVR(), no: !nation && p.shirt && p.shirt.club === p.club ? p.shirt.no : null, me: true, start: !!sel.start, squad: !sel.free };
   const mine = teamSheet(mySide, meChip, formationOf(mySide)), theirs = teamSheet(oppSide, null, formationOf(oppSide));
   const shape = formationOf(mySide);
   const where = sel.free ? '<span class="bad">Your contract has run out, so you are not part of the squad.</span>'
     : sel.start ? `<span class="good">You start ${role !== pos ? `${roleText(pos, role)} in ${esc(mySide.mgr)}'s ${shape}` : `as ${POS_NAMES[pos].toLowerCase()}`}.</span>`
     : sel.mins ? '<span class="flood">You start on the bench, but should get on.</span>' : '<span class="muted">You are on the bench.</span>';
-  const benchHtml = s => s.bench.map(pl => `<span class="${pl.me ? 'me' : ''}">${esc(shortN(pl.n))} <small>${pl.pos} ${pl.r}</small></span>`).join('');
+  const benchHtml = s => s.bench.map(pl => `<span class="${pl.me ? 'me' : ''}">${esc(shortN(pl.n))} <small>${pl.pos} ${pl.no ? `#${pl.no}` : pl.r}</small></span>`).join('');
   const sheet = (c, s) => `<div><h4>${esc(c.short)} · ${s.shape}</h4>${pitchHtml(s)}<div class="lp-bench"><b>Bench</b>${benchHtml(s)}</div></div>`;
   const sheets = isHome ? sheet(mySide, mine) + sheet(oppSide, theirs) : sheet(oppSide, theirs) + sheet(mySide, mine);
   const side = id => `<div class="team">${crest(id)}<b>${esc(teamName(id))}</b></div>`;
@@ -1825,6 +2118,10 @@ document.addEventListener('click', e => {
     case 'summerPlay': doSummerPlay(); return;
     case 'summerMatchday': showSummerMatchday(); return;
     case 'roleAsk': showRoleAsk(v); return;
+    case 'careerSub': careerSub = v; window.scrollTo(0, 0); render(); return;
+    case 'shirtAskList': showShirtAskList(); return;
+    case 'shirtAsk': doShirtAsk(v); return;
+    case 'shirtPick': if (pickShirt(+v)) { closeModal(); toast(`Number ${v} it is`); render(); } return;
     case 'summerKick': closeModal(); doSummerPlay(); return;
     case 'soShoot': { const [col, row] = v.split(',').map(Number); soStep({ col, row }); return; }
     case 'soDive': soStep({ col: +v }); return;
@@ -1832,6 +2129,8 @@ document.addEventListener('click', e => {
     case 'soDone': closeModal(); if (soMode === 'summer') doSummerPlay(); else doAdvance(); return;
     case 'summerSim': simulateSummer(); render(); return;
     case 'exportSave': showExport(); return;
+    case 'pastExport': showPastExport(+v); return;
+    case 'copyPast': { const r = loadArchive().find(x => x.id === +v); if (r) navigator.clipboard.writeText(JSON.stringify(r)).then(() => toast('Career copied'), () => toast('Select the text and copy it')); return; }
     case 'copySave': navigator.clipboard.writeText(exportSave()).then(() => toast('Save copied'), () => toast('Select the text and copy it')); return;
     case 'importAsk': showImport(); return;
     case 'importGo': { const ok = importSave(document.getElementById('importText').value.trim()); if (ok) { closeModal(); landing = false; tab = 'home'; toast('Career imported'); render(); } else toast('That is not a valid save'); return; }

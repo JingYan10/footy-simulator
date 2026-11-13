@@ -868,9 +868,9 @@ function playSummerStage() {
       // Goes into the season just finished, under the club you ended it with.
       const row = p.career.filter(r => r.season === S.season).pop();
       if (row) {
-        addComp(row.comps = row.comps || {}, t.name.replace(/ \d{4}$/, ''), isNation(me) ? 'nat' : 'cup', 1, user.goals, user.assists, rating);
+        addComp(row.comps = row.comps || {}, t.name.replace(/ \d{4}$/, ''), isNation(me) ? 'nat' : 'cup', 1, user.goals, user.assists, rating, user.mins || 0);
         if (!isNation(me)) {
-          row.apps++; row.goals += user.goals; row.assists += user.assists;
+          row.apps++; row.goals += user.goals; row.assists += user.assists; row.mins = (row.mins || 0) + (user.mins || 0);
           // Tackles and clean sheets count in every club competition.
           const conceded = res.h === me ? res.ga : res.gh;
           if (row.tackles != null) row.tackles += matchTackles(user);
