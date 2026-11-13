@@ -2385,8 +2385,10 @@ function advanceWeek() {
       setObjectives(OBJ_ORDER.filter(s => s !== 'season' || !p.objectives.some(o => o.span === 'season')));
     }
   } else {
-    let chance = .009 + (p.energy < TIRED_ENERGY ? TIRED_INJURY : 0) + (p.trainedThisWeek || 0) * .003 + (user && user.mins ? .008 : 0) + (cupUser && cupUser.mins ? .008 : 0);
-    chance *= (1 - .1 * p.equip) * (1 + vetYears() * .04) * injuryMult();
+    // Each training session this week adds a small risk (a third of what it used to be).
+    const trainPart = (p.trainedThisWeek || 0) * .001;
+    const raw = .009 + (p.energy < TIRED_ENERGY ? TIRED_INJURY : 0) + trainPart + (user && user.mins ? .008 : 0) + (cupUser && cupUser.mins ? .008 : 0);
+    const chance = raw * (1 - .1 * p.equip) * (1 + vetYears() * .04) * injuryMult();
     const offHurt = [user, cupUser].find(u => u && u.mins && u.offInjured);
     if (offHurt) report.events.push(`Went off injured after ${offHurt.mins} minutes`);
     if (offHurt || Math.random() < chance) {
@@ -2397,9 +2399,12 @@ function advanceWeek() {
       p.injLen = p.injured;
       p.rust = 0;
       const kind = serious ? pick(['torn knee ligament', 'broken foot', 'torn hamstring', 'ruptured achilles', 'fractured ankle']) : pick(['hamstring strain', 'ankle sprain', 'calf tightness', 'knee knock', 'groin strain', 'thigh bruise']);
-      msg(`Injury: ${kind}. Out for ${p.injured} week${p.injured > 1 ? 's' : ''}.`, 'bad');
-      notify('bad', serious ? 'Serious injury' : 'Injured', `You picked up a ${kind} and will be out for ${p.injured} week${p.injured > 1 ? 's' : ''}.${serious ? ' Missing a big part of the season will cost you OVR.' : ''}`);
-      report.events.push(`Injured for ${p.injured} week${p.injured > 1 ? 's' : ''}`);
+      // The training share of the risk decides whether it happened in training.
+      const inTraining = !offHurt && Math.random() < trainPart / raw;
+      const where = inTraining ? ' in training' : '', wk = `${p.injured} week${p.injured > 1 ? 's' : ''}`;
+      msg(`Injury${where}: ${kind}. Out for ${wk}.`, 'bad');
+      notify('bad', (serious ? 'Serious injury' : 'Injured') + where, `You picked up a ${kind}${where} and will be out for ${wk}.${inTraining ? ' Every training session carries a small risk.' : ''}${serious ? ' Missing a big part of the season will cost you OVR.' : ''}`);
+      report.events.push(`Injured${where} for ${wk}`);
       // Short-term targets are dropped without penalty; the season target stays.
       if ((p.objectives || []).some(o => o.span !== 'season')) {
         p.objectives = p.objectives.filter(o => o.span === 'season');
