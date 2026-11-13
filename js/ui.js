@@ -16,6 +16,9 @@ const ratingClass = r => r >= 7.5 ? 'hi' : r < 6 ? 'lo' : '';
 // dark green to 9, blue from 9.
 const rateTier = r => r >= 9 ? 'r9' : r >= 8 ? 'r8' : r >= 7 ? 'r7' : r >= 6.5 ? 'r65' : r >= 6 ? 'r6' : 'r5';
 const rateBox = (r, digits = 2) => `<span class="rate-box ${rateTier(r)}">${r.toFixed(digits)}</span>`;
+// The version tag the phone page loads this script with (artifact.html, ?v=...), reused on logo
+// images so a recoloured or replaced logo shows up after a publish instead of a cached old one.
+const ASSET_V = ((document.currentScript && document.currentScript.src.match(/[?&]v=(\d+)/)) || [])[1] || '';
 
 const ICONS = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
@@ -203,7 +206,7 @@ function logoUrl(c, ext) {
   // Some crests are packed into one script (js/logos-tur.js) instead of separate files.
   const packed = typeof LOGO_DATA !== 'undefined' && LOGO_DATA[`${dir}/${c.name}`];
   if (packed) return packed;
-  return `Club_logos/${encodeURIComponent(dir)}/${encodeURIComponent(c.name)}.${ext}`;
+  return `Club_logos/${encodeURIComponent(dir)}/${encodeURIComponent(c.name)}.${ext}${ASSET_V ? `?v=${ASSET_V}` : ''}`;
 }
 
 function crest(id, size = '') {
@@ -222,7 +225,7 @@ function crest(id, size = '') {
 const LGT_BOX = 22, LGT_AREA = 16 * 16;
 document.addEventListener('load', e => {
   const img = e.target;
-  if (img.tagName !== 'IMG' || !img.closest('table.lgt, .lgcrest, .spell, .stint') || img.closest('.nation') || !img.naturalWidth) return;
+  if (img.tagName !== 'IMG' || !img.closest('table.lgt, .lgcrest, .spell, .stint, .honteam') || img.closest('.nation') || !img.naturalWidth) return;
   const r = img.naturalWidth / img.naturalHeight;
   let w = Math.sqrt(LGT_AREA * r), h = Math.sqrt(LGT_AREA / r);
   const k = Math.min(1, LGT_BOX / w, LGT_BOX / h);
