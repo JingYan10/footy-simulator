@@ -15,7 +15,7 @@ const ratingClass = r => r >= 7.5 ? 'hi' : r < 6 ? 'lo' : '';
 // A rating in a coloured box, SofaScore style: red under 6, orange to 6.5, yellow to 7, green to 8,
 // dark green to 9, blue from 9.
 const rateTier = r => r >= 9 ? 'r9' : r >= 8 ? 'r8' : r >= 7 ? 'r7' : r >= 6.5 ? 'r65' : r >= 6 ? 'r6' : 'r5';
-const rateBox = r => `<span class="rate-box ${rateTier(r)}">${r.toFixed(2)}</span>`;
+const rateBox = (r, digits = 2) => `<span class="rate-box ${rateTier(r)}">${r.toFixed(digits)}</span>`;
 
 const ICONS = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
@@ -2044,7 +2044,7 @@ function matchBlock(m, title, injured) {
     ${m.pens ? `<div class="small muted" style="text-align:center">${esc(teamName(m.pens))} win ${m.pensScore ? pensText(m) + ' ' : ''}on penalties</div>` : ''}
     ${m.agg ? `<div class="small muted" style="text-align:center">Aggregate ${m.agg[0]}–${m.agg[1]}: <b>${esc(teamName(m.winner))}</b> go through</div>` : ''}
     ${sc ? `<div class="scorers">${sc}</div>` : ''}
-    ${u && u.mins ? `<div class="${statGrid(S.player.pos)}"><div><b>${u.rating.toFixed(1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div>${S.player.pos === 'GK' ? `<div><b>${u.saves || 0}</b><small>Saves</small></div><div><b>${u.clean ? 'Yes' : 'No'}</b><small>Clean sheet</small></div>` : ''}</div>${u.tackles ? `<div class="small muted" style="text-align:center">${u.tackles} tackle${u.tackles !== 1 ? 's' : ''}</div>` : ''}`
+    ${u && u.mins ? `<div class="${statGrid(S.player.pos)}"><div><b>${rateBox(u.rating, 1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div>${S.player.pos === 'GK' ? `<div><b>${u.saves || 0}</b><small>Saves</small></div><div><b>${u.clean ? 'Yes' : 'No'}</b><small>Clean sheet</small></div>` : ''}</div>${u.tackles ? `<div class="small muted" style="text-align:center">${u.tackles} tackle${u.tackles !== 1 ? 's' : ''}</div>` : ''}`
       : `<p class="muted" style="margin:0">${injured ? 'You were out injured.' : u && u.free ? 'Your contract has run out, so you are not part of the squad. Re-sign to play again.' : u && u.rested ? `Rested: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week.` : 'You stayed on the bench.'}</p>`}`;
 }
 
