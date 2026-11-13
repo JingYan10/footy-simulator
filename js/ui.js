@@ -1254,8 +1254,8 @@ function agentMain() {
   // Dream club: status, then the button to name one.
   const w = p.wish && club(p.wish);
   const status = !w ? '' : p.wishPending
-    ? `<div class="row"><span class="clubcell">${crest(p.wish, 'mini')}<b>${esc(w.name)}</b></span><span class="chip flood">Waiting</span></div><div class="small muted">They decide at the transfer window. Chance: ${wishOdds(p.wish).toLowerCase()}.</div>`
-    : `<div class="row"><span class="clubcell">${crest(p.wish, 'mini')}<b>${esc(w.name)}</b></span>${p.wishResult === 'offer' ? '<span class="chip good">Offered</span>' : p.wishResult === 'no' ? '<span class="chip bad">No bid</span>' : `<span class="small muted">${seasonLabel(p.wishSeason)}</span>`}</div>`;
+    ? `<div class="row"><span class="clubcell"><span class="lgcrest">${crest(p.wish, 'mini')}</span><b>${esc(w.name)}</b></span><span class="chip flood">Waiting</span></div><div class="small muted">They decide at the transfer window. Chance: ${wishOdds(p.wish).toLowerCase()}.</div>`
+    : `<div class="row"><span class="clubcell"><span class="lgcrest">${crest(p.wish, 'mini')}</span><b>${esc(w.name)}</b></span>${p.wishResult === 'offer' ? '<span class="chip good">Offered</span>' : p.wishResult === 'no' ? '<span class="chip bad">No bid</span>' : `<span class="small muted">${seasonLabel(p.wishSeason)}</span>`}</div>`;
   const why = !cur ? 'You need an agent to do this.' : p.loan ? 'Not while you are on loan.' : newClub() ? `You only just joined ${esc(myClub().name)}: talking about a dream move in your first season would wreck your start here. Wait until next season.` : justRenewed() ? `You only just signed a new contract with ${esc(myClub().name)}. Announcing a dream move now would look terrible: wait until about week ${lockWeekLabel(p.renewedAt + NEG_LOCK_WEEKS)}.` : p.wishSeason === S.season ? 'You can name a dream club once per season.' : '';
   const dream = `<section class="card"><h2>Dream club</h2><p class="small muted" style="margin:0">Name any club in the game. ${esc(myClub().mgr)} and the board will not like it (manager −10, board −12). The club still decides for itself: going public makes them a bit more likely to bid, but nothing is guaranteed. If they bid, it is a normal offer you can negotiate.</p>
     ${status}<div class="btns"><button class="btn primary sm" data-act="wishAsk" ${canAnnounce() ? '' : 'disabled'}>Announce dream club</button></div>${why ? `<div class="small muted">${why}</div>` : ''}</section>`;
@@ -1278,7 +1278,7 @@ function showWishSheet() {
   const opts = S.leagues.map(l => `<option value="${l.id}" ${l.id === lid ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
   const list = league(lid).clubs.map(club).filter(c => c.id !== S.player.club).sort((a, b) => teamStrength(b) - teamStrength(a)).map(c => {
     const odds = isBanned(c.id) ? 'Will not talk to you' : `Chance: ${wishOdds(c.id).toLowerCase()}`;
-    return `<button class="house" data-act="wishGo" data-v="${c.id}" ${isBanned(c.id) ? 'disabled' : ''}><span class="clubcell">${crest(c.id, 'mini')}<span><b>${esc(c.name)}</b><br><span class="small muted">Team rating ${Math.round(teamStrength(c))} · ${odds}</span></span></span></button>`;
+    return `<button class="house" data-act="wishGo" data-v="${c.id}" ${isBanned(c.id) ? 'disabled' : ''}><span class="clubcell"><span class="lgcrest">${crest(c.id, 'mini')}</span><span><b>${esc(c.name)}</b><br><span class="small muted">Team rating ${Math.round(teamStrength(c))} · ${odds}</span></span></span></button>`;
   }).join('');
   openModal(`<h3>Announce your dream club</h3><select data-act="wishLeague" class="pick">${opts}</select><div class="inbox" style="max-height:50vh;overflow:auto">${list}</div><button class="btn block" data-act="close">Cancel</button>`);
 }
