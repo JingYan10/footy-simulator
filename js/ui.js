@@ -850,7 +850,7 @@ function baseCardHtml() {
   const cells = order.map(k => [gk && k === 'PHY' ? 'SPD' : k, Math.round(p.attrs[k] || 0)]);
   const flag = typeof FLAG_DATA !== 'undefined' && FLAG_DATA[p.nat] ? `<img class="ic-flag" src="${FLAG_DATA[p.nat]}" alt="${esc(natName(p.nat))}">` : '';
   return `<section class="card"><h2>Your card</h2>
-    <div class="icon-card base-card">${baseArt()}
+    <div class="icon-card base-card">${baseArt(calcOVR() >= 75 ? 'gold' : calcOVR() >= 65 ? 'silver' : 'bronze')}
       <div class="ic-top"><div class="ic-ovr"><b>${calcOVR()}</b><span>${p.pos}</span>${altPositions().map(a => `<i>${a}</i>`).join('')}</div></div>
       <svg class="ic-man" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="20" r="16"/><path d="M14 100V70c0-18 16-30 36-30s36 12 36 30v30z"/></svg>
       <div class="ic-foot">
