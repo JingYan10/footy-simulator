@@ -15,6 +15,7 @@ const PACE_BRIEF = .4; // share of outfield training briefs that ask you to work
 const OFFER_LOCK_WEEKS = 46; // and no transfer offers or agent calls for a full year after joining a club
 const TIER_OVR = { 1: [58, 91], 2: [55, 80], 3: [48, 72] };
 const SQUAD_TARGET = { GK: 3, CB: 4, LB: 2, RB: 2, CDM: 2, CM: 3, CAM: 2, LM: 1, RM: 1, LW: 2, RW: 2, ST: 2 };
+const SQUAD_TOTAL = Object.values(SQUAD_TARGET).reduce((s, n) => s + n, 0), SQUAD_MIN = 23, SQUAD_MAX = 30;
 
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST'];
 const POS_NAMES = { GK: 'Goalkeeper', CB: 'Centre-back', LB: 'Left-back', RB: 'Right-back', CDM: 'Defensive mid', CM: 'Central mid', CAM: 'Attacking mid', LM: 'Left midfielder', RM: 'Right midfielder', LW: 'Left winger', RW: 'Right winger', ST: 'Striker' };
@@ -4464,6 +4465,7 @@ const plCard = pl => ({ n: pl.n, pos: pl.pos, r: pl.r, age: ageOf(pl.by) });
 //   at home or abroad, a free agent, or a kid up from the academy.
 let MKT = null;   // { str, moved: Set, deals: {id: n} } while the summer market runs
 function mktStr(c) { return MKT ? MKT.str[c.id] : teamStrength(c); }
+function stabOf(c) { if (!MKT) return squadStability(c); if (MKT.stab[c.id] == null) MKT.stab[c.id] = squadStability(c); return MKT.stab[c.id]; }
 const MKT_MAX = 4;   // a club does at most this many deals with other clubs in one summer
 function dealt(c) { if (MKT) MKT.deals[c.id] = (MKT.deals[c.id] || 0) + 1; }
 function canDeal(c) { return !MKT || (MKT.deals[c.id] || 0) < MKT_MAX; }
@@ -4482,8 +4484,39 @@ function aiFee(pl, from, to, paid = false) {
   return Math.max(0, Math.round(v / step) * step);
 }
 
-// Fill a gap at club c in position pos. depth stops a chain of sales going on for ever.
-function signReplacement(c, pos, depth = 0) {
+// The fewest a squad keeps in a position: two keepers, and at most one short of the usual number elsewhere.
+const posMin = pos => pos === 'GK' ? 2 : Math.max(1, SQUAD_TARGET[pos] - 1);
+const posHave = (c, pos) => c.players.filter(x => x.pos === pos).length;
+// Where a club signs: wherever its squad needs it most, not just the position that was left empty.
+// A position below its minimum comes first (the one just left, then any other). Otherwise each position
+// is weighed on depth (players against the usual number), quality (its best man against the team's
+// level) and a bit of chance; the position just left gets a slight edge. Never more than two over.
+function needPos(c, vacated = null) {
+  if (vacated && posHave(c, vacated) < posMin(vacated)) return vacated;
+  const short = POSITIONS.filter(p => posHave(c, p) < posMin(p));
+  if (short.length) return pick(short);
+  const str = mktStr(c);
+  const score = p => {
+    const have = posHave(c, p);
+    if (have >= SQUAD_TARGET[p] + 2) return -99;
+    const best = Math.max(0, ...c.players.filter(x => x.pos === p).map(x => x.r));
+    return (SQUAD_TARGET[p] - have) + clamp((str - best) / 4, -1, 2) + (p === vacated ? .4 : 0) + Math.random() * 3;
+  };
+  return POSITIONS.slice().sort((a, b) => score(b) - score(a))[0];
+}
+// How settled a club is, 0 (in upheaval) to 1 (settled): a board happy with a manager who has been there
+// a while changes little; a new manager or one under pressure rebuilds.
+function squadStability(c) {
+  const m = S.mgrs && S.mgrs[c.id];
+  if (!m) return .5;
+  const fresh = absWeek() - m.since < SEASON_WEEKS ? .3 : 0;
+  return clamp((m.job - 30) / 60 - fresh, 0, 1);
+}
+
+// Fill a gap at club c. vacated is the position just left (or null): needPos decides where the signing
+// actually plays. depth stops a chain of sales going on for ever.
+function signReplacement(c, vacated, depth = 0) {
+  const pos = needPos(c, vacated);
   const str = mktStr(c), nat = league(c.league).nat, roll = Math.random();
   const kid = () => {
     const k = genPlayer(pos, str - 5, nat, 17, 20);
@@ -4501,7 +4534,8 @@ function signReplacement(c, pos, depth = 0) {
   }
   // Buy: from a smaller club, at home or (for top-flight clubs) anywhere in Europe.
   const top = clubTier(c) === 1;
-  const sellers = Object.values(S.clubs).filter(s => s.id !== c.id && canDeal(s) && mktStr(s) < str - 1 && mktStr(s) > str - 14
+  // Settled clubs turn more approaches down.
+  const sellers = Object.values(S.clubs).filter(s => s.id !== c.id && canDeal(s) && Math.random() > stabOf(s) * .7 && mktStr(s) < str - 1 && mktStr(s) > str - 14
     && (league(s.league).nat === nat ? true : top && Math.random() < .5));
   for (const s of shuffle(sellers).slice(0, 12)) {
     const cands = s.players.filter(x => x.pos === pos && !(MKT && MKT.moved.has(x)) && x.r >= str - 4 && x.r <= str + 4 && ageOf(x.by) >= 18 && ageOf(x.by) <= 31);
@@ -4550,7 +4584,7 @@ function makeRoom(dest, pos, keep) {
 
 function aiTransferWindow(gaps = []) {
   const clubs = Object.values(S.clubs);
-  MKT = { str: {}, moved: new Set(), deals: {} };
+  MKT = { str: {}, stab: {}, moved: new Set(), deals: {} };
   clubs.forEach(c => { MKT.str[c.id] = teamStrength(c); });
   // Retirements first: every club fills the places its old players left.
   gaps.forEach(([c, pos]) => signReplacement(c, pos));
@@ -4558,7 +4592,7 @@ function aiTransferWindow(gaps = []) {
   shuffle(clubs.slice()).forEach(c => {
     c.players.slice().forEach(pl => {
       const age = ageOf(pl.by), str = MKT.str[c.id];
-      if (!canDeal(c) || MKT.moved.has(pl) || age < 19 || age > 30 || pl.r < str + 2 || Math.random() >= .18) return;
+      if (!canDeal(c) || MKT.moved.has(pl) || age < 19 || age > 30 || pl.r < str + 2 || Math.random() >= .18 * (1.2 - .6 * stabOf(c))) return;
       const nat = league(c.league).nat;
       const buyers = clubs.filter(b => b.id !== c.id && canDeal(b) && MKT.str[b.id] > str + 1 && MKT.str[b.id] >= pl.r - 6 && MKT.str[b.id] <= pl.r + 1
         && (league(b.league).nat === nat || clubTier(b) === 1));
@@ -4577,11 +4611,13 @@ function aiTransferWindow(gaps = []) {
       }
     });
   });
-  // Squad churn: a squad player or two moved on, someone new signed.
+  // Squad churn: a squad player or two moved on, someone new signed. Settled clubs do less, clubs in
+  // upheaval (a new manager, an unhappy board) more: from none to four.
   shuffle(clubs.slice()).forEach(c => {
-    const r = Math.random(), n = r < .3 ? 0 : r < .7 ? 1 : r < .92 ? 2 : 3;
+    const r = Math.random() * (2 - 1.5 * stabOf(c));
+    const n = r < .35 ? 0 : r < .75 ? 1 : r < 1.05 ? 2 : r < 1.3 ? 3 : 4;
     for (let i = 0; i < n && canDeal(c); i++) {
-      const pool = c.players.filter(x => !MKT.moved.has(x) && ageOf(x.by) >= 20 && ageOf(x.by) <= 32);
+      const pool = c.players.filter(x => !MKT.moved.has(x) && ageOf(x.by) >= 20 && ageOf(x.by) <= 32 && posHave(c, x.pos) > posMin(x.pos));
       // Not a starter: the shape's first names in each line stay.
       const fringe = pool.filter(x => c.players.filter(y => POS_GROUP[y.pos] === POS_GROUP[x.pos] && y.r > x.r).length >= formationSlots(c, POS_GROUP[x.pos]));
       if (!fringe.length) break;
@@ -4591,21 +4627,22 @@ function aiTransferWindow(gaps = []) {
       if (dest) makeRoom(dest, pl.pos, pl);
       signReplacement(c, pl.pos);
     }
-    // Squads breathe a little (one short to two over the usual 26): some clubs add a man, some let one go.
-    const T = Object.values(SQUAD_TARGET).reduce((s, n) => s + n, 0), have = pos => c.players.filter(x => x.pos === pos).length;
-    const r2 = Math.random();
-    if (r2 < .25 && c.players.length < T + 2) {
-      // Sign one more where the squad is thinnest.
-      const pos = shuffle(POSITIONS.slice()).sort((a, b) => (have(a) - SQUAD_TARGET[a]) - (have(b) - SQUAD_TARGET[b]))[0];
-      signReplacement(c, pos);
-    } else if (r2 < .45 && c.players.length > T - 1) {
-      // Let a spare man go from a position with more than enough.
-      const spare = c.players.filter(x => have(x.pos) > SQUAD_TARGET[x.pos] && !MKT.moved.has(x)).sort((x, y) => x.r - y.r)[0];
-      if (spare) {
-        const dest = Math.random() < .6 && clubAround(Math.min(MKT.str[c.id], spare.r + 4), league(c.league).nat, [c.id], 10, 1);
-        movePlayer(spare, c, dest || null);
-        if (dest) makeRoom(dest, spare.pos, spare);
-      }
+    // Squads grow or shrink: each club picks its own net change this summer, so departures and signings
+    // rarely match. Usually within a player or two, up to three either way (more swing for a club in
+    // upheaval), pulled back toward the usual 26 and kept between 23 and 30.
+    const size = c.players.length, swing = 1.2 + (1 - stabOf(c)) * 1.6;
+    const want = Math.round(clamp((Math.random() + Math.random() - 1) * swing + (SQUAD_TOTAL - size) * .5, -3, 3));
+    const delta = clamp(want, SQUAD_MIN - size, SQUAD_MAX - size);
+    for (let i = 0; i < delta; i++) signReplacement(c, null);
+    for (let i = 0; i > delta; i--) {
+      // Let a spare man go: the weakest where there are more than enough, never a starter.
+      const spare = c.players.filter(x => !MKT.moved.has(x) && posHave(c, x.pos) > posMin(x.pos)
+        && c.players.filter(y => POS_GROUP[y.pos] === POS_GROUP[x.pos] && y.r > x.r).length >= formationSlots(c, POS_GROUP[x.pos]))
+        .sort((x, y) => (posHave(c, y.pos) - SQUAD_TARGET[y.pos]) - (posHave(c, x.pos) - SQUAD_TARGET[x.pos]) || x.r - y.r)[0];
+      if (!spare) break;
+      const dest = Math.random() < .6 && clubAround(Math.min(MKT.str[c.id], spare.r + 4), league(c.league).nat, [c.id], 10, 1);
+      movePlayer(spare, c, dest || null);
+      if (dest) makeRoom(dest, spare.pos, spare);
     }
   });
   MKT = null;

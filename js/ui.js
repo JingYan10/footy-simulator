@@ -206,6 +206,9 @@ function render() {
 const LOGO_EXTS = ['png', 'svg', 'webp', 'jpg'];
 const logoState = {}; // club id -> index into LOGO_EXTS that works, or -1 when there is no logo
 
+// Crests drawn in black on a clear background vanish on the dark pitch: these are shown in white.
+const INK_CRESTS = new Set(['Derby County']);
+const inkCrest = name => INK_CRESTS.has(name) ? ' class="ink"' : '';
 function logoUrl(c, ext) {
   const dir = DB.leagues.find(l => l.id === c.id.split('-')[0]).name;
   // Some crests are packed into one script (js/logos-tur.js) instead of separate files.
@@ -220,7 +223,7 @@ function crest(id, size = '') {
   if (flag) return `<div class="crest ${size} nation hasflag"><img src="${flag}" alt=""><span>${teamCode(id).slice(0, 4)}</span></div>`;
   if (!isClub(id)) return `<div class="crest ${size} ${isNation(id) ? 'nation' : ''}"><span>${teamCode(id).slice(0, 4)}</span></div>`;
   const c = club(id), st = logoState[id] ?? 0;
-  const img = st >= 0 ? `<img src="${logoUrl(c, LOGO_EXTS[st])}" alt="" data-club="${id}" data-ext="${st}">` : '';
+  const img = st >= 0 ? `<img src="${logoUrl(c, LOGO_EXTS[st])}" alt=""${inkCrest(c.name)} data-club="${id}" data-ext="${st}">` : '';
   return `<div class="crest ${id === S.player.club ? 'me' : ''} ${st >= 0 ? 'haslogo' : ''} ${size}">${img}<span>${c.short.slice(0, 4)}</span></div>`;
 }
 
@@ -1631,7 +1634,7 @@ function dbCrest(name) {
   const c = dbClubCache[name];
   if (!c) return `<div class="crest mini"><span>${esc(name.slice(0, 3).toUpperCase())}</span></div>`;
   const key = `db:${name}`, st = logoState[key] ?? 0;
-  const img = st >= 0 ? `<img src="${logoUrl(c, LOGO_EXTS[st])}" alt="" data-club="${esc(key)}" data-ext="${st}">` : '';
+  const img = st >= 0 ? `<img src="${logoUrl(c, LOGO_EXTS[st])}" alt=""${inkCrest(c.name)} data-club="${esc(key)}" data-ext="${st}">` : '';
   return `<div class="crest ${st >= 0 ? 'haslogo' : ''} mini">${img}<span>${esc(c.short.slice(0, 4))}</span></div>`;
 }
 
