@@ -484,8 +484,9 @@ function boardTargetsHtml(c, m) {
 // Your club's summer comings and goings, on Home for the first 8 weeks of the season: who retired,
 // who was sold and where, who arrived (from which club, or up from the academy) and the role each
 // new player walks into.
+const sqOpen = { v: false };
 function squadMovesCard() {
-  const c = myClub(), log = S.phase === 'season' && S.week <= 8 && S.squadMoves && S.squadMoves.season === S.season && S.squadMoves.clubs[c.id];
+  const c = myClub(), log = S.squadMoves && S.squadMoves.season === S.season && S.squadMoves.clubs[c.id];
   if (!log || (!log.out.length && !log.in.length)) return '';
   const row = (x, side) => {
     const other = side === 'out' ? (x.why === 'retired' ? null : x.to) : x.from;
@@ -494,9 +495,9 @@ function squadMovesCard() {
     const role = side === 'in' ? arrivalRole(c, x.n) : null;
     return `<div class="sqmove"><span class="pos-chip">${x.pos}</span><div style="min-width:0"><div class="sqname">${esc(x.n)} <span class="muted small">${x.age} · ${x.r}</span></div><div class="small">${how}</div></div>${other ? crest(other, 'mini') : ''}${role ? `<span class="chip ${role === 'Starter' ? 'good' : ''}">${role}</span>` : ''}</div>`;
   };
-  return `<section class="card"><div class="row"><h2>Squad changes</h2><span class="small muted">${log.out.length} out · ${log.in.length} in</span></div>
+  return `<section class="card"><details class="mdrop" style="padding:0" ${sqOpen.v ? 'open' : ''} ontoggle="sqOpen.v = this.open"><summary><h2>Squad changes</h2><span class="small muted">${log.out.length} out · ${log.in.length} in</span></summary><div class="mbody">
     ${log.out.length ? `<div class="small muted"><b>Out</b></div>${log.out.map(x => row(x, 'out')).join('')}` : ''}
-    ${log.in.length ? `<div class="small muted"><b>In</b></div>${log.in.map(x => row(x, 'in')).join('')}` : ''}</section>`;
+    ${log.in.length ? `<div class="small muted"><b>In</b></div>${log.in.map(x => row(x, 'in')).join('')}` : ''}</div></details></section>`;
 }
 
 // Buy your way out of a blocked move: the full release fee always works, half improves the odds.
@@ -724,7 +725,7 @@ function viewHome() {
   const tbl = leagueTable(myClub().league), myPos = tbl.findIndex(r => r.id === p.club) + 1;
   const money_ = `<section class="card"><div class="row"><h2>This week</h2><span class="small">Table: <b>${S.table[p.club].p ? myPos + ordinal(myPos) : "–"}</b></span></div>
     <div class="row small"><span class="muted">Wage + sponsors − rent</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${weeklyNet() >= 0 ? '+' : ''}${money(weeklyNet())}</b></div></section>`;
-  return matchCard + offersBanner() + squadMovesCard() + managerCard() + form + money_ + inboxHtml();
+  return matchCard + offersBanner() + managerCard() + form + money_ + inboxHtml();
 }
 
 // ---------- calendar ----------
@@ -1424,7 +1425,7 @@ function viewClub() {
     const rows = c.players.map(pl => ({ ...pl, age: ageOf(pl.by) }));
     rows.push({ n: p.name, pos: p.pos, age: ageOf(p.by), nat: p.nat, r: calcOVR(), me: true });
     rows.sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos) || b.r - a.r);
-    body = `<section class="card"><div class="tablewrap"><table><thead><tr><th>Pos</th><th>Player</th><th>Nat</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
+    body = squadMovesCard() + `<section class="card"><div class="tablewrap"><table><thead><tr><th>Pos</th><th>Player</th><th>Nat</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.n)}</td><td class="natcell">${natFlag(r.nat)}</td><td class="r">${r.age}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
       </tbody></table></div></section>`;
   } else if (clubView === 'results') {

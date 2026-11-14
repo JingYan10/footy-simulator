@@ -4500,7 +4500,7 @@ function announceSquadMoves() {
   const outs = log.out.map(x => `${x.n} (${x.pos}, ${x.why === 'retired' ? 'retired' : `sold to ${club(x.to).name}`})`);
   const ins = log.in.map(x => `${x.n} (${x.pos}, ${x.from ? `from ${club(x.from).name}` : 'academy'}, ${(arrivalRole(c, x.n) || 'Reserve').toLowerCase()})`);
   msg(`Squad changes at ${c.name}. Out: ${outs.join(', ') || 'nobody'}. In: ${ins.join(', ') || 'nobody'}.`);
-  notify('good', `Squad changes at ${c.name}`, `${log.out.length} out, ${log.in.length} in this summer. See who left and who arrived on your Home screen.`);
+  notify('good', `Squad changes at ${c.name}`, `${log.out.length} out, ${log.in.length} in this summer. See who left and who arrived under Club › Squad.`);
 }
 
 function ageWorld() {
