@@ -711,3 +711,9 @@ td.clubcrest .crest { margin: 0; }
 .rstat .stack i { position: relative; display: inline-flex; font-style: normal; }
 .rstat .stack i + i { margin-left: -7px; }
 .rstat .stack .ico { fill: var(--surface-2); }
+/* Squad changes card: one row per player who left or arrived */
+.sqmove { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sqmove > div { flex: 1; }
+.sqmove .sqname { font-weight: 700; overflow-wrap: anywhere; }
+.sqmove .pos-chip { flex: none; width: 36px; text-align: center; font: 800 11px var(--display); padding: 2px 0; border-radius: 4px; background: var(--surface-2); color: var(--chalk); }
+.sqmove .chip { flex: none; }

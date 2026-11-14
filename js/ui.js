@@ -373,6 +373,7 @@ function offersHtml() {
       ? `<div class="small bad"><b>They will only negotiate ${left} more time${left !== 1 ? 's' : ''}.</b> If a negotiation fails, they walk away.</div>`
       : o.clause ? `<div class="small muted"><b>Loyalty clause:</b> no club can bid for you, and no salary talks or transfer requests, until the end of ${seasonLabel(clauseEnd(o.clause))}.</div>${chanceBoosted() ? '' : `<div class="small good">Sign it and you are part of their plans: +${Math.round(CHANCE_BOOST * 100)}% start chance at ${esc(c.name)} for good.</div>`}`
       : o.raise && !negLocked() && !o.talksOver ? '<div class="small muted">Starts now: same contract, same end date, role and clauses, just more money.</div>'
+      : o.now && !o.talksOver ? `<div class="small muted">Starts now: the new wage from this week.</div>`
       : o.type === 'renew' && S.phase === 'season' && !negLocked() && !o.talksOver ? '<div class="small muted">Starts next season: you finish this season on your current deal.</div>'
       : o.talksOver ? '<div class="small bad">Talks broke down. You can still sign this offer or decline it, but not negotiate.</div>'
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
@@ -380,6 +381,7 @@ function offersHtml() {
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
       <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.raise ? 'Pay rise' : o.callup ? 'Call-up' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b><small>until end of ${seasonLabel(offerEnds(o))}</small></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
+      ${o.keep && S.clubs[o.keep] ? `<div class="small flood"><b>Move blocked:</b> ${esc(c.name)} refused to sell you to ${esc(club(o.keep).name)}. This is their offer to keep you happy: sign it and you carry on, no hard feelings.</div>${buyoutHtml()}` : ''}
       ${o.callup ? `<div class="small good"><b>First-team call-up:</b> ${esc(c.name)} want to promote you from their second team. No fee, no transfer window needed. Answer within ${Math.max(1, CALLUP_LAPSE - (absWeek() - (o.at || 0)))} week${CALLUP_LAPSE - (absWeek() - (o.at || 0)) === 1 ? '' : 's'}.</div>` : ''}
       ${o.desperate ? `<div class="small good"><b>Desperate:</b> ${esc(c.name)} badly need a player like you and are paying well over the odds.</div>` : ''}
       ${o.type === 'transfer' ? signRoleNote(c) : ''}
@@ -466,8 +468,50 @@ function boardTargetsHtml(c, m) {
     promo = `<div class="obj"><div class="row small"><span><b>Promotion</b> · Win promotion (top ${PROMOTE})</span>${right}</div>
       <div class="small ${done === 'miss' ? 'bad' : 'muted'}">${note}</div></div>`;
   }
-  return season + promo + short;
+  const cups = (m.cups || []).map(t => {
+    const s = cupTargetState(c, t), done = t.result;
+    const comp = t.kind === 'euro' ? S.euro && S.euro[t.key] : t.kind === 'cup' ? S.cups && S.cups[t.key] : null;
+    const where = t.kind === 'trophy' ? `${s.reached} won so far` : t.kind === 'euro' ? (s.reached >= 6 ? 'Winners' : EURO_STAGE[s.reached]) : comp ? (s.reached >= Math.round(Math.log2(comp.size)) ? 'Winners' : cupRoundLabel(comp, s.reached)) : '';
+    const right = done === 'hit' ? '<span class="num good">Done</span>' : done === 'miss' ? '<span class="num bad">Missed</span>' : `<span class="num">${esc(where)}</span>`;
+    const note = done === 'hit' ? 'Target reached: the board is pleased.' : done === 'miss' ? (t.kind === 'trophy' ? 'No trophy this season.' : 'Knocked out short of the target.')
+      : t.kind === 'trophy' ? 'The league, any domestic cup or a European cup · judged at the end of the season' : `Still in · now at: ${esc(where).toLowerCase()}`;
+    const label = t.kind === 'trophy' ? 'Trophies' : t.kind === 'euro' ? 'Europe' : 'Cup';
+    return `<div class="obj"><div class="row small"><span><b>${label}</b> · ${esc(cupTargetText(t))}</span>${right}</div><div class="small ${done === 'miss' ? 'bad' : 'muted'}">${note}</div></div>`;
+  }).join('');
+  return season + promo + cups + short;
 }
+
+// Your club's summer comings and goings, on Home for the first 8 weeks of the season: who retired,
+// who was sold and where, who arrived (from which club, or up from the academy) and the role each
+// new player walks into.
+function squadMovesCard() {
+  const c = myClub(), log = S.phase === 'season' && S.week <= 8 && S.squadMoves && S.squadMoves.season === S.season && S.squadMoves.clubs[c.id];
+  if (!log || (!log.out.length && !log.in.length)) return '';
+  const row = (x, side) => {
+    const other = side === 'out' ? (x.why === 'retired' ? null : x.to) : x.from;
+    const how = side === 'out' ? (x.why === 'retired' ? '<span class="muted">Retired</span>' : `<span class="muted">Sold to</span> ${esc(club(other).name)}`)
+      : other ? `<span class="muted">From</span> ${esc(club(other).name)}` : '<span class="muted">Academy</span>';
+    const role = side === 'in' ? arrivalRole(c, x.n) : null;
+    return `<div class="sqmove"><span class="pos-chip">${x.pos}</span><div style="min-width:0"><div class="sqname">${esc(x.n)} <span class="muted small">${x.age} · ${x.r}</span></div><div class="small">${how}</div></div>${other ? crest(other, 'mini') : ''}${role ? `<span class="chip ${role === 'Starter' ? 'good' : ''}">${role}</span>` : ''}</div>`;
+  };
+  return `<section class="card"><div class="row"><h2>Squad changes</h2><span class="small muted">${log.out.length} out · ${log.in.length} in</span></div>
+    ${log.out.length ? `<div class="small muted"><b>Out</b></div>${log.out.map(x => row(x, 'out')).join('')}` : ''}
+    ${log.in.length ? `<div class="small muted"><b>In</b></div>${log.in.map(x => row(x, 'in')).join('')}` : ''}</section>`;
+}
+
+// Buy your way out of a blocked move: the full release fee always works, half improves the odds.
+function buyoutHtml() {
+  const b = S.player.blockedMove;
+  if (!b || !b.bid || !S.clubs[b.club]) return '';
+  const full = b.fee, half = Math.round(b.fee / 2), m = S.player.money;
+  return `<div class="small muted">Or pay your own release fee to force the move to ${esc(club(b.club).name)}: all of it (${money(full)}) and they must let you go; half (${money(half)}) gives a ${Math.round(buyoutOdds(true) * 100)}% chance they agree, and you keep your money if they don't.</div>
+    <div class="btns"><button class="btn sm good" data-act="payRelease" data-v="full" ${m >= full ? '' : 'disabled'}>Pay ${money(full)}</button><button class="btn sm" data-act="payRelease" data-v="half" ${m >= half && !b.triedHalf ? '' : 'disabled'}>${b.triedHalf ? 'Half refused' : `Offer half: ${money(half)}`}</button></div>
+    ${m < half ? `<div class="small bad">You have ${money(m)}: not enough for either.</div>` : ''}`;
+}
+
+// Under the matchday button while your club is blocking a move: refuse to play in protest.
+const refuseBtn = () => canRefusePlay() ? `<button class="btn danger block" data-act="refusePlay">Refuse to play</button>
+  <div class="small muted" style="text-align:center">${esc(myClub().name)} blocked your move to ${esc(club(S.player.blockedMove.club).name)}. Refuse and you are frozen out until the next window.</div>` : '';
 
 const mgrOpen = { board: false, mgr: true };
 function managerCard() {
@@ -652,19 +696,20 @@ function viewHome() {
       ${euroLine()}
       ${orderBox()}
       <button class="btn primary block" data-act="matchday">To matchday</button>
+      ${refuseBtn()}
     </section>`;
   } else {
     matchCard = `<section class="card hero"><h2>Week ${S.week}</h2>${weekStrip()}<p class="muted" style="margin:0">${leagueDone() ? 'The league game is done. Next up: the midweek game.' : 'No league match this week. Rest, train and get ready.'}</p>
       ${S.phase === 'season' && !p.injured ? (p.slots > 0 ? `<div class="small flood" style="text-align:center">${p.slots} training session${p.slots > 1 ? 's' : ''} left this week</div>` + tiredNote('div') : '<div class="small bad" style="text-align:center">You have already trained this week: no sessions left until next week.</div>') : ''}
       ${euroLine()}
-      ${midweekFixture() ? '<button class="btn primary block" data-act="matchday">To matchday</button>' : '<button class="btn primary block" data-act="advance">Next week</button>'}</section>`;
+      ${midweekFixture() ? '<button class="btn primary block" data-act="matchday">To matchday</button>' + refuseBtn() : '<button class="btn primary block" data-act="advance">Next week</button>'}</section>`;
   }
   const form = p.form.length ? `<section class="card"><div class="row"><h2>Form</h2><span class="small muted">Season avg ${avgRating(p.st)}</span></div><div class="form">${p.form.map(r => `<span class="rate-box ${rateTier(r)}">${r.toFixed(1)}</span>`).join('')}</div>
     <div class="small muted">${p.st.apps} apps · ${p.pos === 'GK' ? `${p.st.saves || 0} saves · ${p.st.cleanAll || 0} clean sheet${p.st.cleanAll === 1 ? '' : 's'}` : `${p.st.goals} goals · ${p.st.assists} assists${TACKLERS.includes(p.pos) ? ` · ${p.st.tackles || 0} tackles` : ''}`}</div></section>` : '';
   const tbl = leagueTable(myClub().league), myPos = tbl.findIndex(r => r.id === p.club) + 1;
   const money_ = `<section class="card"><div class="row"><h2>This week</h2><span class="small">Table: <b>${S.table[p.club].p ? myPos + ordinal(myPos) : "–"}</b></span></div>
     <div class="row small"><span class="muted">Wage + sponsors − rent</span><b class="num ${weeklyNet() >= 0 ? 'good' : 'bad'}">${weeklyNet() >= 0 ? '+' : ''}${money(weeklyNet())}</b></div></section>`;
-  return matchCard + offersBanner() + managerCard() + form + money_ + inboxHtml();
+  return matchCard + offersBanner() + squadMovesCard() + managerCard() + form + money_ + inboxHtml();
 }
 
 // ---------- calendar ----------
@@ -2225,9 +2270,12 @@ document.addEventListener('click', e => {
     case 'accept': {
       const o = S.offers.find(x => x.id === v), burned = o && o.type === 'transfer' ? rivalBetrayal(o.club) : [];
       if (burned.length) { const names = burned.map(id => esc(club(id).name)).join(' and '); confirmSheet(`Join ${esc(club(o.club).name)}?`, `They are rivals of ${names}. If you join them, ${names} fans and board will hate you, and they will never approach you again.`, 'acceptGo', 'Sign anyway', v); return; }
-      acceptOffer(v); toast('Contract signed'); render(); return;
+      { const r = acceptOffer(v); toast(r === 'blocked' ? 'Move blocked by your club' : 'Contract signed'); render(); nextPopup(); } return;
     }
-    case 'acceptGo': acceptOffer(v); closeModal(); toast('Contract signed'); render(); return;
+    case 'refusePlay': confirmSheet('Refuse to play?', `${esc(myClub().mgr)} will freeze you out at once (affection −30) and the board will be furious (−25). You will not play, not even from the bench, until the next transfer window opens. Then the club puts you on the transfer list.`, 'refuseGo', 'Refuse to play'); return;
+    case 'refuseGo': refusePlay(); closeModal(); render(); nextPopup(); return;
+    case 'payRelease': { const r = payRelease(v === 'half'); toast(r === 'moved' ? 'You are on your way' : r === 'no' ? 'They said no' : 'Not enough money'); render(); nextPopup(); } return;
+    case 'acceptGo': { const r = acceptOffer(v); closeModal(); toast(r === 'blocked' ? 'Move blocked by your club' : 'Contract signed'); render(); nextPopup(); } return;
     case 'negAsk': showNegotiate(v); return;
     case 'neg': { const [id, i] = v.split(':'); const r = negotiate(id, +i); closeModal(); toast(r === 'accepted' ? 'They agreed!' : r === 'withdrawn' ? 'Offer withdrawn' : 'They said no'); render(); return; }
     case 'decline': declineOffer(v); render(); return;
