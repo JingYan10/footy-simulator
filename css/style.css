@@ -366,7 +366,7 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .result { border-radius: 10px; background: var(--surface-2); }
 /* Champions League nights stand out */
 .result.ucl { box-shadow: inset 0 0 0 1.5px #7cc7ff; background: linear-gradient(rgba(124, 199, 255, .07), rgba(124, 199, 255, .07)), var(--surface-2); }
-.result summary { list-style: none; display: grid; grid-template-columns: 1fr 26px; grid-template-areas: "meta badge" "line line"; gap: 4px 8px; padding: 8px 10px; cursor: pointer; }
+.result summary { list-style: none; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "meta badge" "line line"; gap: 4px 8px; padding: 8px 10px; cursor: pointer; }
 .result summary::-webkit-details-marker { display: none; }
 .rmeta { grid-area: meta; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rcomp { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--surface); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -382,7 +382,14 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .loyal.away { border-left-color: var(--flood); }
 .rline { grid-area: line; }
 .rline .tie2, .rline .tie2.me { background: transparent; padding: 0; box-shadow: none; }
-.rbadge { grid-area: badge; justify-self: end; width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font: 800 13px var(--display); color: var(--flood-ink); }
+/* Your goals, assists (or bench) and rating, then W/D/L: every box 40 × 22 */
+.rright { grid-area: badge; justify-self: end; display: flex; align-items: center; gap: 4px; }
+.rstat, .rate-box.rr { box-sizing: border-box; width: 40px; min-width: 40px; height: 22px; padding: 0 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
+.rstat { background: none; color: var(--chalk); font: 800 12px var(--display); }
+.rstat .ico { width: 14px; height: 14px; flex: none; }
+.rstat .bench { color: var(--muted); }
+.rate-box.rr { font-size: 12px; line-height: 1; }
+.rbadge { justify-self: end; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font: 800 13px var(--display); color: var(--flood-ink); }
 .rbadge.good { background: var(--good); }
 .rbadge.bad { background: var(--bad); }
 .rbadge.draw { background: var(--muted); }
@@ -687,3 +694,20 @@ td.clubcrest .crest { margin: 0; }
 .rate-box.r7 { background: #00c424; } .rate-box.r8 { background: #00adc4; } .rate-box.r9 { background: #374df5; }
 .rate-box.none { background: #a4a9b3; }
 .bigstat .rate-box { min-width: 46px; font-size: 20px; padding: 2px 6px; }
+/* Manager card: two dropdowns, Board and Manager */
+.mgrcard { gap: 0; padding: 4px 14px; }
+.mdrop { padding: 10px 0; }
+.mbody { display: grid; gap: 10px; margin-top: 10px; min-width: 0; }
+.mdrop + .mdrop { border-top: 1px solid var(--line); }
+.mdrop[open] { padding-bottom: 14px; }
+.mdrop > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.mdrop > summary::-webkit-details-marker { display: none; }
+.mdrop > summary > .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto; }
+.mdrop > summary::after { content: ""; flex: none; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin: -4px 2px 0 4px; transition: transform .15s; }
+.mdrop[open] > summary::after { transform: rotate(-135deg); margin-top: 4px; }
+.mbody > * { margin: 0; }
+/* 2–3 goals or assists in a result: the icons overlap, the first one on top */
+.rstat .stack { display: inline-flex; align-items: center; }
+.rstat .stack i { position: relative; display: inline-flex; font-style: normal; }
+.rstat .stack i + i { margin-left: -7px; }
+.rstat .stack .ico { fill: var(--surface-2); }

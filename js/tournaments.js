@@ -528,6 +528,9 @@ function simTeams(h, a, user, home = 2) {
     const adj = base + (withMe - base) * user.mins / 90;
     if (mineHome) sh = adj; else sa = adj;
   }
+  // The manager's rating counts in cup games too.
+  if (isClub(h) && S.clubs[h]) sh += mgrEdge(club(h));
+  if (isClub(a) && S.clubs[a]) sa += mgrEdge(club(a));
   const gh = poisson(1.35 * Math.exp((sh - sa + home) / 13));
   const ga = poisson(1.35 * Math.exp((sa - sh - home) / 13));
   const scorers = [], onPitch = userMinutes(user);

@@ -131,10 +131,10 @@ const TIER_LABEL = { 1: 'Top flight', 2: '2nd tier', 3: '3rd tier' };
 function renderChoose() {
   const ovr = calcOVR();
   const cards = S.startChoices.map(id => {
-    const c = club(id), l = league(c.league), tier = l.tier;
-    const note = tier === 1 ? 'Hard to break into. Barely play and you will be loaned out.' : tier === 2 ? 'A good level to learn, with a fair chance of minutes.' : 'Regular football likely once your OVR reaches the 60s.';
+    const c = club(id), l = league(c.league), tier = l.tier, par = parentOf(c);
+    const note = par ? `${esc(par.name)}'s second team: their academy scouts rate you highly. Play well here and ${esc(par.name)} will call you up to their first team.` : tier === 1 ? 'Hard to break into. Barely play and you will be loaned out.' : tier === 2 ? 'A good level to learn, with a fair chance of minutes.' : 'Regular football likely once your OVR reaches the 60s.';
     return `<div class="offer">
-      <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${l.name} · ${l.country}</div></div></div><span class="chip ${tier === 1 ? 'flood' : ''}">${TIER_LABEL[tier]}</span></div>
+      <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${l.name} · ${l.country}</div></div></div><span class="chip ${tier === 1 || par ? 'flood' : ''}">${par ? 'Academy' : TIER_LABEL[tier]}</span></div>
       <div class="kv"><div><small>Team</small><b>${Math.round(teamStrength(c))}</b></div><div><small>Role</small><b>${squadStatus(c, ovr, 50)}</b></div><div><small>Wage</small><b class="num">${money(startWage(id))}/wk</b></div></div>
       <div class="small muted">Manager: ${c.mgr}. ${note}</div>
       <button class="btn good sm" data-act="choose" data-v="${id}">Sign for ${c.name}</button>
@@ -378,8 +378,10 @@ function offersHtml() {
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
-      <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.raise ? 'Pay rise' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
+      <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.raise ? 'Pay rise' : o.callup ? 'Call-up' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b><small>until end of ${seasonLabel(offerEnds(o))}</small></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
+      ${o.callup ? `<div class="small good"><b>First-team call-up:</b> ${esc(c.name)} want to promote you from their second team. No fee, no transfer window needed. Answer within ${Math.max(1, CALLUP_LAPSE - (absWeek() - (o.at || 0)))} week${CALLUP_LAPSE - (absWeek() - (o.at || 0)) === 1 ? '' : 's'}.</div>` : ''}
+      ${o.desperate ? `<div class="small good"><b>Desperate:</b> ${esc(c.name)} badly need a player like you and are paying well over the odds.</div>` : ''}
       ${o.type === 'transfer' ? signRoleNote(c) : ''}
       <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
       ${o.type === 'renew' && !o.raise && ROLE_RANK[role] >= 2 ? `<div class="small good">Sign as ${role.toLowerCase()} and your starting place is protected for ${RENEW_PROMISE} games.</div>` : ''}
@@ -438,6 +440,36 @@ const BAND_NOTE = {
   new: 'Hit his targets to build trust. It decides how far salary talks can go.',
 };
 
+// The board's targets for the manager, drawn like your own objectives.
+function boardTargetsHtml(c, m) {
+  if (!m.target || m.tSeason !== S.season) return '';
+  const tbl = S.table && S.table[c.id] ? leagueTable(c.league) : [], pos = tbl.findIndex(r => r.id === c.id) + 1;
+  const onCourse = pos && pos <= m.target.top;
+  const season = `<div class="small muted" style="margin-top:4px"><b>The board's targets for him</b></div><div class="obj"><div class="row small"><span><b>Season</b> · ${esc(m.target.label)}</span><span class="num ${onCourse ? 'good' : 'bad'}">${pos ? `${pos}${ordinal(pos)}` : '–'}</span></div>
+    <div class="small muted">Judged at the end of the season · ${onCourse ? 'on course' : 'off course'}</div></div>`;
+  let short = '';
+  if (m.goal) {
+    const g = m.goal, pr = shortProgress(c, g), val = g.kind === 'wins' ? pr.w : pr.l;
+    const pct = g.kind === 'wins' ? Math.min(100, val / g.need * 100) : Math.min(100, pr.played / g.games * 100);
+    const ok = g.kind === 'wins' ? val >= g.need : val <= g.need;
+    short = `<div class="obj"><div class="row small"><span><b>Next ${g.games}</b> · ${shortText(g)}</span><span class="num ${g.kind === 'wins' ? (ok ? 'good' : '') : ok ? '' : 'bad'}">${g.kind === 'wins' ? `${val}/${g.need} won` : `${val} lost`}</span></div>
+      <div class="bar"><i class="${g.kind === 'wins' ? (ok ? '' : 'mid') : ok ? '' : 'low'}" style="width:${pct}%"></i></div>
+      <div class="small muted">${pr.played}/${g.games} games played</div></div>`;
+  }
+  let promo = '';
+  if (m.promo) {
+    const r = promoRace(c), done = m.promo.result;
+    const right = done === 'hit' ? '<span class="num good">Promoted</span>' : done === 'miss' ? '<span class="num bad">Missed</span>'
+      : r.behind > 0 ? `<span class="num bad">${r.behind} pt${r.behind !== 1 ? 's' : ''} off</span>` : `<span class="num good">${r.behind < 0 ? `${-r.behind} pt${r.behind !== -1 ? 's' : ''} clear` : 'level'}</span>`;
+    const note = done === 'hit' ? 'Delivered: the board is delighted.' : done === 'miss' ? 'Mathematically gone: the board counted it as missed.'
+      : `Still possible · ${r.left} game${r.left !== 1 ? 's' : ''} left (${r.left * 3} points to play for) · missed the moment it's out of reach`;
+    promo = `<div class="obj"><div class="row small"><span><b>Promotion</b> · Win promotion (top ${PROMOTE})</span>${right}</div>
+      <div class="small ${done === 'miss' ? 'bad' : 'muted'}">${note}</div></div>`;
+  }
+  return season + promo + short;
+}
+
+const mgrOpen = { board: false, mgr: true };
 function managerCard() {
   const p = S.player, c = myClub(), eff = Math.round(effAff()), band = objBand(), rate = objRate();
   const mood = eff >= 75 ? 'Loves you' : eff >= 60 ? 'Trusts you' : eff >= 45 ? 'Neutral' : eff > FROZEN_AFF ? 'Unconvinced' : eff > SACK_AFF + 3 ? 'Frozen out' : 'On the brink';
@@ -456,7 +488,18 @@ function managerCard() {
       <div class="bar"><i class="${o.progress >= o.target ? '' : 'mid'}" style="width:${pct}%"></i></div>
       <div class="small muted">${o.span === 'season' ? 'Ends with the season' : `Until week ${o.endWeek}`} · ${hint}${o.oop ? ` · <span class="flood">lowered for ${o.oop} game${o.oop > 1 ? 's' : ''} out of position</span>` : ''}</div></div>`;
   }).join('') || '<p class="small muted" style="margin:0">No objectives right now.</p>';
-  return `<section class="card"><div class="row"><h2>Manager</h2><span class="small">${c.mgr}</span></div>
+  const mj = mgrOf(c), mjob = Math.round(mj.job);
+  // Two dropdowns: the board and its manager (his rating, its affection, its targets for him), then
+  // the manager and you. Which ones are open is remembered while the game is open.
+  const jcls = mjob >= 50 ? 'good' : mjob >= 25 ? 'flood' : 'bad';
+  return `<section class="card mgrcard">
+    <details class="mdrop" ${mgrOpen.board ? 'open' : ''} ontoggle="mgrOpen.board = this.open"><summary><h2>Board</h2><span class="small"><span class="${jcls}">${jobLabel(mjob)}</span> · <b class="num">${mjob}</b></span></summary><div class="mbody">
+    <div class="row small"><span class="muted">Manager</span><span>${esc(c.mgr)} · <span class="muted">rating</span> <b>${mj.r}</b></span></div>
+    <div class="energy" style="margin:0"><span>Board affection</span><div class="bar"><i class="${mjob >= 50 ? '' : mjob >= 25 ? 'mid' : 'low'}" style="width:${mjob}%"></i></div><b class="num">${mjob}</b></div>
+    <div class="small ${mjob < 25 ? 'bad' : 'muted'}">How the board feels about ${esc(c.mgr)}: ${jobLabel(mjob).toLowerCase()}.${mjob < 25 ? ' Keep losing and he will be sacked.' : ''}</div>
+    ${boardTargetsHtml(c, mj)}</div></details>
+    <details class="mdrop" ${mgrOpen.mgr ? 'open' : ''} ontoggle="mgrOpen.mgr = this.open"><summary><h2>Manager</h2><span class="small">${esc(c.mgr)} · <span class="${cls === 'low' ? 'bad' : cls === 'mid' ? 'flood' : 'good'}">${mood}</span> <b class="num">${eff}</b></span></summary><div class="mbody">
+    <div class="small muted"><b>${esc(c.mgr)} and you</b></div>
     <div class="energy" style="margin:0"><span>${mood}</span><div class="bar"><i class="${cls}" style="width:${eff}%"></i></div><b class="num">${eff}</b></div>
     ${p.affPen >= 1 ? `<div class="small bad">−${Math.round(p.affPen)} from contract talks, fading each week</div>` : ''}
     ${eff <= FROZEN_AFF + 5 ? `<div class="small bad"><b>Warning:</b> at ${FROZEN_AFF} he freezes you out, and at ${SACK_AFF} he tears up your contract.</div>` : ''}
@@ -471,7 +514,7 @@ function managerCard() {
     ${p.chance > 0 ? `<div class="small good">Your chance: he starts you in most games (${Math.round(CHANCE_START * 100)}%) for ${p.chance} more league game${p.chance !== 1 ? 's' : ''}.</div>` : ''}
     ${chanceBoosted() ? `<div class="small good">He trusts you for good here: +${Math.round(CHANCE_BOOST * 100)}% start chance at ${esc(c.name)}.</div>` : (p.chanceStreak || 0) > 0 ? `<div class="small muted">Chances taken in a row: ${p.chanceStreak}/${CHANCE_STREAK}. Make it ${CHANCE_STREAK} and he trusts you for good (+${Math.round(CHANCE_BOOST * 100)}% start chance here).</div>` : ''}
     ${!canAskChance() && chanceCooldown() && !p.chance && !chanceObjective() && startChance().start < .2 ? `<div class="small muted">You can ask ${esc(c.mgr)} for another chance in ${chanceCooldown()} week${chanceCooldown() !== 1 ? 's' : ''}.</div>` : ''}
-    ${canAskChance() ? `<div class="chance-ask"><div class="small muted">Only a ${Math.round(startChance().start * 100)}% chance of starting. Ask ${esc(c.mgr)} to play you: you'll start ${Math.round(CHANCE_START * 100)}% of the next ${CHANCE_GAMES} league games, but he sets a 3-month target ${CHANCE_HARDER}× tougher than usual. Hit it and he warms to you (+7); miss it and affection drops by 6.</div><button class="btn sm primary" data-act="askChance">Ask for a chance</button></div>` : ''}</section>`;
+    ${canAskChance() ? `<div class="chance-ask"><div class="small muted">Only a ${Math.round(startChance().start * 100)}% chance of starting. Ask ${esc(c.mgr)} to play you: you'll start ${Math.round(CHANCE_START * 100)}% of the next ${CHANCE_GAMES} league games, but he sets a 3-month target ${CHANCE_HARDER}× tougher than usual. Hit it and he warms to you (+7); miss it and affection drops by 6.</div><button class="btn sm primary" data-act="askChance">Ask for a chance</button></div>` : ''}</div></details></section>`;
 }
 
 function orderBox() {
@@ -1298,7 +1341,8 @@ const natFlag = nat => typeof FLAG_DATA !== 'undefined' && FLAG_DATA[nat] ? `<im
 function viewClub() {
   const c = myClub();
   const lid = viewLeague || c.league;
-  const head = `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${c.name}</b><div class="small muted">Manager: ${c.mgr} (${NATIONS[c.mgrNat] || c.mgrNat})</div></div>${crest(c.id)}</div>
+  const head = `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${c.name}</b><div class="small muted">Manager: ${c.mgr} (${NATIONS[c.mgrNat] || c.mgrNat}) · Rating ${mgrOf(c).r} · ${jobLabel(mgrOf(c).job)}</div></div>${crest(c.id)}</div>
+    ${parentOf(c) ? `<div class="small flood">${esc(parentOf(c).name)}'s second team: play well and get called up to their first team (team rating ${Math.round(teamStrength(parentOf(c)))}).</div>` : ''}
     <div class="small muted">${league(c.league).name} (${TIER_LABEL[clubTier(c)].toLowerCase()}) · Team rating ${Math.round(teamStrength(c))} · Your role: <b style="color:var(--chalk)">${squadStatus()}</b></div></section>`;
   const seg = `<div class="seg">${[['table', 'Table'], ['results', 'Results'], ['rivals', 'Rivals'], ['squad', 'Squad'], ['scorers', 'Goals'], ['assists', 'Assists'], ['cups', 'Cups']].map(([k, l]) => `<button class="${clubView === k ? 'on' : ''}" data-act="clubView" data-v="${k}">${l}</button>`).join('')}</div>`;
   const countries = [...new Set(S.leagues.map(l => l.country))];
@@ -1362,6 +1406,16 @@ document.addEventListener('click', e => {
 }, true);
 
 // ---------- results ----------
+const BENCH = '<svg class="ico bench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Bench"><rect x="4" y="4" width="16" height="5" rx="1"/><path d="M7 9v4M17 9v4M2.5 13h19M5 13v7M19 13v7"/></svg>';
+// Your line in a result, left of W/D/L: "2× ball" and "1× boot" boxes, then your rating. Didn't
+// play: a bench box and a grey N/A. Every box is the same size.
+function resStats(r) {
+  if (!r.mins) return `<span class="rstat">${BENCH}</span><span class="rate-box none rr">N/A</span>`;
+  // Two or three goals (or assists): that many icons, each overlapping the next. Four or more: "4×" and one.
+  const box = (n, ic) => !n ? '' : n > 3 ? `<span class="rstat"><b>${n}×</b>${ic}</span>`
+    : `<span class="rstat"><span class="stack">${Array.from({ length: n }, (_, i) => `<i style="z-index:${n - i}">${ic}</i>`).join('')}</span></span>`;
+  return box(r.goals, BALL) + box(r.assists, BOOT) + (r.rating ? rateBox(r.rating, 1).replace('rate-box', 'rate-box rr') : '<span class="rate-box none rr">N/A</span>');
+}
 // Every game your club has played this season, newest first. Tap one for the goals and your numbers.
 function resultsView() {
   const list = S.results || [];
@@ -1377,7 +1431,7 @@ function resultsView() {
     return `<details class="result ${r.comp === 'Champions League' ? 'ucl' : ''}"><summary>
         <span class="rmeta"><span class="small muted">Wk ${Math.min(r.week, SEASON_WEEKS)}</span><span class="rcomp ${r.kind || 'league'}">${esc(r.comp || 'League')}</span>${r.derby ? `<span class="rderby">${esc(r.derby)}</span>` : ''}</span>
         <span class="rline">${tieRow(h, a, { gh, ga, pens: r.pens, pensScore: r.pensScore, winner: r.winner || (gh > ga ? h : ga > gh ? a : null) })}</span>
-        <span class="rbadge ${res[1]}">${res[0]}</span></summary>
+        <span class="rright">${resStats(r)}<span class="rbadge ${res[1]}">${res[0]}</span></span></summary>
       <div class="rbody">${r.stage ? `<div class="small muted">${esc(r.stage)}</div>` : ''}${goals}<div class="small muted">You: ${me}</div></div></details>`;
   }).join('');
   return `<section class="card"><h2>Results</h2><div class="results">${rows}</div></section>`;
