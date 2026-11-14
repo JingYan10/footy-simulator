@@ -1584,6 +1584,8 @@ function checkTermination() {
   p.offerLock = 0;
   p.order = null;
   S.offers = [];
+  p.freeSince = absWeek();
+  p.netAt = null;
   msg(`${c.mgr} has had enough. ${c.name} have terminated your contract. You are a free agent.`, 'bad');
   notify('bad', 'Contract terminated', `Manager affection fell to ${SACK_AFF}. ${c.name} have released you. Sign for a new club to keep playing.`);
   generateOffers(randi(2, 4), true);
@@ -1594,9 +1596,128 @@ function findClubs() {
   const p = S.player, wk = S.season * 100 + S.week;
   if (!p.needsContract || p.lastSearch === wk) return false;
   p.lastSearch = wk;
-  generateOffers(randi(1, 3), true);
+  generateOffers(randi(1, 2), true);
   save();
   return true;
+}
+
+// ---------- free agency ----------
+// Without a club no wage comes in, but the season goes on: each week clubs weigh you up, your
+// agent works the phones, and offers on the table lapse after a few weeks.
+const FA_OFFER_WEEKS = 3, FA_NET_WEEKS = 6, FA_COUNTER = 1.25, FA_TRAIN = .5, FA_RUST = .03;
+const idleWeeks = () => S.player.freeSince == null ? 0 : Math.max(0, absWeek() - S.player.freeSince);
+// What a club thinks a free agent is worth a week: the price for your OVR, position and age in its
+// league (Salaries.xlsx, via marketWage or the veteran rules), moved by recent form (80% to 130%),
+// and 3% less for every week without a club, down to 75%.
+function freeValue(c, base) {
+  const form = clamp(valueForm(S.player), .8, 1.3), idle = Math.max(.75, 1 - idleWeeks() * .03);
+  return Math.max(minWage(c), Math.round(base * form * idle / 10) * 10);
+}
+// Your asking wage against the club's valuation: at or under it they pay what you ask, up to 25%
+// over it they offer their valuation instead, beyond that they walk away (returns false).
+function judgeAsk(o) {
+  const p = S.player, c = club(o.club), val = freeValue(c, o.wage);
+  o.value = val;
+  o.faWeek = absWeek();
+  if (!p.askWage) { o.wage = val; return true; }
+  if (p.askWage <= val) { o.wage = Math.max(minWage(c), Math.round(p.askWage / 10) * 10); return true; }
+  if (p.askWage <= val * FA_COUNTER) { o.wage = val; o.counter = true; return true; }
+  (p.faRefused = p.faRefused || []).push(c.name);
+  return false;
+}
+// The wage you would like as a free agent (0 clears it and takes what clubs think you are worth).
+function setAskWage(v) {
+  const p = S.player;
+  if (!p.needsContract) return false;
+  p.askWage = Math.max(0, Math.round((+v || 0) / 10) * 10);
+  save();
+  return true;
+}
+// A guide for the asking wage: what a club at your current level would pay you now.
+function freeGuide() {
+  const c = myClub();
+  return c ? freeValue(c, marketWage(calcOVR(), c)) : 0;
+}
+// After six weeks with nothing on the table, a lower-league club offers a one-year deal at its
+// usual rate, whatever you were asking.
+function safetyNet() {
+  const p = S.player, ovr = calcOVR();
+  const open = c => c.id !== p.club && !isBanned(c.id) && !S.offers.some(o => o.club === c.id);
+  let pool = Object.values(S.clubs).filter(c => open(c) && clubTier(c) >= 2 && teamStrength(c) <= ovr + 3).sort((a, b) => teamStrength(b) - teamStrength(a));
+  if (!pool.length) pool = Object.values(S.clubs).filter(open).sort((a, b) => teamStrength(a) - teamStrength(b));
+  const c = pick(pool.slice(0, 8));
+  if (!c) return;
+  const o = makeOffer(c, 'transfer');
+  o.wage = freeValue(c, marketWage(ovr, c));
+  o.years = 1;
+  o.faWeek = absWeek();
+  o.net = true;
+  delete o.block; delete o.blockFee;
+  S.offers.push(o);
+  p.netAt = absWeek();
+  msg(`${c.name} (${league(c.league).name}) will give you a way back: a one-year deal at ${money(o.wage)}/week.`, 'good');
+  notify('good', 'A way back', `${c.name} have offered you a one-year deal at ${money(o.wage)}/week. Check the Contract tab.`);
+}
+// New interest each week: more with a better agent, less the longer you have been without a club.
+function faWeekInterest() {
+  const p = S.player, a = agent().offers, before = S.offers.length;
+  p.faRefused = [];
+  const top = a >= 1.3 ? 3 : a >= 1.1 ? 2 : 1, low = a >= 1.3 ? 1 : 0;
+  const n = Math.max(0, randi(low, top) - Math.floor(idleWeeks() / 4));
+  if (n) generateOffers(n, true);
+  const got = S.offers.slice(before), counters = got.filter(o => o.counter).length, refused = p.faRefused.length;
+  if (!S.offers.length && idleWeeks() >= FA_NET_WEEKS && (p.netAt == null || absWeek() - p.netAt >= FA_NET_WEEKS)) safetyNet();
+  return { offers: got.length, counters, refused };
+}
+
+// One week without a club: the world plays on, you train, pay your bills and wait for calls.
+function freeAgentWeek() {
+  const p = S.player;
+  if (S.phase !== 'season' || !p.needsContract) return null;
+  if (p.freeSince == null) p.freeSince = absWeek();
+  S.weekHalf = null;
+  const report = { week: S.week, season: S.season, match: null, events: [], free: true };
+  birthdayWeek(report);
+  sponsorWeek();
+  marketWeek();
+  (p.oldLeases || []).filter(l => l.end <= absWeek()).forEach(l => msg(`Your lease on the ${HOUSING[l.house].name.toLowerCase()} in ${natName(l.nat)} has ended. No more rent to pay there.`, 'good'));
+  syncHousing();
+  for (const l of S.leagues) { const md = matchdayFor(l.id); if (md) for (const [h, a] of md) playFixture(h, a, null); }
+  euroWeek(null);
+  cupWeek(null);
+  // No wage, but the bills keep coming.
+  const net = weeklyNet();
+  p.money += net;
+  report.net = net;
+  if (p.money < 0 && p.equip > 0) { p.equip = 0; msg('You could not pay for your training equipment, so you are back on normal kit.', 'bad'); }
+  if (p.money < 0 && ((p.house > 0 && !ownedHere()) || (p.oldLeases || []).length)) {
+    p.house = ownedHere() ? p.house : 0; p.leaseEnd = 0; p.oldLeases = [];
+    msg('You ran out of money and had to move back into a shared flat.', 'bad');
+  }
+  if (p.injured) { p.injured--; if (!p.injured) msg('You are fit again.', 'good'); }
+  // No games: after a fortnight out, match sharpness slowly fades.
+  if (idleWeeks() >= 2) { nudgeOvr(-FA_RUST * declineFactor()); report.events.push('No games this week: a little sharpness lost'); }
+  p.energy = clamp(p.energy + energyRegen(), 0, 100);
+  p.slots = TRAIN_SLOTS;
+  p.trainedThisWeek = 0;
+  p.weekEquip = 0;
+  // Offers don't wait for ever.
+  const lapsed = S.offers.filter(o => o.faWeek != null && absWeek() - o.faWeek >= FA_OFFER_WEEKS - 1);
+  if (lapsed.length) {
+    S.offers = S.offers.filter(o => !lapsed.includes(o));
+    msg(`${lapsed.map(o => club(o.club).name).join(', ')} moved on: ${lapsed.length > 1 ? 'their offers have' : 'the offer has'} lapsed.`, 'bad');
+  }
+  S.lastMatch = report;
+  S.week++;
+  if (S.week === CUP_WEEKS.playoff[0]) buildPlayoffs();
+  if (S.week > SEASON_WEEKS) { endSeason(report); save(); return report; }
+  const r = faWeekInterest();
+  const bits = [`${r.offers} new offer${r.offers !== 1 ? 's' : ''}${r.counters ? ` (${r.counters} below your asking wage)` : ''}`];
+  if (r.refused) bits.push(`${r.refused} club${r.refused > 1 ? 's' : ''} said your asking wage is too high (${p.faRefused.slice(0, 3).join(', ')}${r.refused > 3 ? ` and ${r.refused - 3} more` : ''})`);
+  msg(`Week ${idleWeeks()} as a free agent: ${bits.join('; ')}.`, r.offers ? 'good' : 'info');
+  report.events.push(...bits);
+  save();
+  return report;
 }
 
 // ---------- training ----------
@@ -1638,7 +1759,7 @@ function trainGain(attr, part = 'train') {
   const ceiling = 1 - Math.max(0, v - 80, over) / 25, extra = equipMult() - 1;
   const mult = part === 'pitch' ? extra * EQUIP_PITCH : 1 + extra * (1 - EQUIP_PITCH);
   if (part === 'pitch' && !extra) return 0;
-  return Math.max(part === 'pitch' ? 0 : .01, .06 * mult * growthFactor() * Math.max(.1, ceiling) * (S.player.energy < 30 ? .6 : 1) * trainBalance());
+  return Math.max(part === 'pitch' ? 0 : .01, .06 * mult * (S.player.needsContract ? FA_TRAIN : 1) * growthFactor() * Math.max(.1, ceiling) * (S.player.energy < 30 ? .6 : 1) * trainBalance());
 }
 
 // How much of the held-back equipment XP a game earns, 0 to 1. The bench earns nothing; minutes
@@ -2967,10 +3088,11 @@ function generateOffers(count, guarantee = false) {
   const add = c => {
     if (divert) { if (addInquiry(c)) { added++; names.push(c.name); } return; }
     const o = makeOffer(c, 'transfer'), again = declinedUntil(c.id) > absWeek();
+    if (freeAgent() && !judgeAsk(o)) return;
     // An eager club uses up its one extra try.
     if (again) { o.again = true; p.declined[c.id] = { until: declinedUntil(c.id), eager: false }; }
     S.offers.push(o); added++; names.push(c.name);
-    msg(again ? `${c.name} won't take no for an answer: they are back with another offer.` : o.desperate ? `${c.name} (${league(c.league).name}) are desperate for a player like you and have offered well above your value.` : `${c.name} (${league(c.league).name}) have made you an offer.`, 'good');
+    msg(again ? `${c.name} won't take no for an answer: they are back with another offer.` : o.counter ? `${c.name} (${league(c.league).name}) think your asking wage is too high and offer ${money(o.wage)}/week instead.` : o.desperate ? `${c.name} (${league(c.league).name}) are desperate for a player like you and have offered well above your value.` : `${c.name} (${league(c.league).name}) have made you an offer.`, 'good');
   };
   // At 34 and 35 a big top-flight club calls only now and then (25%, then 8% of windows), and never more than one.
   const vy = vetYears();
@@ -3008,7 +3130,9 @@ function generateOffers(count, guarantee = false) {
       .sort((a, b) => teamStrength(b) - teamStrength(a)).slice(0, 10));
     rich.slice(0, Math.random() < .6 ? 2 : 1).filter(() => Math.random() < interest).forEach(c => {
       if (divert) { add(c); return; }
-      const o = makeOffer(c, 'transfer'), wage = o.wage;
+      const o = makeOffer(c, 'transfer');
+      if (freeAgent() && !judgeAsk(o)) return;
+      const wage = o.wage;
       S.offers.push(o); added++; names.push(c.name);
       msg(`${c.name} (${league(c.league).name}) want your experience and offer ${money(wage)}/week${o.prime ? ', close to your prime wage' : ''}.`, 'good');
     });
@@ -3058,6 +3182,7 @@ function refreshOffers() {
   S.offerRerolls--;
   if (p.needsContract) generateOffers(randi(1, 3), true);
   else generateOffers(randi(1, 2) + (scoutBuzz().breakout ? 1 : 0) + (p.listed ? 1 : 0));
+  if (p.needsContract && !S.offers.length && !S.offerRerolls) safetyNet();
   const added = S.offers.length - before;
   if (!added) msg('You waited, but no new clubs came forward.');
   save();
@@ -3253,6 +3378,8 @@ function acceptOffer(id) {
   p.needsContract = false;
   S.offers = [];
   p.free = false;
+  p.freeSince = null;
+  p.netAt = null;
   // Signing anything closes this transfer window for you: no more bids, no waiting for more offers.
   p.offerLock = Math.max(p.offerLock || 0, windowEndAbs());
   if (S.phase === 'offseason') S.offerRerolls = 0;
@@ -3905,7 +4032,8 @@ function endSeason() {
   const age = ageOf(p.by);
   const awards = [];
   const give = (short, full, rep) => { awards.push(short); p.awards.push({ name: full, season: S.season }); addRep(rep); };
-  if (pos === 1) { awards.push(`${L.name} champion`); p.trophies.push({ name: L.name, club: c.name, season: S.season }); addRep(6); }
+  const gone = p.needsContract;
+  if (pos === 1 && !gone) { awards.push(`${L.name} champion`); p.trophies.push({ name: L.name, club: c.name, season: S.season }); addRep(6); }
   const scorers = topScorers(lid, 1);
   if (scorers[0] && scorers[0].me) give('Golden Boot', `${L.name} Golden Boot`, 4);
   const assisters = topAssists(lid, 1);
@@ -3941,17 +4069,17 @@ function endSeason() {
   mgrSeasonEnd();
   S.moves = promotionRelegation();
   const myMove = S.moves.find(m => m.id === c.id);
-  if (myMove) awards.push(myMove.up ? `Promoted to ${league(myMove.to).name}` : `Relegated to ${league(myMove.to).name}`);
+  if (myMove && !gone) awards.push(myMove.up ? `Promoted to ${league(myMove.to).name}` : `Relegated to ${league(myMove.to).name}`);
   // Going down hurts: a regular in the side loses about 1 to 1.5 OVR, someone who barely played less.
-  if (myMove && !myMove.up && st.apps >= 5) {
+  if (myMove && !gone && !myMove.up && st.apps >= 5) {
     const games = (league(lid).clubs.length - 1) * 2, drop = rand(RELEGATION_DROP[0], RELEGATION_DROP[1]) * clamp(st.apps / Math.max(1, games), .3, 1);
     nudgeOvr(-drop);
     review.change = Math.round((review.change - drop) * 10) / 10;
     review.notes.push(`relegated with ${c.name}`);
   }
   const ovr = calcOVR();
-  if (pos === 1) notify('good', `${league(lid).name} champions!`, `${c.name} won the league. You were part of it.`);
-  if (myMove) notify(myMove.up ? 'good' : 'bad', myMove.up ? 'Promoted!' : 'Relegated', `${c.name} ${myMove.up ? 'go up' : 'go down'} to the ${league(myMove.to).name}.`);
+  if (pos === 1 && !gone) notify('good', `${league(lid).name} champions!`, `${c.name} won the league. You were part of it.`);
+  if (myMove && !gone) notify(myMove.up ? 'good' : 'bad', myMove.up ? 'Promoted!' : 'Relegated', `${c.name} ${myMove.up ? 'go up' : 'go down'} to the ${league(myMove.to).name}.`);
   const personal = awards.filter(awardValue);
   if (personal.length) notify('good', 'Award winner!', personal.join(' · '));
   // The board judges the season: results and your own performances.
@@ -4024,6 +4152,8 @@ function endSeason() {
     S.offers = [];
     S.seasonSummary.loanNext = false;
     p.needsContract = true;
+    p.freeSince = absWeek();
+    p.netAt = null;
     p.clauseUntil = 0;
     p.inquiries = [];
     const home = myClub();

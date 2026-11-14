@@ -526,8 +526,24 @@ function orderBox() {
 }
 
 function freeAgentView() {
-  return `<section class="card hero"><h2>Free agent</h2><p style="margin:0">You have no club. You can't play until you sign for someone, but free agents can sign at any time.</p>
-    <button class="btn primary block" data-act="tab" data-v="contract">Find a club in Contract</button></section>` + inboxHtml();
+  return faCard(true) + inboxHtml();
+}
+
+// Free agency: set an asking wage, wait out the weeks, and let clubs (and your agent) find you.
+function faCard(home = false) {
+  const p = S.player, guide = freeGuide(), season = S.phase === 'season';
+  const searched = p.lastSearch === S.season * 100 + S.week, n = S.offers.length;
+  return `<section class="card hero"><h2>Free agent</h2>
+    <p class="bad" style="margin:0">${season ? 'You have no club.' : 'Your contract has run out.'} No wage comes in until you sign, but your bills still do.</p>
+    <div class="kv"><div><small>Weeks without a club</small><b>${idleWeeks()}</b></div><div><small>Clubs value you at</small><b class="num">${money(guide)}/wk</b></div><div><small>Asking wage</small><b class="num">${p.askWage ? `${money(p.askWage)}/wk` : 'Open'}</b></div></div>
+    <div class="field"><label for="ask-wage">Your asking wage (per week)</label><input id="ask-wage" type="number" min="0" step="100" inputmode="numeric" value="${p.askWage || ''}" placeholder="${guide}"></div>
+    <button class="btn block" data-act="setAsk">Set asking wage</button>
+    <div class="small muted">Each club judges you on your OVR, position and age against its league's wages, your recent form, and how long you have been without a club. Ask at or under its valuation and it pays what you ask; up to 25% over and it offers its valuation instead; any higher and it walks away. Leave it empty to take what clubs think you are worth.</div>
+    ${season ? '<button class="btn primary block" data-act="faWeek">Wait a week</button>' : ''}
+    <button class="btn block" data-act="findClubs" ${searched ? 'disabled' : ''}>${searched ? 'Your agent has made calls this week' : 'Ask your agent to find clubs'}</button>
+    ${home && n ? `<button class="btn block" data-act="tab" data-v="contract">View ${n} offer${n > 1 ? 's' : ''}</button>` : ''}
+    ${season ? `<div class="small muted">Offers lapse after ${FA_OFFER_WEEKS} weeks. Training is half as effective without a club. After ${FA_NET_WEEKS} weeks with nothing on the table, a lower-league club offers you a way back.</div>` : ''}
+  </section>`;
 }
 
 // Home only points at the Contract tab, where the offers live.
@@ -541,8 +557,7 @@ function offersBanner() {
 function viewContract() {
   const p = S.player;
   if (S.phase === 'retired') return '<section class="card"><h2>Contract</h2><p class="muted" style="margin:0">You have retired.</p></section>';
-  if (p.needsContract) return `<section class="card hero"><h2>Free agent</h2><p class="bad" style="margin:0">${S.phase === 'offseason' ? 'Your contract has run out.' : 'You have no club.'} Sign with a club below to keep playing.</p>
-    <button class="btn block" data-act="findClubs">Ask your agent to find clubs</button></section>` + offersHtml();
+  if (p.needsContract) return faCard() + offersHtml();
   return contractDetails() + offersHtml() + inquiriesHtml() + contractCard();
 }
 
@@ -2117,7 +2132,7 @@ function showMatchReport(rep) {
   const injured = p.injured || rep.events.some(e => e.startsWith('Injured'));
   let html = '';
   if (m) html += matchBlock(m, 'Full time', injured);
-  else if (!rep.cup) html += `<h3>Week ${rep.week} done</h3><p class="muted" style="margin:0">No match this week.</p>`;
+  else if (!rep.cup) html += `<h3>Week ${rep.week} done</h3><p class="muted" style="margin:0">${rep.free ? 'Another week without a club.' : 'No match this week.'}</p>`;
   if (rep.cup) html += matchBlock(rep.cup, `${rep.cup.comp} · ${rep.cup.stage}`, injured);
   html += rep.events.map(e => `<div class="award">${esc(e)}</div>`).join('');
   if (rep.net != null) html += `<div class="row small"><span class="muted">Weekly income</span><b class="num ${rep.net >= 0 ? 'good' : 'bad'}">${rep.net >= 0 ? '+' : ''}${money(rep.net)}</b></div>`;
@@ -2170,6 +2185,8 @@ document.addEventListener('click', e => {
     case 'decide': resolveDecision(v); closeModal(); render(); return;
     case 'popNext': closePopup(); return;
     case 'findClubs': toast(findClubs() ? 'Your agent is making calls' : 'Try again next week'); render(); return;
+    case 'setAsk': { const el = document.getElementById('ask-wage'); if (el && setAskWage(el.value)) toast(S.player.askWage ? `Asking for ${money(S.player.askWage)}/week` : 'Asking wage cleared'); render(); return; }
+    case 'faWeek': { const rep = freeAgentWeek(); render(); if (rep) showMatchReport(rep); return; }
     case "equip": if (setEquip(+v)) toast(`${EQUIP_TIERS[+v].name} equipment`); render(); return;
     case 'agent': if (hireAgent(+v)) toast(+v ? `Signed: ${AGENTS[+v].name}` : 'Agent released'); render(); return;
     case 'wishAsk': showWishSheet(); return;

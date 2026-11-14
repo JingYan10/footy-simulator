@@ -943,7 +943,7 @@ function finishTournament(t) {
   const final = t.ko && t.ko.length ? t.ko[t.ko.length - 1].res[0] : null;
   const runnerUp = t.runnerUp || (final ? (final.winner === final.h ? final.a : final.h) : null);
   S.history = [...(S.history || []), { key: t.key, name: t.name, season: t.season, winner: t.winner, runnerUp }].slice(-240);
-  const p = S.player, mine = t.winner === p.club || (isNation(t.winner) && t.winner === t.mine);
+  const p = S.player, mine = (t.winner === p.club && !p.needsContract) || (isNation(t.winner) && t.winner === t.mine);
   // Season-end awards and the review pick these up (in the summer, straight into the review).
   const note = text => { if (S.seasonSummary && S.phase === 'offseason') S.seasonSummary.awards.push(text); else (S.cupWins = S.cupWins || []).push(text); };
   const label = t.name.replace(/ \d{4}$/, '');
