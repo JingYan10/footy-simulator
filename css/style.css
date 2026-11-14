@@ -433,7 +433,7 @@ table.grp th:first-child { width: 100%; }
 table.grp td, table.grp th { padding-left: 4px; padding-right: 4px; }
 
 /* Career history: one block per season, clubs side by side */
-details.season { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+details.season { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
 details.season > summary { list-style: none; cursor: pointer; }
 details.season > summary::-webkit-details-marker { display: none; }
 details.season[open] { background: var(--surface-2); }
@@ -444,6 +444,8 @@ details.season[open] { background: var(--surface-2); }
 .spellstats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; margin-top: 4px; }
 .spellcomps { min-width: 0; }
 table.comps td, table.comps th { font-size: 12px; }
+details.season .tablewrap { margin: 0 -12px; padding: 0 12px; }
+table.comps td:first-child { white-space: normal; }
 .compline { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .compline:last-child { border-bottom: 0; }
 

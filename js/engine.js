@@ -4454,36 +4454,161 @@ function squadLog(id) {
 }
 const plCard = pl => ({ n: pl.n, pos: pl.pos, r: pl.r, age: ageOf(pl.by) });
 
-// A light transfer market between AI clubs each summer. A player clearly better than his club (2+
-// above its team rating, aged 19 to 30) is wanted by a bigger club 18% of the time: a club rated
-// above his own, at about his level, in the same country (or any top flight). The buyer sends its
-// weakest player in that position the other way, so every squad keeps its shape. At most two
-// players leave any club this way each summer.
-function aiTransferWindow() {
-  const str = {}, clubs = Object.values(S.clubs);
-  clubs.forEach(c => { str[c.id] = teamStrength(c); });
-  const sold = {};
+// The summer market between AI clubs. Every club's summer looks different:
+// - Stars: a player clearly better than his club (2+ above its rating, aged 19 to 30) is wanted by a
+//   bigger club 18% of the time. The buyer's spare man in that position goes back to the seller as part
+//   of the deal, is sold on to a smaller club, or is released.
+// - Churn: most clubs also move on a squad player or two (not a starter), sold to a club around their
+//   level or released, and sign someone new.
+// - Every gap (retirement, sale, release) is filled from somewhere: a player bought from a smaller club
+//   at home or abroad, a free agent, or a kid up from the academy.
+let MKT = null;   // { str, moved: Set, deals: {id: n} } while the summer market runs
+function mktStr(c) { return MKT ? MKT.str[c.id] : teamStrength(c); }
+const MKT_MAX = 4;   // a club does at most this many deals with other clubs in one summer
+function dealt(c) { if (MKT) MKT.deals[c.id] = (MKT.deals[c.id] || 0) + 1; }
+function canDeal(c) { return !MKT || (MKT.deals[c.id] || 0) < MKT_MAX; }
+
+// What an AI club pays for one of another club's players: the same sum as your own value (rating, age,
+// position, league), give or take a third for the contract left and the haggling. Bigger buyers pay a bit
+// more. Older players are often free: their contract had run out.
+function aiFee(pl, from, to, paid = false) {
+  const age = ageOf(pl.by);
+  if (!paid && Math.random() < (age >= 31 ? .55 : age >= 28 ? .25 : .08)) return 0;
+  const l = league(from.league);
+  const market = l.tier === 3 ? .35 : l.tier === 2 ? .6 : VET_LEAGUES.includes(l.nat) ? .8 : 1;
+  const rich = 1 + clamp((mktStr(to) - mktStr(from)) / 20, 0, .4);
+  const v = 5e5 * Math.exp((pl.r - 60) / 6) * (VALUE_POS[pl.pos] || 1) * valueAge(age) * market * rich * rand(.7, 1.35);
+  const step = v >= 1e7 ? 5e5 : v >= 1e6 ? 1e5 : 1e4;
+  return Math.max(0, Math.round(v / step) * step);
+}
+
+// Fill a gap at club c in position pos. depth stops a chain of sales going on for ever.
+function signReplacement(c, pos, depth = 0) {
+  const str = mktStr(c), nat = league(c.league).nat, roll = Math.random();
+  const kid = () => {
+    const k = genPlayer(pos, str - 5, nat, 17, 20);
+    c.players.push(k);
+    squadLog(c.id).in.push({ ...plCard(k), from: null });
+  };
+  if (roll < .3 || depth > 1) return kid();
+  if (roll < .5) {
+    // A free agent: an experienced player whose last contract ran out.
+    const f = genPlayer(pos, str - 2 + rand(0, 4), nat, 24, 33);
+    f.r = Math.min(f.r, Math.round(str + 2));
+    c.players.push(f);
+    squadLog(c.id).in.push({ ...plCard(f), from: null, free: true });
+    return;
+  }
+  // Buy: from a smaller club, at home or (for top-flight clubs) anywhere in Europe.
+  const top = clubTier(c) === 1;
+  const sellers = Object.values(S.clubs).filter(s => s.id !== c.id && canDeal(s) && mktStr(s) < str - 1 && mktStr(s) > str - 14
+    && (league(s.league).nat === nat ? true : top && Math.random() < .5));
+  for (const s of shuffle(sellers).slice(0, 12)) {
+    const cands = s.players.filter(x => x.pos === pos && !(MKT && MKT.moved.has(x)) && x.r >= str - 4 && x.r <= str + 4 && ageOf(x.by) >= 18 && ageOf(x.by) <= 31);
+    if (!cands.length) continue;
+    const pl = pick(cands);
+    s.players = s.players.filter(x => x !== pl);
+    c.players.push(pl);
+    pl.g = 0; pl.as = 0;
+    if (MKT) MKT.moved.add(pl);
+    dealt(c); dealt(s);
+    const fee = aiFee(pl, s, c);
+    squadLog(s.id).out.push({ ...plCard(pl), why: 'sold', to: c.id, fee });
+    squadLog(c.id).in.push({ ...plCard(pl), from: s.id, fee });
+    signReplacement(s, pos, depth + 1);
+    return;
+  }
+  kid();
+}
+
+// Move pl out of club c: sold to dest, or released when dest is null. Nothing is filled here.
+function movePlayer(pl, c, dest, paid = false) {
+  c.players = c.players.filter(x => x !== pl);
+  pl.g = 0; pl.as = 0;
+  if (MKT) MKT.moved.add(pl);
+  if (dest) {
+    dest.players.push(pl);
+    dealt(c); dealt(dest);
+    const fee = aiFee(pl, c, dest, paid);
+    squadLog(c.id).out.push({ ...plCard(pl), why: 'sold', to: dest.id, fee });
+    squadLog(dest.id).in.push({ ...plCard(pl), from: c.id, fee });
+  } else squadLog(c.id).out.push({ ...plCard(pl), why: 'released' });
+}
+
+// A club near (or a bit below) level `lvl`, in country nat (or any top flight when wide).
+function clubAround(lvl, nat, not, below = 8, above = 2, wide = false) {
+  const list = Object.values(S.clubs).filter(b => !not.includes(b.id) && canDeal(b) && mktStr(b) >= lvl - below && mktStr(b) <= lvl + above
+    && (league(b.league).nat === nat || (wide && clubTier(b) === 1)));
+  return list.length ? pick(list) : null;
+}
+
+// dest just took a player in pos from somewhere: it lets its weakest man there go (released).
+function makeRoom(dest, pos, keep) {
+  const spare = dest.players.filter(x => x.pos === pos && x !== keep).sort((x, y) => x.r - y.r)[0];
+  if (spare) movePlayer(spare, dest, null);
+}
+
+function aiTransferWindow(gaps = []) {
+  const clubs = Object.values(S.clubs);
+  MKT = { str: {}, moved: new Set(), deals: {} };
+  clubs.forEach(c => { MKT.str[c.id] = teamStrength(c); });
+  // Retirements first: every club fills the places its old players left.
+  gaps.forEach(([c, pos]) => signReplacement(c, pos));
+  // Stars move up.
   shuffle(clubs.slice()).forEach(c => {
     c.players.slice().forEach(pl => {
-      const age = ageOf(pl.by);
-      if ((sold[c.id] || 0) >= 2 || age < 19 || age > 30 || pl.r < str[c.id] + 2 || Math.random() >= .18) return;
+      const age = ageOf(pl.by), str = MKT.str[c.id];
+      if (!canDeal(c) || MKT.moved.has(pl) || age < 19 || age > 30 || pl.r < str + 2 || Math.random() >= .18) return;
       const nat = league(c.league).nat;
-      const buyers = clubs.filter(b => b.id !== c.id && str[b.id] > str[c.id] + 1 && str[b.id] >= pl.r - 6 && str[b.id] <= pl.r + 1
-        && (league(b.league).nat === nat || clubTier(b) === 1) && (sold[b.id] || 0) < 2);
+      const buyers = clubs.filter(b => b.id !== c.id && canDeal(b) && MKT.str[b.id] > str + 1 && MKT.str[b.id] >= pl.r - 6 && MKT.str[b.id] <= pl.r + 1
+        && (league(b.league).nat === nat || clubTier(b) === 1));
       if (!buyers.length) return;
       const b = pick(buyers);
-      const swap = b.players.filter(x => x.pos === pl.pos && x.r < pl.r).sort((x, y) => x.r - y.r)[0];
-      if (!swap) return;
-      c.players = c.players.filter(x => x !== pl).concat(swap);
-      b.players = b.players.filter(x => x !== swap).concat(pl);
-      pl.g = 0; pl.as = 0; swap.g = 0; swap.as = 0;
-      squadLog(c.id).out.push({ ...plCard(pl), why: 'sold', to: b.id });
-      squadLog(b.id).in.push({ ...plCard(pl), from: c.id });
-      squadLog(b.id).out.push({ ...plCard(swap), why: 'sold', to: c.id });
-      squadLog(c.id).in.push({ ...plCard(swap), from: b.id });
-      sold[c.id] = (sold[c.id] || 0) + 1; sold[b.id] = (sold[b.id] || 0) + 1;
+      const spare = b.players.filter(x => x.pos === pl.pos && x.r < pl.r && !MKT.moved.has(x)).sort((x, y) => x.r - y.r)[0];
+      if (!spare) return;
+      movePlayer(pl, c, b, true);
+      const r = Math.random();
+      if (r < .35) movePlayer(spare, b, c);                       // part-exchange: no gap at the seller
+      else {
+        const dest = r < .75 && clubAround(MKT.str[b.id] - 4, league(b.league).nat, [b.id, c.id], 10, 1);
+        movePlayer(spare, b, dest || null);
+        if (dest) makeRoom(dest, pl.pos, spare);
+        signReplacement(c, pl.pos);
+      }
     });
   });
+  // Squad churn: a squad player or two moved on, someone new signed.
+  shuffle(clubs.slice()).forEach(c => {
+    const r = Math.random(), n = r < .3 ? 0 : r < .7 ? 1 : r < .92 ? 2 : 3;
+    for (let i = 0; i < n && canDeal(c); i++) {
+      const pool = c.players.filter(x => !MKT.moved.has(x) && ageOf(x.by) >= 20 && ageOf(x.by) <= 32);
+      // Not a starter: the shape's first names in each line stay.
+      const fringe = pool.filter(x => c.players.filter(y => POS_GROUP[y.pos] === POS_GROUP[x.pos] && y.r > x.r).length >= formationSlots(c, POS_GROUP[x.pos]));
+      if (!fringe.length) break;
+      const pl = pick(fringe), str = MKT.str[c.id];
+      const dest = Math.random() < .7 && clubAround(Math.min(str, pl.r + 4), league(c.league).nat, [c.id], 8, 2, Math.random() < .25);
+      movePlayer(pl, c, dest || null);
+      if (dest) makeRoom(dest, pl.pos, pl);
+      signReplacement(c, pl.pos);
+    }
+    // Squads breathe a little (one short to two over the usual 26): some clubs add a man, some let one go.
+    const T = Object.values(SQUAD_TARGET).reduce((s, n) => s + n, 0), have = pos => c.players.filter(x => x.pos === pos).length;
+    const r2 = Math.random();
+    if (r2 < .25 && c.players.length < T + 2) {
+      // Sign one more where the squad is thinnest.
+      const pos = shuffle(POSITIONS.slice()).sort((a, b) => (have(a) - SQUAD_TARGET[a]) - (have(b) - SQUAD_TARGET[b]))[0];
+      signReplacement(c, pos);
+    } else if (r2 < .45 && c.players.length > T - 1) {
+      // Let a spare man go from a position with more than enough.
+      const spare = c.players.filter(x => have(x.pos) > SQUAD_TARGET[x.pos] && !MKT.moved.has(x)).sort((x, y) => x.r - y.r)[0];
+      if (spare) {
+        const dest = Math.random() < .6 && clubAround(Math.min(MKT.str[c.id], spare.r + 4), league(c.league).nat, [c.id], 10, 1);
+        movePlayer(spare, c, dest || null);
+        if (dest) makeRoom(dest, spare.pos, spare);
+      }
+    }
+  });
+  MKT = null;
 }
 // The role a new arrival walks into at his club: where he ranks in his line against the shape's places.
 function arrivalRole(c, name) {
@@ -4497,32 +4622,33 @@ function arrivalRole(c, name) {
 function announceSquadMoves() {
   const c = myClub(), log = S.squadMoves && S.squadMoves.season === S.season && S.squadMoves.clubs[c.id];
   if (!log || (!log.out.length && !log.in.length)) return;
-  const outs = log.out.map(x => `${x.n} (${x.pos}, ${x.why === 'retired' ? 'retired' : `sold to ${club(x.to).name}`})`);
-  const ins = log.in.map(x => `${x.n} (${x.pos}, ${x.from ? `from ${club(x.from).name}` : 'academy'}, ${(arrivalRole(c, x.n) || 'Reserve').toLowerCase()})`);
+  const feeTxt = x => x.fee > 0 ? `, ${money(x.fee)}` : x.fee === 0 ? ', free' : '';
+  const outs = log.out.map(x => `${x.n} (${x.pos}, ${x.why === 'retired' ? 'retired' : x.why === 'released' ? 'released' : `to ${club(x.to).name}${feeTxt(x)}`})`);
+  const ins = log.in.map(x => `${x.n} (${x.pos}, ${x.from ? `from ${club(x.from).name}${feeTxt(x)}` : x.free ? 'free agent' : 'academy'}, ${(arrivalRole(c, x.n) || 'Reserve').toLowerCase()})`);
   msg(`Squad changes at ${c.name}. Out: ${outs.join(', ') || 'nobody'}. In: ${ins.join(', ') || 'nobody'}.`);
   notify('good', `Squad changes at ${c.name}`, `${log.out.length} out, ${log.in.length} in this summer. See who left and who arrived under Club › Squad.`);
 }
 
 function ageWorld() {
-  // AI squads age, improve or decline, and old players retire and get replaced.
+  // AI squads age, improve or decline, and old players retire. Returns the gaps the retirements left,
+  // which the summer market fills (aiTransferWindow).
+  const gaps = [];
   Object.values(S.clubs).forEach(c => {
-    const homeNat = league(c.league).nat;
-    const base = teamStrength(c) - 6;
-    c.players = c.players.map(pl => {
+    c.players = c.players.filter(pl => {
       const age = ageOf(pl.by);
       const limit = pl.pos === 'GK' ? 39 : 36;
       if (age >= limit || (age >= limit - 2 && Math.random() < .35)) {
-        const kid = genPlayer(pl.pos, base, homeNat, 17, 20);
         squadLog(c.id).out.push({ ...plCard(pl), why: 'retired' });
-        squadLog(c.id).in.push({ ...plCard(kid), from: null });
-        return kid;
+        gaps.push([c, pl.pos]);
+        return false;
       }
       const d = age <= 21 ? rand(0, 4) : age <= 24 ? rand(-.5, 2.5) : age <= 28 ? rand(-1, 1) : age <= 31 ? rand(-2, .5) : rand(-4, -1);
       pl.r = Math.round(clamp(pl.r + d, 40, 94));
       pl.inj = 0;
-      return pl;
+      return true;
     });
   });
+  return gaps;
 }
 
 function startNextSeason() {
@@ -4531,8 +4657,8 @@ function startNextSeason() {
   applyMoves(S.moves || []);
   S.moves = [];
   S.season++;
-  ageWorld();
-  aiTransferWindow();
+  const gaps = ageWorld();
+  aiTransferWindow(gaps);
   // The market kept trading through the summer (about six weeks).
   for (let i = 0; i < 6; i++) marketWeek();
   applyNextPosition();

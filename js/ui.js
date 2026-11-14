@@ -488,15 +488,22 @@ const sqOpen = { v: false };
 function squadMovesCard() {
   const c = myClub(), log = S.squadMoves && S.squadMoves.season === S.season && S.squadMoves.clubs[c.id];
   if (!log || (!log.out.length && !log.in.length)) return '';
+  // Fee after the club: "· €12.5M", or "Free" when the contract had run out. Older saves have no fee.
+  const fee = x => x.fee == null ? '' : x.fee > 0 ? ` <span class="muted">·</span> <b class="num">${money(x.fee)}</b>` : '';
   const row = (x, side) => {
-    const other = side === 'out' ? (x.why === 'retired' ? null : x.to) : x.from;
-    const how = side === 'out' ? (x.why === 'retired' ? '<span class="muted">Retired</span>' : `<span class="muted">Sold to</span> ${esc(club(other).name)}`)
-      : other ? `<span class="muted">From</span> ${esc(club(other).name)}` : '<span class="muted">Academy</span>';
+    const other = side === 'out' ? (x.why === 'sold' ? x.to : null) : x.from;
+    const how = side === 'out'
+      ? (x.why === 'retired' ? '<span class="muted">Retired</span>' : x.why === 'released' ? '<span class="muted">Released</span>'
+        : `<span class="muted">${x.fee === 0 ? 'Free transfer to' : 'Sold to'}</span> ${esc(club(other).name)}${fee(x)}`)
+      : other ? `<span class="muted">${x.fee === 0 ? 'Free from' : 'From'}</span> ${esc(club(other).name)}${fee(x)}`
+      : x.free ? '<span class="muted">Free agent</span>' : '<span class="muted">Academy</span>';
     const role = side === 'in' ? arrivalRole(c, x.n) : null;
     return `<div class="sqmove"><span class="pos-chip">${x.pos}</span><div style="min-width:0"><div class="sqname">${esc(x.n)} <span class="muted small">${x.age} · ${x.r}</span></div><div class="small">${how}</div></div>${other ? crest(other, 'mini') : ''}${role ? `<span class="chip ${role === 'Starter' ? 'good' : ''}">${role}</span>` : ''}</div>`;
   };
+  const spent = log.in.reduce((s, x) => s + (x.fee || 0), 0), got = log.out.reduce((s, x) => s + (x.fee || 0), 0);
+  const net = spent || got ? `<div class="small muted">Spent <b class="num" style="color:var(--chalk)">${money(spent)}</b> · Received <b class="num" style="color:var(--chalk)">${money(got)}</b></div>` : '';
   return `<section class="card"><details class="mdrop" style="padding:0" ${sqOpen.v ? 'open' : ''} ontoggle="sqOpen.v = this.open"><summary><h2>Squad changes</h2><span class="small muted">${log.out.length} out · ${log.in.length} in</span></summary><div class="mbody">
-    ${log.out.length ? `<div class="small muted"><b>Out</b></div>${log.out.map(x => row(x, 'out')).join('')}` : ''}
+    ${net}${log.out.length ? `<div class="small muted"><b>Out</b></div>${log.out.map(x => row(x, 'out')).join('')}` : ''}
     ${log.in.length ? `<div class="small muted"><b>In</b></div>${log.in.map(x => row(x, 'in')).join('')}` : ''}</div></details></section>`;
 }
 
