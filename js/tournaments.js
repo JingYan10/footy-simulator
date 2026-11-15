@@ -129,7 +129,8 @@ function natRivals() {
   callUpCache = { key, list };
   return list;
 }
-const calledUp = () => calcOVR() >= callUpFloor(S.player.nat) && natRivals().length < 2;
+// You also need your country's nationality, and a coach who hasn't given up on you after refusals.
+const calledUp = () => !S.player.intlRetired && holdsTeamNat() && !((S.player.natSnub || 0) > absWeek()) && calcOVR() >= callUpFloor(S.player.nat) && natRivals().length < 2;
 // Out of contract you belong to no club, so its summer tournament goes on without you.
 const myTeams = () => [...(S.player.needsContract ? [] : [S.player.club]), ...(calledUp() ? ['N:' + S.player.nat] : [])];
 
@@ -814,6 +815,12 @@ function buildSummer() {
     if (!isClub(teams[0]) && calledUp() && !t.mine && (!ev.confed || ev.confed.includes(confedOf(p.nat)))) {
       msg(`${natName(p.nat)} failed to qualify for the ${t.name}.`, 'bad');
     }
+    // Your country at a finals: unavailable by your own choice, or asked first if playing would tie you to them.
+    if (t.mine && isNation(t.mine)) {
+      const avail = p.intlAvail || 'all';
+      if (avail !== 'all') { msg(`You made yourself unavailable, so you are not in the ${natName(p.nat)} squad for the ${t.name}.`); t.mine = null; }
+      else if (!tiedForGood() && p.switched == null) { t.ask = true; queueDecision({ type: 'natTour', key: t.key, text: `${natName(p.nat)} want you in their squad for the ${t.name}. Playing at a major tournament ties you to ${natName(p.nat)} for good: you could never switch to another country.` }); }
+    }
     if (t.mine) {
       const why = isNation(t.mine) ? `You have been named in the ${natName(p.nat)} squad.` : `${teamName(t.mine)} are taking part.`;
       msg(`${t.name}: ${why}`, 'good');
@@ -827,6 +834,18 @@ function buildSummer() {
 }
 
 const summerPending = () => (S.summer || []).find(t => t.mine && !t.winner);
+// Your answer to a finals call-up that would tie you to your country.
+function resolveNatTour(d, yes) {
+  const t = (S.summer || []).find(x => x.key === d.key && x.ask);
+  if (!t) return;
+  t.ask = false;
+  if (yes) { msg(`You accepted the call: you are in the ${natName(S.player.nat)} squad for the ${t.name}.`, 'good'); return; }
+  t.mine = null;
+  while (!t.winner) playStage(t, () => null);
+  finishTournament(t);
+  changeFavor(-15);
+  msg(`You turned down ${natName(S.player.nat)} for the ${t.name}. The coach is not happy.`, 'bad');
+}
 
 // After a summer transfer you can't keep playing a club tournament for the club you left. If your
 // new club is still in it, you carry on with them; otherwise the rest is played without you.
@@ -850,7 +869,8 @@ function syncSummerClub() {
 // Play the next round of your summer tournament. Once you are knocked out, the rest is simulated.
 function playSummerStage() {
   const t = summerPending();
-  if (!t) return null;
+  // Still waiting for your answer to the call-up.
+  if (!t || t.ask) return null;
   const p = S.player, st = t.stages[t.stage], me = t.mine;
   // Played early for a shootout? Then the same team sheet.
   const pre = S.preSim && S.preSim.key === preKey() && S.preSim.base;
@@ -864,7 +884,7 @@ function playSummerStage() {
       const rating = summerRating(user, res, me);
       user.rating = rating;
       notifyHaul(user, t.name.replace(/ \d{4}$/, ''));
-      if (isNation(me)) { p.caps++; p.intlGoals = (p.intlGoals || 0) + user.goals; }
+      if (isNation(me)) { p.caps++; p.intlGoals = (p.intlGoals || 0) + user.goals; const tie = capTie(); tie.comp++; tie.finals = true; tie.last = S.season; }
       t.goals += user.goals;
       const my = t.my = t.my || { apps: 0, goals: 0, assists: 0, rsum: 0 };
       my.apps++; my.goals += user.goals; my.assists += user.assists; my.rsum += rating;

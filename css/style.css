@@ -649,6 +649,7 @@ table.lgt td.l5 { padding-left: 8px; padding-right: 2px; width: 72px; }
 .spell .clubcell > .crest.mini, .stint .clubcell > .crest.mini { margin-top: 2px; }
 /* Squad nationality as a flag; top scorers' and assisters' club as its crest. */
 .natflag { display: block; width: 22px; height: auto; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15); }
+.honteam .natflag { width: 28px; flex: none; }
 td.natcell, td.clubcrest, th.clubcrest { width: 34px; }
 td.clubcrest .crest { margin: 0; }
 /* Saved-career card and player header: the club crest whole, not cropped to a circle. */
@@ -721,3 +722,20 @@ td.clubcrest .crest { margin: 0; }
 .sqmove .pos-chip { flex: none; width: 36px; text-align: center; font: 800 11px var(--display); padding: 2px 0; border-radius: 4px; background: var(--surface-2); color: var(--chalk); }
 .sqmove .chip { flex: none; }
 .crest img.ink { filter: brightness(0) invert(1); }
+
+/* Nickname, milestones, achievements, hall of fame, captain's armband */
+.nick { font: 700 18px var(--display); color: var(--flood); margin: -4px 0 8px; letter-spacing: .02em; }
+.kv small + small, .kv b + small { display: block; }
+.msrow { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.msrow:last-child { border-bottom: 0; }
+.achv { display: grid; gap: 6px; max-height: 60vh; overflow-y: auto; margin: 10px 0; }
+.achvrow { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); opacity: .55; }
+.achvrow.on { opacity: 1; }
+.achvdot { font-size: 18px; line-height: 1.2; color: var(--muted); }
+.achvrow.on .achvdot { color: var(--flood); }
+.hof { display: flex; align-items: center; gap: 10px; text-align: left; }
+.hofrank { flex: none; width: 24px; font: 800 18px var(--display); color: var(--muted); text-align: center; }
+.captag { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 3px; background: var(--flood); color: var(--flood-ink); font: 800 10px var(--display); vertical-align: 2px; }
+.natchip { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+.natchip .natflag { width: 20px; }
+summary .natflag { display: inline-block; vertical-align: middle; }

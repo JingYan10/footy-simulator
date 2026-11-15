@@ -81,6 +81,8 @@ function renderLanding() {
     <button class="btn ${active ? '' : 'primary'} block" data-act="landingNew">Start a new career</button>
     <button class="btn block" data-act="importAsk">Import a saved career</button>
     ${pausedHtml()}
+    ${hallOfFameCard(past)}
+    <button class="btn block" data-act="achvShow">Achievements ${Object.keys(achvList()).length}/${ACHIEVEMENTS.length}</button>
     ${past.length ? `<section class="card"><h2>Past careers</h2><div class="inbox">${past.map(r => {
       const t = careerTotals(r);
       return `<div class="pastrow"><button class="house" data-act="viewPast" data-v="${r.id}"><span><b>${esc(r.name)}</b> · ${r.pos} · Peak ${r.peak}<br><span class="small muted">${esc(r.lastClub)} · ${r.career.length} season${r.career.length !== 1 ? 's' : ''} · ${t.goals} goals · ${r.trophies.length} trophies</span>${tagHtml(legacyTags(r))}</span><span class="small flood">View</span></button><button class="btn danger sm" data-act="pastDelAsk" data-v="${r.id}" aria-label="Delete ${esc(r.name)}">Delete</button></div>`;
@@ -1435,7 +1437,7 @@ function viewClub() {
     const tbl = leagueTable(lid), n = tbl.length, tier = league(lid).tier;
     body = `<section class="card"><div class="tablewrap"><table class="lgt"><thead><tr><th>#</th><th>Club</th><th class="r">P</th><th class="r wdl">W</th><th class="r wdl">D</th><th class="r wdl">L</th><th class="r">GD</th><th class="r pts">Pts</th><th class="l5">Last 5</th></tr></thead><tbody>
       ${tbl.map((r, i) => `<tr class="${r.id === S.player.club ? 'me' : ''} ${i < (tier === 1 ? 4 : PROMOTE) ? 'zone-cl' : i >= n - PROMOTE && tier < 3 ? 'zone-rel' : ''}"><td>${i + 1}</td><td class="clubname"><span class="clubcell">${crest(r.id, "mini")}${club(r.id).name}</span></td><td class="r">${r.p}</td><td class="r wdl">${r.w}</td><td class="r wdl">${r.d}</td><td class="r wdl">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r pts"><b>${r.pts}</b></td><td class="l5">${formDots(r.f)}</td></tr>`).join('')}
-      </tbody></table></div></section>`;
+      </tbody></table></div></section>` + leagueAwardsCard(lid);
   } else if (clubView === 'squad') {
     const p = S.player;
     const rows = c.players.map(pl => ({ ...pl, age: ageOf(pl.by) }));
@@ -1674,7 +1676,7 @@ function careerHistory(p = S.player) {
   const ORDER = { league: 0, cup: 1, euro: 2 };
   const seasons = Object.keys(bySeason).map(Number).sort((a, b) => b - a).map(s => {
     const spells = bySeason[s];
-    const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><div class="clubline"><b class="club">${esc(r.club)}</b>${r.no ? shirtTag(r.no) : ""}</div><div class="small muted">${esc(r.league)}${(r.mgrs || []).length ? ` · <span title="Manager">${r.mgrs.map(esc).join(' → ')}</span>` : ''}</div>${r.pos ? `<div class="posline"><span class="pos-main" title="Main position">${r.pos}</span>${(r.alts || []).length ? `<span class="pos-also">also</span>${r.alts.map(x => `<span class="pos-alt" title="Secondary position">${x}</span>`).join('')}` : ''}</div>` : ''}</div></div>
+    const cards = spells.map(r => `<div class="spell"><div class="clubcell">${rowCrest(r)}<div style="min-width:0"><div class="clubline"><b class="club">${esc(r.club)}</b>${r.no ? shirtTag(r.no) : ""}${r.cap ? '<span class="captag" title="Captain">C</span>' : ''}</div><div class="small muted">${esc(r.league)}${(r.mgrs || []).length ? ` · <span title="Manager">${r.mgrs.map(esc).join(' → ')}</span>` : ''}</div>${r.pos ? `<div class="posline"><span class="pos-main" title="Main position">${r.pos}</span>${(r.alts || []).length ? `<span class="pos-also">also</span>${r.alts.map(x => `<span class="pos-alt" title="Secondary position">${x}</span>`).join('')}` : ''}</div>` : ''}</div></div>
       <div class="spellstats"><span><b>${r.apps}</b> apps</span><span><b>${r.goals}</b> G</span><span><b>${r.assists}</b> A</span>${gkSpans(p.pos, r.saves, r.cleanAll)}<span>${rateBox(r.apps ? r.avg : null)}</span></div></div>`).join('');
     const clubParts = spells.map(r => {
       const list = Object.entries(r.comps || {}).filter(([, c]) => c.kind !== 'nat').sort((a, b) => ORDER[a[1].kind] - ORDER[b[1].kind]);
@@ -1723,10 +1725,10 @@ function honoursCardTabs(p = S.player) {
     // Clubs in the order you first won something there.
     body = [...teams.entries()].sort((a, b) => Math.min(...a[1].flatMap(h => h.seasons)) - Math.min(...b[1].flatMap(h => h.seasons)))
       .map(([name, items]) => { const c = S && S.clubs ? clubByName(name) : null; return teamBlock(name, items, c ? crest(c.id, 'mini') : ''); }).join('');
-  } else if (honTab === 'nat') body = teamBlock(natName(p.nat), list, '', `${p.caps || 0} caps · ${p.intlGoals || 0} goals · ${intlAssists(p)} assist${intlAssists(p) === 1 ? '' : 's'}`);
+  } else if (honTab === 'nat') body = teamBlock(natName(p.nat), list, natFlag(p.nat), `${p.caps || 0} caps · ${p.intlGoals || 0} goals · ${intlAssists(p)} assist${intlAssists(p) === 1 ? '' : 's'}`);
   else body = `<div class="honteam">${list.map(hline).join('')}</div>`;
   return `<section class="card"><h2>Honours</h2><div class="seg">${tabs.map(([k, l]) => `<button class="${honTab === k ? 'on' : ''}" data-act="honTab" data-v="${k}">${l} (${grouped(groups[k]).reduce((n, g) => n + g.seasons.length, 0)})</button>`).join('')}</div>
-    ${list.length ? body : honTab === 'nat' ? teamBlock(natName(p.nat), [], '', `${p.caps || 0} caps · ${p.intlGoals || 0} goals · ${intlAssists(p)} assist${intlAssists(p) === 1 ? '' : 's'} · nothing won yet`) : `<span class="small muted">${empty}</span>`}</section>`;
+    ${list.length ? body : honTab === 'nat' ? teamBlock(natName(p.nat), [], natFlag(p.nat), `${p.caps || 0} caps · ${p.intlGoals || 0} goals · ${intlAssists(p)} assist${intlAssists(p) === 1 ? '' : 's'} · nothing won yet`) : `<span class="small muted">${empty}</span>`}</section>`;
 }
 
 function viewCareer() {
@@ -1737,14 +1739,16 @@ function viewCareer() {
   const seg = `<div class="seg">${[['career', 'Career'], ['history', 'History']].map(([k, l]) => `<button class="${careerSub === k ? 'on' : ''}" data-act="careerSub" data-v="${k}">${l}</button>`).join('')}</div>`;
   // History: every season and every honour, on their own page.
   if (careerSub === 'history') return seg + careerTables();
-  return seg + `<section class="card hero"><h2>Profile</h2>
-      <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div>${p.shirt && p.shirt.club === p.club && !p.shirt.repick ? `<div><small>Shirt</small><b>#${p.shirt.no}</b></div>` : ''}<div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${calledUp() ? 'In squad' : 'Not picked'}</b></div>
-      <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div title="Transfer value: OVR, position, age, reputation, contract, league and this season's form"><small>Value</small><b>${value ? money(value) : 'Free agent'}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b></div></div>
-      <div class="small muted">${nationNote()}</div>${canAskShirt() ? '<button class="btn sm block" data-act="shirtAskList">Ask a teammate for his shirt</button>' : ''}</section>
+  return seg + `<section class="card hero"><h2>Profile</h2>${p.nickname ? `<div class="nick" title="Since ${seasonLabel(p.nickname.season)}, for ${esc(p.nickname.why)}">“${esc(p.nickname.n)}”</div>` : ""}
+      <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div>${p.shirt && p.shirt.club === p.club && !p.shirt.repick ? `<div><small>Shirt</small><b>#${p.shirt.no}</b></div>` : ''}<div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${p.intlRetired ? 'Retired' : calledUp() ? 'In squad' : u21Pick() ? 'U21s' : 'Not picked'}</b></div>${isCaptain() ? '<div><small>Armband</small><b class="good">Captain</b></div>' : ''}${spLabel() ? `<div><small>Set pieces</small><b>${spLabel()}</b></div>` : ''}
+      <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div title="Transfer value: OVR, position, age, reputation, contract, league and this season's form"><small>Value</small><b>${value ? money(value) : 'Free agent'}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b>${p.u21Caps ? `<small>U21: ${p.u21Caps}${p.u21Goals ? ` (${p.u21Goals}g)` : ''}</small>` : ''}</div></div>
+      <div class="small muted">${nationNote()}</div>${canRetireIntl() ? '<button class="btn sm block" data-act="intlRetireAsk">Retire from international football</button>' : ''}${canAskShirt() ? '<button class="btn sm block" data-act="shirtAskList">Ask a teammate for his shirt</button>' : ''}</section>
+    ${nationalityCard()}
     <section class="card"><h2>This season</h2><div class="${statGrid(p.pos)}"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div>${gkCells(p.pos, p.st.saves, p.st.cleanAll)}<div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
       ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Cups: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}
       ${(p.seasonSpells || []).length ? `<div class="small muted">These are your numbers at ${esc(myClub().name)}. Earlier spells this season have their own rows in your career history.</div>` : ''}
-      <div class="small muted">Career: ${t.apps + live.apps} apps · ${t.goals + live.goals} goals · ${t.assists + live.assists} assists</div></section>
+      <div class="small muted">Career: ${t.apps + live.apps} apps · ${t.goals + live.goals} goals · ${t.assists + live.assists} assists</div>${seasonExtras()}</section>
+    ${milestonesCard()}
     ${S.phase !== 'retired' ? baseCardHtml() : ''}
     <section class="card"><h2>Game</h2><p class="small muted" style="margin:0">Progress saves automatically on this device. Export a backup to keep it safe or move it to another device.</p>
       <div class="btns"><button class="btn sm" data-act="exportSave">Export save</button><button class="btn sm" data-act="importAsk">Import save</button></div>
@@ -1753,9 +1757,84 @@ function viewCareer() {
       <button class="btn ${S.phase === 'retired' ? 'primary' : 'danger'} block" data-act="${S.phase === 'retired' ? 'menu' : 'newAsk'}">Start a new career</button></section>`;
 }
 
+// Your set-piece duties at your club, for the profile.
+function spLabel() {
+  const p = S.player, sp = p.club ? mySetPieces(myClub()) : null;
+  if (!sp || (!sp.pen && !sp.fk)) return '';
+  return sp.pen && sp.fk ? 'Pens & FKs' : sp.pen ? 'Penalties' : 'Free kicks';
+}
+// Bookings, bans and set-piece goals this season, under the season's numbers.
+function seasonExtras() {
+  const p = S.player, st = p.st, bits = [];
+  if (st.yellows || st.reds) bits.push(`${st.yellows || 0} yellow${st.yellows === 1 ? '' : 's'} · ${st.reds || 0} red${st.reds === 1 ? '' : 's'}`);
+  if (st.pens || st.fks) bits.push(`${st.pens || 0} penalt${st.pens === 1 ? 'y' : 'ies'} · ${st.fks || 0} free kick${st.fks === 1 ? '' : 's'} scored`);
+  const ban = p.ban > 0 ? `<div class="small bad">Suspended for the next ${p.ban} league game${p.ban > 1 ? 's' : ''}.</div>` : '';
+  const yel = (st.lgYellows || 0) % YELLOW_BAN, warn = yel === YELLOW_BAN - 1 ? `<div class="small flood">One more league yellow and you miss a game.</div>` : '';
+  return (bits.length ? `<div class="small muted">${bits.join(' · ')}</div>` : '') + ban + warn;
+}
+// Milestones, newest first, with the achievements button.
+function milestonesCard() {
+  const list = (S.player.milestones || []).slice().reverse();
+  const got = Object.keys(achvList()).length;
+  return `<section class="card"><details class="mdrop" style="padding:0"><summary><h2>Milestones</h2><span class="small muted">${list.length}</span></summary><div class="mbody">
+    ${list.length ? list.map(m => `<div class="msrow"><b>${esc(m.t)}</b><span class="small muted">${seasonLabel(m.season)}${m.club ? ` · ${esc(m.club)}` : ''}</span></div>`).join('') : '<span class="small muted">Your debut is the first one.</span>'}
+    </div></details><button class="btn sm block" data-act="achvShow">Achievements ${got}/${ACHIEVEMENTS.length}</button></section>`;
+}
+// Every achievement on this device, unlocked ones with who got there first.
+function showAchievements() {
+  const got = achvList(), n = Object.keys(got).length;
+  openModal(`<h3>Achievements</h3><p class="small muted" style="margin:0">${n} of ${ACHIEVEMENTS.length} unlocked on this device, across all your careers.</p>
+    <div class="achv">${ACHIEVEMENTS.map(([id, name, desc]) => { const g = got[id]; return `<div class="achvrow ${g ? 'on' : ''}"><span class="achvdot">${g ? '★' : '☆'}</span><div><b>${esc(name)}</b><div class="small muted">${esc(desc)}${g ? ` · ${esc(g.who)}, ${esc(g.season)}` : ''}</div></div></div>`; }).join('')}</div>
+    <button class="btn block" data-act="close">Close</button>`);
+}
+// The best careers played on this device, ranked by Legacy score.
+function hallOfFameCard(past) {
+  if (!past.length) return '';
+  const ranked = past.map(r => ({ r, c: cardStatus(r) })).sort((a, b) => b.c.score - a.c.score).slice(0, 10);
+  const badge = s => s === 'icon' ? '<span class="chip good">Icon</span>' : s === 'hero' ? '<span class="chip flood">Hero</span>' : '';
+  return `<section class="card"><h2>Hall of Fame</h2><p class="small muted" style="margin:0">Your best careers, by Legacy score.</p><div class="inbox">${ranked.map(({ r, c }, i) => {
+    const t = careerTotals(r);
+    return `<button class="house hof" data-act="viewPast" data-v="${r.id}"><span class="hofrank">${i + 1}</span><span style="flex:1;min-width:0"><b>${esc(r.name)}</b> · ${r.pos} · Peak ${r.peak}<br><span class="small muted">${t.goals} goals · ${r.trophies.length} trophies · Legacy ${Math.round(c.score)}</span></span>${badge(c.status)}</button>`;
+  }).join('')}</div></section>`;
+}
+// Under the league table: this season's Players of the Month and the league's Players of the Season.
+function leagueAwardsCard(lid) {
+  const l = league(lid), months = S.potm && S.potm.season === S.season ? S.potm.list.filter(m => m.lid === lid) : [];
+  const seasons = (S.lgAwards || {})[lid] || [];
+  if (!months.length && !seasons.length) return '';
+  const row = (label, w) => `<tr class="${w.me ? 'me' : ''}"><td>${label}</td><td class="clubname">${esc(w.n)} <small class="muted">${w.pos}</small></td><td class="clubcrest" title="${esc(S.clubs[w.club] ? club(w.club).name : '')}">${S.clubs[w.club] ? crest(w.club, 'mini') : ''}</td></tr>`;
+  return `<section class="card"><h2>Awards</h2>
+    ${months.length ? `<div class="small muted"><b>Player of the Month</b></div><div class="tablewrap"><table><tbody>${months.map(m => row(m.month, m)).join('')}</tbody></table></div>` : ''}
+    ${seasons.length ? `<div class="small muted"><b>${esc(lgAwardName(l))}</b></div><div class="tablewrap"><table><tbody>${seasons.map(s => row(seasonLabel(s.season), s)).join('')}</tbody></table></div>` : ''}</section>`;
+}
+
+// Nationality: passports, residency towards a new one, your FIFA tie and international availability.
+function nationalityCard() {
+  const p = S.player, res = residency(), ts = tieState(), flags = list => list.map(n => `<span class="natchip">${natFlag(n)}${esc(natName(n))}</span>`).join('');
+  let resLine = '';
+  if (res && !passports().includes(res.nat)) {
+    const need = citizenYears(res.nat), rule = HOST_RULES[res.nat];
+    resLine = need === Infinity ? `${esc(natName(res.nat))}: ${esc(rule ? rule.why : 'residency does not lead to citizenship here')}`
+      : `Living in ${esc(natName(res.nat))}: <b>${Math.min(res.years, need)} of ${need}</b> year${need > 1 ? 's' : ''} needed for citizenship${need > FIFA_YEARS ? ` (its own law; FIFA needs ${FIFA_YEARS})` : ''}.${passports().some(n => !keepsNat(n, res.nat)) ? ` You would stop being a citizen of ${passports().filter(n => !keepsNat(n, res.nat)).map(natName).join(' and ')}.` : ''}`;
+  } else if (!res) resLine = 'Seasons in one country from age 18 count towards its citizenship.';
+  const app = p.citApp ? `<div class="small flood">Your application for citizenship of ${esc(natName(p.citApp.nat))}: an answer in about ${Math.max(1, p.citApp.at - absWeek())} week${p.citApp.at - absWeek() > 1 ? 's' : ''}.</div>` : '';
+  const applyBtn = p.citReady && !p.citApp && !passports().includes(p.citReady) ? `<button class="btn sm good block" data-act="citApply" data-v="${p.citReady}">Apply for citizenship of ${esc(natName(p.citReady))}</button>` : '';
+  const switchBtns = canSwitch() ? switchTargets().map(n => `<button class="btn sm block" data-act="natSwitchAsk" data-v="${n}">Switch to ${esc(natName(n))}</button>`).join('') : '';
+  const avail = p.intlAvail || 'all';
+  const tie = p.switched != null ? `You switched in ${seasonLabel(p.switched)}: ${esc(natName(p.nat))} for good.` : !holdsTeamNat() ? `You are no longer a citizen of ${esc(natName(p.nat))}.` : `FIFA: ${esc(ts.why)}.`;
+  return `<section class="card"><details class="mdrop" style="padding:0"><summary><h2>Nationality</h2><span class="small muted">${natFlag(p.nat)}</span></summary><div class="mbody">
+    <div class="kv"><div><small>Born</small><b>${flags([birthNat()])}</b></div><div><small>Passports</small><b>${flags(passports())}</b></div><div><small>National team</small><b>${holdsTeamNat() ? flags([p.nat]) : '–'}</b></div></div>
+    <div class="small muted">${tie}</div>
+    <div class="small muted">${resLine}</div>${app}${applyBtn}${switchBtns}
+    ${holdsTeamNat() && !p.intlRetired ? `<div class="small muted" style="margin-top:6px"><b>When ${esc(natName(p.nat))} call</b></div><div class="seg">${[['all', 'Available'], ['friendly', 'Friendlies only'], ['none', 'Unavailable']].map(([k, l]) => `<button class="${avail === k ? 'on' : ''}" data-act="intlAvail" data-v="${k}">${l}</button>`).join('')}</div><div class="small muted">Used whenever you are not asked: friendlies, and once a game can no longer change your tie. Every refusal costs the coach's goodwill.</div>` : ''}
+    </div></details></section>`;
+}
+
 // Why you are (or aren't) in your national team.
 function nationNote() {
   const p = S.player, nat = esc(natName(p.nat)), floor = callUpFloor(p.nat), ahead = natRivals();
+  if (p.intlRetired) return `You retired from international football in ${seasonLabel(p.intlRetired)} after ${p.caps} caps and ${p.intlGoals || 0} goals.`;
+  if (u21Pick()) return `Not in the senior squad yet, but you are in the ${nat} U21s.`;
   if (calledUp()) return ahead.length ? `You are in the ${nat} squad, with ${esc(ahead[0].n)} (${ahead[0].r}) ahead of you at ${p.pos}.` : `You are ${nat}'s first-choice ${p.pos}.`;
   if (calcOVR() < floor) return `${nat} only look at players rated ${floor}+.`;
   return `${ahead.length} compatriots are ahead of you at ${p.pos}: ${ahead.slice(0, 3).map(r => `${esc(r.n)} (${r.r})`).join(', ')}. With two or more ahead, you are left out.`;
@@ -1944,7 +2023,16 @@ function showShirtPicker() {
 
 function showDecision() {
   const d = S.decision;
-  const opts = d.type === 'position'
+  const nat = S.player.nat;
+  const opts = d.type === 'citizen'
+    ? [['apply', `Apply for citizenship of ${natName(d.nat)}`, 'The paperwork takes a few weeks'], ['later', 'Not now', 'You can apply later from the Career tab']]
+    : d.type === 'switch'
+    ? [['switch', `Play for ${natName(d.nat)}`, 'For the rest of your career: you can only switch once'], ['stay', `Stay with ${natName(nat)}`, 'You can still switch later while FIFA allows it']]
+    : d.type === 'callup' && d.kind === 'qualifier'
+    ? [['all', 'Accept', 'Play the qualifiers: caps, reputation and the coach happy (+4)'], ['friendly', 'Friendlies only', 'Stay free to switch, but the coach is disappointed (−5)'], ['none', 'Decline', 'The coach is upset (−12). Too many refusals and he stops calling']]
+    : d.type === 'natTour'
+    ? [['accept', 'Accept the call', `Play at the tournament and commit to ${natName(nat)} for good`], ['decline', 'Decline', 'Stay free to switch. The coach will not be pleased (−15)']]
+    : d.type === 'position'
     ? [['accept', `Play as ${d.to}`, d.early ? `Your main position from next season (manager +3)` : `Added beside your main position (manager +3)`], ['refuse', `Stay a ${S.player.pos}`, 'He will be unhappy (−5) and play you a little less this season']]
     : d.type === 'recall'
     ? [['return', 'Go back now', 'Your loan ends and you rejoin the squad straight away'], ['stay', 'Ask to stay on loan', `${club(d.club).mgr} will be disappointed (−8 when you return)`]]
@@ -1953,7 +2041,7 @@ function showDecision() {
     : d.type === 'rumour'
     ? [['deny', 'Deny it publicly', 'The manager likes loyalty (+3)'], ['silent', 'Say nothing', 'He wonders why you stayed quiet (−1)']]
     : [['reject', 'Reject them', `Show you are committed (+${d.rival ? 8 : 4}${d.rival ? ', rivals!' : ''})`], ['listen', 'Tell your agent to listen', 'They may bid in the window (−2)']];
-  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?', shirt: 'He wants your shirt' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
+  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?', shirt: 'He wants your shirt', citizen: 'Citizenship', switch: 'Switch national team?', callup: 'International call-up', natTour: 'Tournament call-up' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
     <div class="inbox">${opts.map(([v, l, s]) => `<button class="house" data-act="decide" data-v="${v}"><span><b>${l}</b><br><span class="small muted">${s}</span></span></button>`).join('')}</div>`);
 }
 
@@ -2021,9 +2109,10 @@ function showMatchday() {
   const sel = p.injured || rested ? { mins: 0, start: false } : cup ? cupSelection(efx) : leagueSel;
   // A new role in the manager's shape gets its own alert first; the team sheet opens when you close it.
   if (sel.start && shapeRoleNote()) { tellShapeRole(); if (POPUPS.length) { matchdayNext = true; nextPopup(); return; } }
-  const me = { n: p.name, pos: matchPos(), r: calcOVR(), no: p.shirt && p.shirt.club === p.club ? p.shirt.no : null, me: true, start: !!sel.start, squad: !p.injured };
+  const me = { n: p.name, pos: matchPos(), r: calcOVR(), no: p.shirt && p.shirt.club === p.club ? p.shirt.no : null, me: true, start: !!sel.start, squad: !p.injured && !sel.banned };
   const mine = teamSheet(myClub(), me), opp = teamSheet(club(fx.opp), null);
   const where = p.injured ? '<span class="bad">You are injured and miss this one.</span>'
+    : sel.banned ? `<span class="bad">You are suspended for this one${p.ban > 1 ? ` (${p.ban} league games left to serve)` : ''}.</span>`
     : rested ? `<span class="bad">You need ${TWO_GAME_ENERGY}+ energy to play twice this week, so you rest for this one.</span>`
     : sel.start ? `<span class="good">You start ${matchRole() !== matchPos() ? `${roleText(matchPos(), matchRole())} in ${esc(myClub().mgr)}'s ${weekFormation(myClub())}` : `as ${POS_NAMES[matchPos()].toLowerCase()}`}.</span>`
     : sel.mins ? '<span class="flood">You start on the bench, but should get on.</span>' : '<span class="muted">You are on the bench.</span>';
@@ -2046,6 +2135,8 @@ function showMatchday() {
 function showSummerMatchday() {
   const t = summerPending();
   if (!t) return;
+  // The call-up needs an answer first.
+  if (t.ask) { nextPopup(); return; }
   const p = S.player, me = t.mine, st = t.stages[t.stage], f = stageFixture(t, me);
   if (!f) { doSummerPlay(); return; }
   const opp = f[0] === me ? f[1] : f[0], isHome = f[0] === me, sel = summerPick(me);
@@ -2166,7 +2257,7 @@ function goalTimeline(scorers) {
   const list = scorers.some(s => s.min) ? [...scorers].sort((x, y) => (x.min || 0) - (y.min || 0)) : scorers;
   return list.map(s => {
     const goal = `<div class="g ${s.home ? '' : 'a'}">
-      <div class="${s.me ? 'me' : ''}">${BALL}<span>${esc(s.n)}</span>${s.min ? `<b class="num">${s.min}'</b>` : ''}</div>
+      <div class="${s.me ? 'me' : ''}">${BALL}<span>${esc(s.n)}${s.pen ? ' <small class="muted">(pen)</small>' : s.fk ? ' <small class="muted">(FK)</small>' : ''}</span>${s.min ? `<b class="num">${s.min}'</b>` : ''}</div>
       ${s.ast ? `<div class="ast ${s.astMe ? 'me' : ''}">${BOOT}<span>${esc(s.ast)}</span></div>` : ''}</div>`;
     return s.home ? goal + '<div></div>' : '<div></div>' + goal;
   }).join('');
@@ -2314,6 +2405,13 @@ document.addEventListener('click', e => {
     case 'neg': { const [id, i] = v.split(':'); const r = negotiate(id, +i); closeModal(); toast(r === 'accepted' ? 'They agreed!' : r === 'withdrawn' ? 'Offer withdrawn' : 'They said no'); render(); return; }
     case 'decline': declineOffer(v); render(); return;
     case 'nextSeason': if (startNextSeason()) { tab = 'home'; window.scrollTo(0, 0); } render(); return;
+    case 'intlRetireAsk': confirmSheet('Retire from international football?', `You stop playing for ${esc(natName(S.player.nat))} for good: no more call-ups or tournaments. In return your body ages a little slower. This cannot be undone.`, 'intlRetire', 'Retire from internationals'); return;
+    case 'intlRetire': retireIntl(); closeModal(); render(); nextPopup(); return;
+    case 'achvShow': showAchievements(); return;
+    case 'citApply': applyCitizenship(v); render(); return;
+    case 'natSwitchAsk': confirmSheet(`Play for ${esc(natName(v))}?`, `You switch national team from ${esc(natName(S.player.nat))} to ${esc(natName(v))} for the rest of your career. FIFA allows only one switch.`, 'natSwitch', `Switch to ${esc(natName(v))}`, v); return;
+    case 'natSwitch': switchNation(v); closeModal(); render(); nextPopup(); return;
+    case 'intlAvail': S.player.intlAvail = v; save(); render(); return;
     case 'retireAsk': confirmSheet('Retire?', 'Your career ends now, whatever your age, and you will see your final summary. Export a save first if you might want to come back.', 'retire', 'Retire'); return;
     case 'retire': retire(); closeModal(); tab = 'home'; render(); return;
     case 'newAsk': confirmSheet('Start over?', 'This deletes your current career save on this device.', 'newGame', 'Delete and start over'); return;

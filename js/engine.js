@@ -446,7 +446,7 @@ function closeSpell() {
 const roundAttrs = a => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, Math.round(v)]));
 function careerRow(st, c) {
   const p = S.player;
-  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, no: p.shirt && p.shirt.club === c.id ? p.shirt.no : undefined, league: league(c.league).name, apps: st.apps + st.cup.apps, mins: (st.mins || 0) + ((st.cup && st.cup.mins) || 0), tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.seasonPos || p.pos, alts: [...altPositions()], posApps: { ...(st.posApps || {}) }, mgrs: [...new Set([...(st.mgrs || []), c.mgr])], comps: JSON.parse(JSON.stringify(st.comps || {})), attrs: roundAttrs(p.attrs) };
+  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, no: p.shirt && p.shirt.club === c.id ? p.shirt.no : undefined, league: league(c.league).name, apps: st.apps + st.cup.apps, mins: (st.mins || 0) + ((st.cup && st.cup.mins) || 0), tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.seasonPos || p.pos, alts: [...altPositions()], posApps: { ...(st.posApps || {}) }, mgrs: [...new Set([...(st.mgrs || []), c.mgr])], cap: wasCaptain(c.id, S.season) || undefined, comps: JSON.parse(JSON.stringify(st.comps || {})), attrs: roundAttrs(p.attrs) };
 }
 
 function seasonTotals() {
@@ -1536,7 +1536,11 @@ function resolveShirtAsk(d, yes) {
 function resolveDecision(choice) {
   const d = S.decision, p = S.player;
   if (!d) return;
-  if (d.type === 'position') resolvePositionAsk(d, choice === 'accept');
+  if (d.type === 'citizen') { if (choice === 'apply') applyCitizenship(d.nat); else msg(`You can apply for citizenship of ${natName(d.nat)} any time from the Career tab.`); }
+  else if (d.type === 'switch') { if (choice === 'switch') switchNation(d.nat); else msg(`You stay with ${natName(p.nat)}. You can still switch to ${natName(d.nat)} from the Career tab while FIFA allows it.`); }
+  else if (d.type === 'callup') { if (p.intlPick && p.intlPick.week === d.week) p.intlPick.choice = choice; }
+  else if (d.type === 'natTour') resolveNatTour(d, choice === 'accept');
+  else if (d.type === 'position') resolvePositionAsk(d, choice === 'accept');
   else if (d.type === 'shirt') resolveShirtAsk(d, choice === 'yes');
   else if (d.type === 'recall') {
     if (choice === 'return') recallLoan();
@@ -1557,7 +1561,7 @@ function resolveDecision(choice) {
       if (inWindow()) { S.offers.push(makeOffer(c, 'transfer')); p.interested = null; }
     }
   }
-  S.decision = null;
+  S.decision = (S.dq || []).shift() || null;
   checkTermination();
   save();
 }
@@ -2177,6 +2181,8 @@ function rotationStart(domesticCup, opp) {
 // playing the game give the same lineup.
 function matchdaySelection(fx = nextFixture()) {
   const p = S.player, key = `${S.season}-${S.week}`;
+  // Suspended: you sit this league game out.
+  if (p.ban > 0 && !p.injured) return { mins: 0, start: false, banned: true };
   if (!p.preSel || p.preSel.key !== key) p.preSel = { key, sel: selection(false, fx && fx.opp) };
   rollWeekPos(p.preSel.sel);
   return p.preSel.sel;
@@ -2231,7 +2237,8 @@ function playFixture(h, a, user) {
     const base = mineHome ? sh : sa;
     const withMe = teamStrength(myClub(), ovr, p.pos);
     // Following the manager's plan gives the team a small edge; playing your own game costs it one.
-    const adj = base + (withMe - base) * user.mins / 90 + (user.follow ? 1.5 : user.own ? -1.5 : 0);
+    // The captain lifts the side a little while he is on the pitch.
+    const adj = base + (withMe - base) * user.mins / 90 + (user.follow ? 1.5 : user.own ? -1.5 : 0) + (isCaptain() ? CAPTAIN_EDGE * user.mins / 90 : 0);
     if (mineHome) sh = adj; else sa = adj;
   }
   // A manager rated above his squad gets more out of it; a weak one less.
@@ -2251,11 +2258,14 @@ function playFixture(h, a, user) {
     for (let i = 0; i < goals; i++) {
       let s = null, myAssist = false, goal = null;
       if (mine && user.mins) {
-        const teamStr = teamStrength(c);
+        const teamStr = teamStrength(c), sp = mySetPieces(c), share = user.mins / 90;
         const pGoal = clamp(GOAL_SHARE[matchRole()] * Math.pow(ovr / teamStr, 3) * user.mins / 90 * (user.own ? 1.3 : 1) * matchForm() * scoreFactor() * footGoal() * edge, 0, .7);
-        if (Math.random() < pGoal) { user.goals++; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch) }; }
+        // On set-piece duty: some of the team's goals are your penalties and free kicks.
+        if (sp && sp.pen && Math.random() < PEN_SHARE * share) { user.goals++; user.pens = (user.pens || 0) + 1; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch), pen: true }; }
+        else if (sp && sp.fk && Math.random() < FK_SHARE * share) { user.goals++; user.fks = (user.fks || 0) + 1; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch), fk: true }; }
+        else if (Math.random() < pGoal) { user.goals++; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch) }; }
         else {
-          const pAst = clamp(ASSIST_SHARE[matchRole()] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * 1.3 * (user.own ? 1.3 : 1) * matchForm() * assistFactor() * footAssist() * edge, 0, .7);
+          const pAst = clamp(ASSIST_SHARE[matchRole()] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * 1.3 * (user.own ? 1.3 : 1) * matchForm() * assistFactor() * footAssist() * edge, 0, .7) + (sp && sp.fk ? CORNER_ASSIST * share : 0);
           if (Math.random() < pAst) { user.assists++; myAssist = true; }
           s = aiScorer(c);
         }
@@ -2264,7 +2274,7 @@ function playFixture(h, a, user) {
       if (!goal) continue;
       // Most goals have an assist; credit a teammate unless it was yours.
       if (myAssist) { goal.ast = p.name; goal.astMe = true; }
-      else if (Math.random() < .7) { const a = aiAssister(c, s); if (a) { a.as = (a.as || 0) + 1; goal.ast = a.n; } }
+      else if (!goal.pen && !goal.fk && Math.random() < .7) { const a = aiAssister(c, s); if (a) { a.as = (a.as || 0) + 1; goal.ast = a.n; } }
       scorers.push(goal);
     }
   };
@@ -2286,6 +2296,8 @@ function matchRating(user, res) {
   // Every save lifts a keeper's rating, so a busy, solid afternoon scores well.
   if (g === 'GK') r += (user.saves || 0) * .18;
   if (p.energy < 30) r -= .4;
+  // A red card ruins the afternoon; a booking takes a little off.
+  if (user.red) r -= 1.5; else if (user.yellow) r -= .1;
   r -= vetYears() * .06; // a step slower every year past 33
   r -= rustPenalty(); // short of match sharpness after an injury
   if (adjusting()) r -= ADJUST_RATING; // still learning a new position
@@ -2342,6 +2354,9 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   // A keeper's saves are worked out first, because they count towards the match rating.
   const sv = matchSaves(user, S.clubs[opp] ? teamStrength(club(opp)) : 75, teamStrength(myClub()));
   user.saves = sv;
+  bookUser(user, cup);
+  if (user.red) report.events.push(user.red === 'second' ? 'Sent off for a second yellow' : 'Shown a straight red card');
+  else if (user.yellow) report.events.push('Booked');
   const rating = matchRating(user, res);
   user.rating = rating;
   const boots = sponsorDeals().find(d => d.goalBonus);
@@ -2364,6 +2379,12 @@ function applyUserMatch(user, res, isHome, cup, report, comp = null) {
   user.clean = clean;
   st.saves = (st.saves || 0) + sv;
   notifyHaul(user, comp ? comp.name : league(myClub().league).name);
+  // Set-piece goals for the record, the nickname and the penalty achievement.
+  if (user.pens || user.fks) { p.pens = (p.pens || 0) + (user.pens || 0); p.spGoals = (p.spGoals || 0) + (user.pens || 0) + (user.fks || 0); st.pens = (st.pens || 0) + (user.pens || 0); st.fks = (st.fks || 0) + (user.fks || 0); }
+  if (user.goals >= 3) achv('hattrick');
+  if (user.goals >= 5) achv('haul5');
+  if (ageOf(p.by) >= 38) achv('veteran');
+  checkMilestones();
   if (rating >= 8.3) { if (!cup) st.motm++; report.events.push(cup ? 'Player of the Match in the cup!' : 'Player of the Match!'); }
   p.form.push(rating); p.form = p.form.slice(-5);
   p.energy -= Math.round(user.mins / 90 * MATCH_ENERGY);
@@ -2414,6 +2435,586 @@ function resultRow(res, isHome, user, comp, kind, stage = '') {
   };
 }
 
+// ---------- cards and suspensions ----------
+// Tacklers pick up the most bookings, and playing your own game makes them likelier. Five league
+// yellows in a season (and again at 10 and 15) cost a one-game ban; a second yellow one game; a
+// straight red two. Bans are served in league games.
+const YELLOW_RATE = { CB: .2, LB: .17, RB: .17, CDM: .22, CM: .13, LM: .09, RM: .09, CAM: .08, LW: .07, RW: .07, ST: .08, GK: .03 };
+const YELLOW_BAN = 5;
+function bookUser(user, cup) {
+  const p = S.player, st = p.st;
+  if (!user.mins) return;
+  const y = (YELLOW_RATE[matchRole()] || .1) * user.mins / 90 * (user.own ? 1.3 : 1);
+  if (Math.random() < y * .03) user.red = 'red';
+  else if (Math.random() < y) { user.yellow = true; if (Math.random() < .03) user.red = 'second'; }
+  if (!user.yellow && !user.red) return;
+  st.yellows = (st.yellows || 0) + (user.yellow ? 1 : 0);
+  if (user.red) {
+    st.reds = (st.reds || 0) + 1;
+    const games = user.red === 'red' ? 2 : 1;
+    p.ban = (p.ban || 0) + games;
+    changeAff(-4);
+    msg(`Sent off${user.red === 'second' ? ' for a second yellow' : ''}! You are banned for the next ${games} league game${games > 1 ? 's' : ''}. ${myClub().mgr} is not happy (affection −4).`, 'bad');
+    notify('bad', user.red === 'second' ? 'Second yellow!' : 'Red card!', `You were sent off and will miss the next ${games} league game${games > 1 ? 's' : ''}.`);
+    achv('red');
+  } else if (!cup) {
+    st.lgYellows = (st.lgYellows || 0) + 1;
+    if (st.lgYellows % YELLOW_BAN === 0) {
+      p.ban = (p.ban || 0) + 1;
+      msg(`That is ${st.lgYellows} league yellow cards this season: you are banned for the next league game.`, 'bad');
+    }
+  }
+}
+
+// ---------- set pieces ----------
+// The manager gives penalties to his best finisher and free kicks and corners to his best
+// striker of a dead ball. You get the job if you are a regular starter and better at it than every
+// fit teammate. A taker scores most of his team's penalties and the odd free kick, and sets up
+// more goals from corners.
+const PEN_BONUS = { ST: 3, LW: 2, RW: 2, CAM: 2, CM: 0, LM: 0, RM: 0, CDM: -4, LB: -5, RB: -5, CB: -8, GK: -40 };
+const FK_BONUS = { CAM: 3, LW: 2, RW: 2, LM: 2, RM: 2, CM: 1, ST: 0, CDM: -2, LB: 0, RB: 0, CB: -8, GK: -40 };
+const PEN_SHARE = .1, FK_SHARE = .03, CORNER_ASSIST = .06;
+function setPieceWeek() {
+  const p = S.player, c = myClub();
+  if (!c || p.needsContract) return;
+  const regular = ['Key Player', 'Starter'].includes(squadStatus()) && p.pos !== 'GK';
+  const mates = c.players.filter(pl => !pl.inj);
+  const best = b => Math.max(0, ...mates.map(pl => pl.r + (b[pl.pos] ?? 0)));
+  const pen = regular && p.attrs.SHO + 2 >= best(PEN_BONUS);
+  const fk = regular && (p.attrs.SHO + p.attrs.PAS) / 2 + 2 >= best(FK_BONUS);
+  const was = p.sp && p.sp.club === c.id ? p.sp : { pen: false, fk: false };
+  p.sp = { club: c.id, pen, fk };
+  const got = [pen && !was.pen && 'penalties', fk && !was.fk && 'free kicks and corners'].filter(Boolean);
+  const lost = [!pen && was.pen && 'penalties', !fk && was.fk && 'free kicks'].filter(Boolean);
+  if (got.length) {
+    msg(`${c.mgr} has made you the ${got.join(' and ')} taker at ${c.name}.`, 'good');
+    notify('good', 'Set-piece taker', `You take the ${got.join(' and ')} for ${c.name} now. Expect a few more goals${fk ? ' and assists' : ''}.`);
+  }
+  if (lost.length) msg(`You are no longer on ${lost.join(' or ')} for ${c.name}: someone else has the job.`);
+}
+const mySetPieces = c => { const sp = S.player.sp; return sp && sp.club === c.id ? sp : null; };
+
+// ---------- milestones ----------
+// Career and club landmarks: debut, appearances, goals, assists and caps. Each one gets a message,
+// an alert and a line in your career.
+const MS_APPS = [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800];
+const MS_GOALS = [25, 50, 100, 150, 200, 250, 300, 400, 500, 600, 700];
+const MS_ASSISTS = [50, 100, 150, 200, 250, 300];
+const MS_CLUB_APPS = [100, 200, 300, 400, 500], MS_CLUB_GOALS = [50, 100, 150, 200, 300];
+const MS_CAPS = [25, 50, 100, 150], MS_INTL_GOALS = [10, 25, 50, 75, 100];
+function liveTotals(clubId = null) {
+  const p = S.player, rows = (p.career || []).filter(r => !clubId || r.clubId === clubId);
+  const t = { apps: 0, goals: 0, assists: 0 };
+  rows.forEach(r => { t.apps += r.apps || 0; t.goals += r.goals || 0; t.assists += r.assists || 0; });
+  if (S.phase === 'season' && p.st && (!clubId || clubId === p.club)) {
+    t.apps += p.st.apps + p.st.cup.apps; t.goals += p.st.goals + p.st.cup.goals; t.assists += p.st.assists + p.st.cup.assists;
+  }
+  return t;
+}
+function checkMilestones(silent = false) {
+  const p = S.player;
+  if (!p.club) return;
+  const done = p.msDone = p.msDone || [], hit = [], c = myClub();
+  const t = liveTotals(), ct = liveTotals(c.id);
+  const test = (key, ok, text) => { if (ok && !done.includes(key)) { done.push(key); hit.push(text); } };
+  test('debut', t.apps >= 1, 'Professional debut');
+  test('goal1', t.goals >= 1, 'First professional goal');
+  MS_APPS.forEach(n => test('apps' + n, t.apps >= n, `${n} career appearances`));
+  MS_GOALS.forEach(n => test('goals' + n, t.goals >= n, `${n} career goals`));
+  MS_ASSISTS.forEach(n => test('assists' + n, t.assists >= n, `${n} career assists`));
+  if (t.apps > ct.apps) test('cdebut:' + c.id, ct.apps >= 1, `Debut for ${c.name}`);
+  MS_CLUB_APPS.forEach(n => test(`capps:${c.id}:${n}`, ct.apps >= n, `${n} appearances for ${c.name}`));
+  MS_CLUB_GOALS.forEach(n => test(`cgoals:${c.id}:${n}`, ct.goals >= n, `${n} goals for ${c.name}`));
+  test('cap1', (p.caps || 0) >= 1, `International debut for ${natName(p.nat)}`);
+  test('igoal1', (p.intlGoals || 0) >= 1, `First goal for ${natName(p.nat)}`);
+  MS_CAPS.forEach(n => test('caps' + n, (p.caps || 0) >= n, `${n} caps for ${natName(p.nat)}`));
+  MS_INTL_GOALS.forEach(n => test('igoals' + n, (p.intlGoals || 0) >= n, `${n} goals for ${natName(p.nat)}`));
+  test('u21', (p.u21Caps || 0) >= 1, `${natName(p.nat)} U21 debut`);
+  if (silent || !hit.length) return;
+  hit.forEach(text => addMilestone(text));
+  notify('good', hit.length > 1 ? 'Milestones!' : 'Milestone!', hit.join(' · '));
+  if (t.apps >= 500) achv('apps500');
+  if (t.goals >= 1) achv('goal1');
+  if (t.goals >= 100) achv('goals100');
+  if (t.goals >= 300) achv('goals300');
+  if (t.assists >= 100) achv('assists100');
+  if ((p.caps || 0) >= 100) achv('caps100');
+  if (done.includes('debut') && hit.includes('Professional debut') && ageOf(p.by) <= 16) achv('wonderkid');
+}
+function addMilestone(text) {
+  const p = S.player;
+  (p.milestones = p.milestones || []).push({ t: text, season: S.season, club: p.club ? myClub().name : '' });
+  msg(`Milestone: ${text}.`, 'good');
+}
+
+// ---------- captaincy ----------
+// The manager hands the armband to a key player he trusts (affection 80+), 22 or older, in at
+// least his second season at the club, or to a long-serving starter (fourth season, 27+). The
+// captain lifts the side a little when he plays, the manager's goodwill settles higher, and the
+// season shows the armband in your history. A transfer request, being frozen out or falling out
+// with the manager (affection below 40) costs it; leaving the club ends it.
+const CAPTAIN_EDGE = .5;
+const seasonsHere = () => new Set([...(S.player.career || []).filter(r => r.clubId === S.player.club).map(r => r.season), S.season]).size;
+const isCaptain = () => !!S.player.captain && S.player.captain === S.player.club && !S.player.loan;
+function captainWeek() {
+  const p = S.player;
+  if (p.needsContract || !p.club) return;
+  const c = myClub();
+  if (p.captain && p.captain !== p.club) p.captain = null;
+  if (isCaptain()) {
+    p.capSeasons = [...new Set([...(p.capSeasons || []), `${c.id}:${S.season}`])];
+    if (p.listed || frozenOut() || effAff() < 40) {
+      p.captain = null;
+      msg(`${c.mgr} has taken the captain's armband off you.`, 'bad');
+      notify('bad', 'Captaincy lost', `You are no longer ${c.name} captain.`);
+    }
+    return;
+  }
+  if (p.loan || p.listed || S.phase !== 'season') return;
+  const st = squadStatus(), age = ageOf(p.by), yrs = seasonsHere();
+  const ok = effAff() >= 80 && ((st === 'Key Player' && age >= 22 && yrs >= 2) || (st === 'Starter' && age >= 27 && yrs >= 4));
+  if (!ok || Math.random() >= 1 / 6) return;
+  p.captain = c.id;
+  p.capSeasons = [...new Set([...(p.capSeasons || []), `${c.id}:${S.season}`])];
+  addRep(2); changeBoard(5);
+  addMilestone(`Named ${c.name} captain`);
+  notify('good', 'Captain!', `${c.mgr} has made you ${c.name} captain. Lead by example: the team plays a little better with you on the pitch.`);
+  achv('captain');
+}
+const wasCaptain = (clubId, season) => (S.player.capSeasons || []).includes(`${clubId}:${season}`);
+
+// ---------- Player of the Month ----------
+// Every month of the season your league names its best player, on that month's goals, assists,
+// team results and (for you) match ratings and clean sheets. Kept for the season in S.potm.
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function potmSnap(lid) {
+  const base = {};
+  league(lid).clubs.forEach(id => {
+    const t = S.table[id];
+    base[id] = { pts: t ? t.pts : 0 };
+    club(id).players.forEach(pl => { base[id + '|' + pl.n] = [pl.g || 0, pl.as || 0]; });
+  });
+  const st = S.player.st;
+  return { lid, base, me: st ? { g: st.goals, a: st.assists, apps: st.apps, rsum: st.rsum, cs: st.cleanAll || 0 } : null };
+}
+function potmWeek(force = false) {
+  const p = S.player, lid = p.club && !p.needsContract && myClub().league;
+  if (!lid || S.phase !== 'season') return;
+  if (!S.potmSnap || S.potmSnap.lid !== lid) { S.potmSnap = potmSnap(lid); S.potmMonth = weekDate().getUTCMonth(); return; }
+  const next = weekDate(S.week + 1).getUTCMonth();
+  if (!force && next === S.potmMonth) return;
+  const { base, me } = S.potmSnap, L = league(lid), cands = [];
+  L.clubs.forEach(id => {
+    const pts = (S.table[id] ? S.table[id].pts : 0) - (base[id] ? base[id].pts : 0);
+    club(id).players.forEach(pl => {
+      const b = base[id + '|' + pl.n] || [0, 0], g = (pl.g || 0) - b[0], a = (pl.as || 0) - b[1];
+      cands.push({ n: pl.n, club: id, pos: pl.pos, s: g * 1.2 + a * .7 + pts * .12 + (pl.r - 75) * .12 + gauss() * 1.5 });
+    });
+  });
+  const st = p.st;
+  if (me && st) {
+    const apps = st.apps - me.apps, g = st.goals - me.g, a = st.assists - me.a, avg = apps ? (st.rsum - me.rsum) / apps : 0;
+    const cs = ['GK', 'DEF'].includes(POS_GROUP[p.pos]) ? (st.cleanAll || 0) - me.cs : 0;
+    const pts = (S.table[p.club] ? S.table[p.club].pts : 0) - (base[p.club] ? base[p.club].pts : 0);
+    if (apps >= 2) cands.push({ n: p.name, club: p.club, pos: p.pos, me: true, s: g * 1.2 + a * .7 + cs * .6 + pts * .12 + (avg - 6.9) * 1.5 + (calcOVR() - 75) * .12 + gauss() * 1.5 });
+  }
+  // The judges like to spread it around: each win already this season counts against a player.
+  const before = S.potm && S.potm.season === S.season ? S.potm.list.filter(m => m.lid === lid) : [];
+  cands.forEach(x => { x.s -= before.filter(m => m.n === x.n && m.club === x.club).length * 2.5; });
+  cands.sort((x, y) => y.s - x.s);
+  const w = cands[0], mName = MONTH_NAMES[S.potmMonth];
+  if (w) {
+    if (!S.potm || S.potm.season !== S.season) S.potm = { season: S.season, list: [] };
+    S.potm.list.push({ month: mName, n: w.n, club: w.club, pos: w.pos, me: !!w.me, lid });
+    if (w.me) {
+      p.awards.push({ name: `${L.name} Player of the Month`, season: S.season });
+      addRep(1);
+      msg(`You are the ${L.name} Player of the Month for ${mName}!`, 'good');
+      notify('good', 'Player of the Month!', `You were the best player in the ${L.name} in ${mName}.`);
+      achv('potm');
+    } else msg(`${L.name} Player of the Month for ${mName}: ${w.n} (${club(w.club).name}).`);
+  }
+  S.potmSnap = potmSnap(lid);
+  S.potmMonth = next;
+}
+
+// ---------- league Player of the Season ----------
+// Every league names its best player of the season (in England's top flight, the PFA Player of the
+// Year): rating against the league, goals, assists and where his team finished. You are in the
+// running for your own league unless you missed a quarter of it injured. All leagues' winners are
+// kept in S.lgAwards[league id], newest first.
+const lgAwardName = l => l.nat === 'ENG' && l.tier === 1 ? 'PFA Player of the Year' : `${l.name} Player of the Season`;
+function leaguePlayerOfSeason(lid, mine) {
+  const L = league(lid), table = leagueTable(lid), n = table.length;
+  const avgR = L.clubs.reduce((s, id) => s + teamStrength(club(id)), 0) / Math.max(1, n);
+  const finish = id => { const i = table.findIndex(r => r.id === id); return i === 0 ? 5 : i < 4 ? 2 : i >= n - 3 ? -2 : 0; };
+  const cands = [];
+  L.clubs.forEach(id => club(id).players.forEach(pl => {
+    if (pl.r < avgR - 4) return;
+    const def = ['GK', 'DEF'].includes(POS_GROUP[pl.pos]) ? 4 : 0;
+    cands.push({ n: pl.n, club: id, pos: pl.pos, s: (pl.r - avgR) * 1.3 + (pl.g || 0) * .9 + (pl.as || 0) * .55 + finish(id) + def + gauss() * 2.5 });
+  }));
+  if (mine) cands.push({ ...mine, s: mine.s + finish(mine.club) + gauss() * 2.5 });
+  cands.sort((a, b) => b.s - a.s);
+  return cands[0] || null;
+}
+function leagueAwardsSeason(tot, avg, longOut) {
+  const p = S.player, myLid = p.club ? myClub().league : null;
+  let won = false;
+  S.lgAwards = S.lgAwards || {};
+  S.leagues.forEach(l => {
+    let mine = null;
+    if (l.id === myLid && !longOut && tot.apps >= 15 && !p.needsContract) {
+      const avgR = l.clubs.reduce((s, id) => s + teamStrength(club(id)), 0) / Math.max(1, l.clubs.length);
+      const lg = leagueTally(l.id, 'goals'), la = leagueTally(l.id, 'assists');
+      const def = ['GK', 'DEF'].includes(POS_GROUP[p.pos]) ? 4 + (tot.cleanAll || 0) * .25 : 0;
+      mine = { n: p.name, club: p.club, pos: p.pos, me: true, s: (calcOVR() - avgR) * 1.3 + lg * .9 + la * .55 + (avg - 7) * 6 + def };
+    }
+    const w = leaguePlayerOfSeason(l.id, mine);
+    if (!w) return;
+    (S.lgAwards[l.id] = S.lgAwards[l.id] || []).unshift({ season: S.season, n: w.n, club: w.club, pos: w.pos, me: !!w.me });
+    S.lgAwards[l.id] = S.lgAwards[l.id].slice(0, 10);
+    if (w.me) won = true;
+  });
+  return won;
+}
+
+// ---------- U21s and international retirement ----------
+// Before the senior side wants you, your country's U21s can: 21 or younger, within 8 of the senior
+// level and no more than one younger compatriot ahead of you in your position. A season with them
+// brings 3 to 6 caps. From 30 you can retire from international football: no more call-ups, but
+// your body thanks you (a sixth less fade at each birthday).
+const U21_AGE = 21, U21_GAP = 8, INTL_RETIRE_AGE = 30, INTL_RETIRE_FADE = .83;
+function u21Pick() {
+  const p = S.player, ovr = calcOVR();
+  if (ageOf(p.by) > U21_AGE || calledUp() || p.needsContract || ovr < callUpFloor(p.nat) - U21_GAP) return false;
+  let ahead = 0;
+  Object.values(S.clubs).forEach(c => c.players.forEach(pl => { if (pl.nat === p.nat && pl.pos === p.pos && ageOf(pl.by) <= U21_AGE && pl.r > ovr) ahead++; }));
+  return ahead < 2;
+}
+function u21Season(st, awards) {
+  const p = S.player;
+  if (!u21Pick()) return;
+  const caps = randi(3, 6), rate = { FWD: .4, MID: .2 }[POS_GROUP[p.pos]] || .04;
+  let g = 0, a = 0;
+  for (let i = 0; i < caps; i++) { if (Math.random() < rate) g++; if (Math.random() < rate * .7) a++; }
+  p.u21Caps = (p.u21Caps || 0) + caps;
+  p.u21Goals = (p.u21Goals || 0) + g;
+  addComp(st.comps = st.comps || {}, `${natName(p.nat)} U21`, 'nat', caps, g, a, caps * rand(6.6, 7.3), Math.round(caps * rand(55, 85)));
+  awards.push(`${caps} caps for ${natName(p.nat)} U21${g ? ` (${g} goal${g > 1 ? 's' : ''})` : ''}`);
+}
+const canRetireIntl = () => { const p = S.player; return !p.intlRetired && S.phase === 'season' && ageOf(p.by) >= INTL_RETIRE_AGE && (p.caps || 0) > 0; };
+function retireIntl() {
+  const p = S.player;
+  if (!canRetireIntl()) return false;
+  p.intlRetired = S.season;
+  callUpCache = null;
+  addMilestone(`Retired from international football (${p.caps} caps, ${p.intlGoals || 0} goals)`);
+  notify('good', 'International retirement', `You have played your last game for ${natName(p.nat)}: ${p.caps} caps and ${p.intlGoals || 0} goals. Fewer games means your body ages a little slower.`);
+  save();
+  return true;
+}
+
+// ---------- nicknames ----------
+// After three seasons, once the fans know you (reputation 45+), they give you a nickname from how you
+// play: loyalty to one club, saves, tackles, set pieces, goals, assists, pace or the armband.
+function earnNickname() {
+  const p = S.player;
+  if (p.nickname || (p.career || []).length < 3 || p.rep < 45 || !p.club) return;
+  const t = liveTotals(), apps = Math.max(1, t.apps), last = p.name.trim().split(/\s+/).pop();
+  const rows = p.career, tk = rows.reduce((s, r) => s + (r.tackles || 0), 0) / apps, cs = rows.reduce((s, r) => s + (r.cleanAll || 0), 0) / apps;
+  const clubs = new Set(rows.map(r => r.clubId));
+  const opts = [];
+  if (clubs.size === 1 && rows.length >= 6) opts.push([`Mr ${club(p.club).name}`, `a one-club man at ${club(p.club).name}`]);
+  if (p.pos === 'GK' && cs >= .35) opts.push([pick(['The Cat', 'Safe Hands', 'The Wall']), 'all those clean sheets']);
+  if (POS_GROUP[p.pos] === 'DEF' && tk >= 5) opts.push([pick(['The Rock', 'The Wall', 'The Destroyer']), 'winning every tackle']);
+  if (p.pos === 'CDM' && tk >= 4) opts.push([pick(['The Enforcer', 'The Shield']), 'breaking up play']);
+  if (t.goals / apps >= .55) opts.push([pick(['The Goal Machine', 'The Executioner', `El ${last}`]), 'scoring for fun']);
+  if (t.assists / apps >= .3) opts.push([pick(['The Maestro', 'The Magician', 'The Architect']), 'creating chances']);
+  if ((p.spGoals || 0) >= 12) opts.push([pick(['Dead-Ball King', 'The Sniper']), 'your set pieces']);
+  if ((p.attrs.PAC || 0) >= 88 && p.pos !== 'GK') opts.push([pick(['The Flash', 'The Rocket', 'Road Runner']), 'your pace']);
+  if ((p.capSeasons || []).length >= 3) opts.push(['The Skipper', 'leading from the front']);
+  if (!opts.length) opts.push([`${last}inho`, 'how much they love you']);
+  const [n, why] = opts[0];
+  p.nickname = { n, why, season: S.season };
+  addMilestone(`The fans call you "${n}"`);
+  notify('good', 'A nickname!', `The fans have started calling you "${n}", for ${why}.`);
+  achv('nickname');
+}
+
+// ---------- achievements ----------
+// Goals to chase across every career on this device. Kept in their own storage, so they survive
+// new careers: { id: { who, season } }.
+const ACHV_KEY = 'ptl_achv_v1';
+const ACHIEVEMENTS = [
+  ['goal1', 'Off the mark', 'Score your first professional goal'],
+  ['hattrick', 'Hat-trick hero', 'Score three in one game'],
+  ['haul5', 'Five-star show', 'Score five in one game'],
+  ['goals100', 'Centurion', '100 career goals'],
+  ['goals300', 'Goal machine', '300 career goals'],
+  ['assists100', 'Provider', '100 career assists'],
+  ['apps500', 'Iron man', '500 career appearances'],
+  ['wonderkid', 'Wonderkid', 'Make your debut at 16'],
+  ['veteran', 'Still going', 'Play a game at 38 or older'],
+  ['ovr90', 'World class', 'Reach 90 OVR'],
+  ['ovr95', 'Living legend', 'Reach 95 OVR'],
+  ['captain', 'Armband', 'Be named club captain'],
+  ['nickname', 'Fan favourite', 'Earn a nickname from the fans'],
+  ['potm', 'Month to remember', 'Win Player of the Month'],
+  ['pots', 'Best in the league', "Win your league's Player of the Season"],
+  ['boot', 'Golden Boot', 'Finish a league season as top scorer'],
+  ['title', 'Champion', 'Win a league title'],
+  ['globe', 'Globetrotter', 'Win league titles in three countries'],
+  ['ucl', 'Kings of Europe', 'Win the Champions League'],
+  ['wc', 'World champion', 'Win the World Cup'],
+  ['ballon', "Ballon d'Or", "Win the Ballon d'Or"],
+  ['caps100', 'International centurion', '100 caps for your country'],
+  ['pens25', 'Spot-kick specialist', 'Score 25 penalties'],
+  ['red', 'Early bath', 'Get sent off'],
+  ['oneclub', 'One-club man', 'Retire after 10+ seasons at a single club'],
+  ['legend', 'Club legend', 'Retire as a legend of a club'],
+  ['icon', 'Icon', 'Retire with an Icon card'],
+];
+function achvList() { try { return JSON.parse(localStorage.getItem(ACHV_KEY)) || {}; } catch (e) { return {}; } }
+function achv(id) {
+  const got = achvList();
+  if (got[id] || !S || !S.player) return;
+  const a = ACHIEVEMENTS.find(x => x[0] === id);
+  if (!a) return;
+  got[id] = { who: S.player.name, season: seasonLabel() };
+  try { localStorage.setItem(ACHV_KEY, JSON.stringify(got)); } catch (e) { /* storage unavailable */ }
+  notify('good', 'Achievement unlocked', `${a[1]}: ${a[2]}.`);
+}
+// Things only a look at the whole career can tell: titles, trophies, awards, OVR.
+function achvSweep() {
+  const p = S.player, ovr = calcOVR();
+  if (ovr >= 90) achv('ovr90');
+  if (ovr >= 95) achv('ovr95');
+  const titles = (p.trophies || []).filter(t => (p.career || []).some(r => r.season === t.season && r.league === t.name));
+  if (titles.length) achv('title');
+  const countries = new Set(titles.map(t => (DB.leagues.find(l => l.name === t.name) || {}).country).filter(Boolean));
+  if (countries.size >= 3) achv('globe');
+  if ((p.trophies || []).some(t => /Champions League/.test(t.name))) achv('ucl');
+  if ((p.trophies || []).some(t => /^World Cup( \d{4})?$/.test(t.name))) achv('wc');
+  if ((p.awards || []).some(a => a.name === "Ballon d'Or")) achv('ballon');
+  if ((p.awards || []).some(a => /Golden Boot$/.test(a.name))) achv('boot');
+  if ((p.awards || []).some(a => /Player of the (Season|Year)$/.test(a.name) && !/Young/.test(a.name))) achv('pots');
+  if ((p.pens || 0) >= 25) achv('pens25');
+}
+// At retirement: one-club careers, legends and Icons.
+function achvRetire(rec) {
+  const clubs = new Set((rec.career || []).map(r => r.clubId || r.club));
+  if (clubs.size === 1 && (rec.career || []).length >= 10) achv('oneclub');
+  if (clubLegacy(rec).some(c => c.legend)) achv('legend');
+  if (cardStatus(rec).status === 'icon') achv('icon');
+}
+
+// ---------- nationality, residency and switching national team ----------
+// FIFA lets a player represent a country he holds the nationality of once he has lived there
+// continuously for 5 years after turning 18, if he is not tied to another country. Each country
+// decides itself when it grants citizenship: some need longer than FIFA's 5 years, some make you give
+// up your old passport, and the UK Home Nations never count residency at all. Your birth country
+// decides whether you keep its nationality when you take another one.
+// Residency: every season you play wholly in one country's league (on loan too) is a year living
+// there; a season split between countries, or a move abroad, starts the count again.
+const FIFA_YEARS = 5;
+const IBERO = ['ARG', 'BRA', 'URU', 'COL', 'MEX', 'ECU', 'CHI', 'PER', 'PAR', 'VEN', 'BOL', 'PAN', 'CRC', 'POR'];
+const EU = ['ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED', 'BEL', 'IRL', 'SWE', 'DEN', 'AUT', 'CRO', 'POL'];
+const CPLP = ['BRA', 'POR', 'ANG', 'CPV'];
+// years: what the country's own law needs (0: residency never makes you eligible to play for it).
+// fast/fastYears: shorter wait for these nationalities. renounce: you must give up your old
+// nationality, unless it is in keep.
+const HOST_RULES = {
+  ENG: { years: 0, why: 'The Home Nations agreement only accepts birth, a parent or grandparent born there, or five years of school before 18: residency never counts.' },
+  KSA: { years: 0, why: 'Saudi Arabia practically never grants citizenship to foreign players.' },
+  FRA: { years: 5 }, GER: { years: 5 }, BEL: { years: 5 }, TUR: { years: 5 }, USA: { years: 5 },
+  NED: { years: 5, renounce: true },
+  ESP: { years: 10, fast: IBERO, fastYears: 2, renounce: true, keep: [...IBERO, 'FRA'] },
+  ITA: { years: 10, fast: EU, fastYears: 4 },
+  POR: { years: 10, fast: [...EU, ...CPLP], fastYears: 7 },
+};
+// Countries whose adults lose their nationality when they take another one.
+const NO_DUAL = new Set(['CHN', 'JPN', 'KOR', 'IDN', 'MAS', 'SGP', 'VIE', 'AUT', 'NED', 'QAT', 'UAE', 'KSA', 'UZB', 'COD', 'CMR', 'UKR']);
+
+const passports = () => { const p = S.player; return p.passports || (p.passports = [p.nat]); };
+const birthNat = () => S.player.birthNat || S.player.nat;
+const clubNat = id => S.clubs[id] ? league(club(id).league).nat : null;
+// Years you have lived in one country without a break, counting finished seasons from age 18:
+// { nat, years }, or null.
+function residency() {
+  const p = S.player, by = {};
+  (p.career || []).forEach(r => { const n = clubNat(r.clubId); if (n) (by[r.season] = by[r.season] || new Set()).add(n); });
+  const seasons = Object.keys(by).map(Number).sort((a, b) => b - a);
+  if (!seasons.length) return null;
+  let s = seasons[0], nat = null, years = 0;
+  while (by[s] && by[s].size === 1 && baseYear() + s - p.by >= 18) {
+    const n = [...by[s]][0];
+    if (nat && n !== nat) break;
+    nat = n; years++; s--;
+  }
+  return nat ? { nat, years } : null;
+}
+// How long this country makes you wait, with FIFA's 5 years as the floor. Infinity if never.
+function citizenYears(host) {
+  const r = HOST_RULES[host];
+  if (!r || !r.years) return Infinity;
+  const y = r.fast && passports().some(n => r.fast.includes(n)) ? r.fastYears : r.years;
+  return Math.max(FIFA_YEARS, y);
+}
+// Whether you keep this nationality when you become a citizen of host.
+function keepsNat(nat, host) {
+  const r = HOST_RULES[host] || {};
+  if (NO_DUAL.has(nat)) return false;
+  return !(r.renounce && !(r.keep || []).includes(nat));
+}
+// Your FIFA tie to the country you represent: competitive senior games (qualifiers and finals).
+// Friendlies and U21 games never tie you. You can still switch once with no more than 3 competitive
+// games, all before 21, none at a World Cup or continental finals, and 3 years since the last one.
+function capTie() { const p = S.player; return p.tie || (p.tie = { comp: 0, adult: false, finals: false, last: null }); }
+function tieState() {
+  const t = capTie();
+  if (!t.comp) return { tied: false, why: 'No competitive senior caps: free to switch' };
+  if (t.finals) return { tied: true, why: 'You have played at a major tournament' };
+  if (t.adult) return { tied: true, why: 'You have played competitive games after turning 21' };
+  if (t.comp > 3) return { tied: true, why: `${t.comp} competitive caps (the limit is 3)` };
+  const wait = 3 - (S.season - t.last);
+  if (wait > 0) return { tied: true, soft: true, why: `${t.comp} competitive cap${t.comp > 1 ? 's' : ''} before 21: free to switch ${wait} season${wait > 1 ? 's' : ''} after the last one` };
+  return { tied: false, why: `${t.comp} competitive cap${t.comp > 1 ? 's' : ''} before 21, long enough ago: free to switch` };
+}
+// One switch of national team in a career, to a country whose passport you hold.
+const switchTargets = () => S.player.switched != null ? [] : passports().filter(n => n !== S.player.nat);
+const canSwitch = () => switchTargets().length > 0 && !tieState().tied;
+// Tied for good: no wait can undo it (a finals, a competitive game after 21, or more than 3).
+const tiedForGood = () => { const t = capTie(); return t.finals || t.adult || t.comp > 3; };
+// Can you play for your country at all (you need to hold its nationality)?
+const holdsTeamNat = () => passports().includes(S.player.nat);
+
+// Citizenship: offered once you have lived long enough in a country. Applying takes 4 to 8 weeks.
+function citizenshipCheck() {
+  const p = S.player, res = residency();
+  if (!res || passports().includes(res.nat) || p.citApp) return;
+  if (res.years < citizenYears(res.nat)) return;
+  p.citReady = res.nat;
+  if ((p.citAsked || []).includes(res.nat)) return;
+  p.citAsked = [...(p.citAsked || []), res.nat];
+  queueDecision({ type: 'citizen', nat: res.nat, text: citizenText(res.nat, res.years) });
+}
+function citizenText(host, years) {
+  const lose = passports().filter(n => !keepsNat(n, host)), ts = tieState();
+  const parts = [`You have lived in ${natName(host)} for ${years} years and can apply for citizenship of ${natName(host)}.`];
+  if (lose.length) parts.push(`${NO_DUAL.has(lose[0]) ? `${natName(lose[0])} does not allow dual citizenship` : `${natName(host)} makes you renounce your other nationality`}: you would stop being a citizen of ${lose.map(natName).join(' and ')}${lose.includes(S.player.nat) ? ` and could never play for ${natName(S.player.nat)} again` : ''}.`);
+  else parts.push(`You can stay a citizen of ${passports().map(natName).join(" and ")} too.`);
+  if (S.player.switched != null) parts.push('You have already switched national team once, so this passport would not change who you play for.');
+  else if (ts.tied) parts.push(`FIFA would not let you play for ${natName(host)}: ${ts.why.toLowerCase()}.`);
+  else parts.push(`You are not tied to ${natName(S.player.nat)}, so you could then choose to play for ${natName(host)}.`);
+  return parts.join(' ');
+}
+function applyCitizenship(host) {
+  const p = S.player;
+  if (p.citApp || passports().includes(host)) return false;
+  p.citApp = { nat: host, at: absWeek() + randi(4, 8) };
+  p.citReady = null;
+  msg(`You have applied for citizenship of ${natName(host)}. The paperwork takes a few weeks.`);
+  return true;
+}
+function citizenshipWeek() {
+  const p = S.player;
+  if (!p.citApp || absWeek() < p.citApp.at) return;
+  const host = p.citApp.nat;
+  p.citApp = null;
+  const lost = passports().filter(n => !keepsNat(n, host));
+  p.passports = [...passports().filter(n => !lost.includes(n)), host];
+  p.lostNats = [...(p.lostNats || []), ...lost];
+  callUpCache = null;
+  addMilestone(`Became a citizen of ${natName(host)}`);
+  const lostTeam = lost.includes(p.nat);
+  const text = `You are now a citizen of ${natName(host)}.${lost.length ? ` You are no longer a citizen of ${lost.map(natName).join(" or ")}.` : ''}`;
+  if (canSwitch() && switchTargets().includes(host)) {
+    if (lostTeam) { switchNation(host); notify('good', `Citizen of ${natName(host)}`, `${text} You can no longer play for ${natName(lost[0])}, so ${natName(host)} is your national team now.`); }
+    else { notify('good', `Citizen of ${natName(host)}`, `${text} You can now choose to play for ${natName(host)}.`); queueDecision({ type: 'switch', nat: host, text: `You hold ${natName(host)} nationality and FIFA lets you switch. Play for ${natName(host)} from now on, or stay with ${natName(p.nat)}? You can only switch once, ever.` }); }
+  } else {
+    const why = p.switched != null ? 'You have already switched national team once.' : tieState().tied ? `FIFA will not let you switch: ${tieState().why.toLowerCase()}.` : '';
+    notify(lostTeam ? 'bad' : 'good', `Citizen of ${natName(host)}`, `${text} ${why}${lostTeam ? ` You are no longer a citizen of ${natName(p.nat)}, so you have no national team.` : ''}`);
+  }
+}
+function switchNation(nat) {
+  const p = S.player, old = p.nat;
+  if (!passports().includes(nat) || (p.switched != null) || (holdsTeamNat() && tieState().tied)) return false;
+  p.capsBy = { ...(p.capsBy || {}), [old]: { caps: p.caps || 0, goals: p.intlGoals || 0 } };
+  p.nat = nat; p.switched = S.season;
+  p.caps = 0; p.intlGoals = 0;
+  p.tie = { comp: 0, adult: false, finals: false, last: null };
+  p.natFavor = 60; p.natSnub = 0; p.intlRetired = null;
+  callUpCache = null;
+  addMilestone(`Switched national team from ${natName(old)} to ${natName(nat)}`);
+  notify('good', `Now playing for ${natName(nat)}`, `FIFA has approved your switch. ${natName(nat)} is your national team for the rest of your career.`);
+  return true;
+}
+
+// International windows: two games each in September, October, November and March. The autumn
+// windows are qualifiers (competitive: they can tie you to your country), March is friendlies.
+// The coach calls up whoever is good enough (see calledUp). While a competitive game could still tie
+// you, you choose each time: accept, friendlies only or decline. Once you are tied (or for
+// friendlies), your standing choice in the Career tab (normally: available) answers for you.
+// Turning your country down costs the coach's goodwill; fall low enough and he stops calling.
+const INTL_WINDOWS = { 6: 'qualifier', 10: 'qualifier', 14: 'qualifier', 31: 'friendly' };
+const natFavor = () => S.player.natFavor ?? 60;
+function changeFavor(d) { const p = S.player; p.natFavor = clamp(natFavor() + d, 0, 100); if (p.natFavor < 25) { p.natSnub = absWeek() + 20; p.natFavor = 45; msg(`${natName(p.nat)}'s coach is tired of being turned down: no call-ups for about 20 weeks.`, 'bad'); } }
+function intlWeek(report) {
+  const p = S.player, kind = INTL_WINDOWS[S.week + 1];
+  // A week ahead: the call-up.
+  if (kind && calledUp() && !p.needsContract) {
+    const risky = kind === 'qualifier' && !tiedForGood() && p.switched == null;
+    if (risky) {
+      p.intlPick = { week: S.week + 1, choice: null };
+      const t = capTie(), note = ` You have ${t.comp} competitive cap${t.comp === 1 ? '' : 's'}.${t.comp >= 3 ? ' One more would tie you to ' + natName(p.nat) + ' for good.' : ageOf(p.by) >= 21 ? ` You are over 21: any competitive game now ties you to ${natName(p.nat)} for good.` : ' Playing more than 3, or any after you turn 21, ties you for good.'}`;
+      queueDecision({ type: 'callup', week: S.week + 1, kind, text: `${natName(p.nat)} have called you up for two World Cup qualifiers.${note}` });
+    } else p.intlPick = { week: S.week + 1, choice: p.intlAvail || 'all' };
+  }
+  // This week: the games.
+  if (INTL_WINDOWS[S.week]) playWindow(INTL_WINDOWS[S.week], report);
+}
+function playWindow(kind, report) {
+  const p = S.player, choice = p.intlPick && p.intlPick.week === S.week ? p.intlPick.choice : null;
+  p.intlPick = null;
+  if (!choice || p.needsContract) return;
+  if (choice === 'none' || (choice === 'friendly' && kind === 'qualifier')) {
+    changeFavor(kind === 'qualifier' ? (choice === 'none' ? -12 : -5) : -6);
+    report.events.push(`Turned down ${natName(p.nat)}'s call-up`);
+    return;
+  }
+  if (p.injured) { report.events.push(`Missed ${natName(p.nat)}'s games through injury`); return; }
+  changeFavor(4);
+  const me = 'N:' + p.nat, pool = (CONFED[confedOf(p.nat)] || []).filter(n => n !== p.nat);
+  const first = natRivals().length === 0, lines = [];
+  let caps = 0, goals = 0, assists = 0;
+  for (let i = 0; i < 2; i++) {
+    const opp = kind === 'qualifier' ? pick(pool) : pick(Object.keys(NATION_STR).filter(n => n !== p.nat));
+    const start = Math.random() < (first ? .85 : .5), mins = start ? randi(60, 90) : Math.random() < .6 ? randi(10, 30) : 0;
+    const ms = teamStr(me), os = teamStr('N:' + opp), home = i === 0;
+    const gf = poisson(1.35 * Math.exp((ms - os + (home ? 2 : -2)) / 13)), ga = poisson(1.15 * Math.exp((os - ms - (home ? 2 : -2)) / 13));
+    let g = 0, a = 0;
+    if (mins) {
+      const rate = ({ FWD: .45, MID: .2, DEF: .06, GK: 0 }[POS_GROUP[p.pos]] || .05) * mins / 90 * clamp(calcOVR() / Math.max(50, ms), .6, 1.4);
+      for (let k = 0; k < gf; k++) { if (Math.random() < rate) g++; else if (Math.random() < rate * .7) a++; }
+      caps++; goals += g; assists += a;
+      if (kind === 'qualifier') { const t = capTie(); t.comp++; t.last = S.season; if (ageOf(p.by) >= 21) t.adult = true; }
+    }
+    lines.push(`${natName(p.nat)} ${gf}–${ga} ${natName(opp)}${mins ? (g ? ` (${g} goal${g > 1 ? 's' : ''})` : a ? ' (assist)' : '') : ' (unused)'}`);
+  }
+  if (caps) {
+    p.caps = (p.caps || 0) + caps;
+    p.intlGoals = (p.intlGoals || 0) + goals;
+    addComp(p.st.comps = p.st.comps || {}, `${natName(p.nat)} ${kind === 'qualifier' ? 'qualifiers' : 'friendlies'}`, 'nat', caps, goals, assists, caps * clamp(6.7 + goals * .6 + assists * .3 + rand(-.3, .3), 5, 9), caps * randi(55, 85));
+    addRep(goals * .5 + .5);
+    checkMilestones();
+  }
+  report.events.push(`${natName(p.nat)} ${kind === 'qualifier' ? 'qualifiers' : 'friendlies'}: ${lines.join(', ')}`);
+  msg(`International break: ${lines.join('; ')}.`, goals ? 'good' : '');
+}
+// Decisions waiting their turn: one is shown at a time.
+function queueDecision(d) { if (!S.decision) S.decision = d; else (S.dq = S.dq || []).push(d); }
+
 // ---------- weekly loop ----------
 // Your birthday falls in this game week: a message, and your age ticks over.
 function birthdayWeek(report) {
@@ -2462,6 +3063,7 @@ function advanceWeek() {
   if (half) { user = half.user; weekEnergy = half.weekEnergy; }
   else {
   birthdayWeek(report);
+  setPieceWeek();
   sponsorWeek();
   marketWeek();
   (p.oldLeases || []).filter(l => l.end <= absWeek()).forEach(l => msg(`Your lease on the ${HOUSING[l.house].name.toLowerCase()} in ${natName(l.nat)} has ended. No more rent to pay there.`, 'good'));
@@ -2472,6 +3074,10 @@ function advanceWeek() {
     if (!p.injured) (p.objectives || []).forEach(o => { if (o.kind === 'energy' && p.energy >= o.min) o.progress++; });
     else p.st.missed = (p.st.missed || 0) + 1;
     user = { ...matchdaySelection(fx), goals: 0, assists: 0 };
+    if (user.banned) {
+      p.ban--;
+      report.events.push(p.ban ? `Suspended: ${p.ban} more league game${p.ban > 1 ? 's' : ''} to sit out` : 'Suspended: ban served');
+    }
     tellWeekPos(false);
     if (user.start) tellShapeRole();
     S.player.preSel = null;
@@ -2619,6 +3225,10 @@ function advanceWeek() {
   }));
 
   randomEvent(report);
+  captainWeek();
+  citizenshipWeek();
+  intlWeek(report);
+  potmWeek();
   mgrWeek();
   callUpWeek();
   dropEarlyRenewals();
@@ -2629,6 +3239,8 @@ function advanceWeek() {
   renewTaskWeek();
   noteRenewal();
   shirtRequestWeek();
+  if (calcOVR() >= 90) achv('ovr90');
+  if (calcOVR() >= 95) achv('ovr95');
   const card = cardTier(calcOVR());
   if (card !== 'Bronze' && !(p.cards || []).includes(card)) {
     p.cards = [...(p.cards || []), card];
@@ -4323,23 +4935,25 @@ function endSeason() {
   // The Best or FIFPRO World 11, however good the games you did play were.
   const longOut = longInjury(tot);
   if (longOut) awards.push(`Missed ${tot.missed} league games: out of the running for the big individual awards`);
-  if (!longOut && tot.apps >= 20 && avg >= 7.8) give(pfa ? 'PFA Player of the Year' : 'Player of the Season', pfa ? 'PFA Player of the Year' : `${L.name} Player of the Season`, 4);
+  // The last month of the season gets its Player of the Month too.
+  potmWeek(true);
+  // Every league names its Player of the Season against all its players: you win yours by being the best.
+  if (leagueAwardsSeason(tot, avg, longOut)) give(pfa ? 'PFA Player of the Year' : 'Player of the Season', pfa ? 'PFA Player of the Year' : `${L.name} Player of the Season`, 4);
   else if (age <= 21 && tot.apps >= 15 && avg >= 7.1) give(pfa ? 'PFA Young Player of the Year' : 'Young Player of the Season', pfa ? 'PFA Young Player of the Year' : `${L.name} Young Player`, 3);
   if (!longOut && tot.apps >= 18 && avg >= 7.3) give('Team of the Season', `${L.name} Team of the Season`, 1);
   // World awards, decided against the best players in the world.
   const acc = accolades(tot, avg);
   const ACC_REP = { "Ballon d'Or": 8, "The Best FIFA Men's Player": 6, 'European Golden Shoe': 5, 'Kopa Trophy': 4, 'Golden Boy': 4, 'Yashin Trophy': 5, 'Gerd Müller Trophy': 4, 'FIFPRO World 11': 2 };
   acc.mine.forEach(a => give(a, a, ACC_REP[a] || 2));
-  if (calledUp()) {
-    const caps = randi(4, 8), rate = { FWD: .35, MID: .15 }[POS_GROUP[p.pos]] || .02;
-    let g = 0, a = 0;
-    for (let i = 0; i < caps; i++) { if (Math.random() < rate) g++; if (Math.random() < rate * .7) a++; }
-    p.caps += caps;
-    p.intlGoals = (p.intlGoals || 0) + g;
-    addComp(st.comps = st.comps || {}, `${natName(p.nat)} (qualifiers & friendlies)`, 'nat', caps, g, a, caps * rand(6.6, 7.2), Math.round(caps * rand(60, 85)));
-    awards.push(`${caps} caps for ${natName(p.nat)} (qualifiers and friendlies)`);
-  }
+  // Caps now come from the international windows during the season: list them, or the U21s if not picked.
+  const natCaps = Object.entries(st.comps || {}).filter(([k, v]) => v.kind === 'nat' && k.startsWith(natName(p.nat) + ' ') && !/U21/.test(k)).reduce((s, [, v]) => s + v.apps, 0);
+  if (natCaps) awards.push(`${natCaps} cap${natCaps > 1 ? 's' : ''} for ${natName(p.nat)} this season`);
+  else if (!calledUp()) u21Season(st, awards);
+  if (isCaptain()) awards.push(`${c.name} captain`);
   (S.cupWins || []).forEach(w => awards.push(w));
+  checkMilestones();
+  earnNickname();
+  achvSweep();
   const review = performanceReview(tot, avg, awards);
   // Remember the final top-flight tables for next season's European places.
   S.lastStandings = {};
@@ -4366,6 +4980,8 @@ function endSeason() {
 
   // This club's row; earlier clubs this season already have theirs.
   if (st.apps + st.cup.apps > 0 || !(p.seasonSpells || []).length) p.career.push(careerRow(st, c));
+  // Long enough in one country: you may apply for its citizenship.
+  citizenshipCheck();
   const clubs = [...(p.seasonSpells || []).map(s => club(s.club).name), c.name].filter((n, i, a) => a.indexOf(n) === i);
   S.seasonSummary = { season: S.season, club: c.name, clubs, pos, apps: tot.apps, goals: tot.goals, assists: tot.assists, avg, awards, ovrStart: S.ovrSeasonStart || ovr, ovrEnd: ovr, clean: tot.clean, cleanAll: tot.cleanAll || 0, saves: tot.saves || 0, starts: st.starts, missed: tot.missed, loanNext: false, returning: false, cup: tot.cup, review, honours: acc.honours };
 
@@ -4376,7 +4992,7 @@ function endSeason() {
   if (nextAge > VET_AGE) {
     // A strong season keeps you sharp: up to 60% less fade after a great one.
     sum.formShield = clamp((review.form || 0) * .25, 0, .6);
-    const rate = (BIRTHDAY_DROP[nextAge] || 2 + (nextAge - 39) * .4) * (1 - .06 * p.equip) * (1 - sum.formShield);
+    const rate = (BIRTHDAY_DROP[nextAge] || 2 + (nextAge - 39) * .4) * (1 - .06 * p.equip) * (1 - sum.formShield) * (p.intlRetired ? INTL_RETIRE_FADE : 1);
     attrKeys(p.pos).forEach(k => {
       const fast = ['PAC', 'REF'].includes(k) ? 1.3 : 1;
       p.attrs[k] = clamp(p.attrs[k] - rand(.8, 1.2) * rate * fast, 20, 99);
@@ -4761,6 +5377,9 @@ function startNextSeason() {
   makeSeason();
   // Your club's offer after blocking a move stays until the next window, like the blocked move itself.
   S.offers = S.offers.filter(o => o.keep && p.blockedMove && p.blockedMove.offer === o.id);
+  S.potmSnap = null;
+  checkMilestones();
+  achvSweep();
   S.ovrSeasonStart = calcOVR();
   const age = ageOf(p.by);
   msg(`Season ${seasonLabel()} begins. You are ${age}.`);
@@ -4780,6 +5399,8 @@ function retire() {
   S.offers = [];
   S.decision = null;
   S.phase = 'retired';
+  achvSweep();
+  achvRetire(retiredRecord());
   // Only club legends get the big send-off.
   const rec = retiredRecord(), legends = clubLegacy(rec).filter(c => c.legend).map(c => c.club), traits = knownFor(rec).join(' and ');
   if (legends.length) {
@@ -5117,6 +5738,12 @@ function migrate() {
   if (p.st && p.st.missed == null) p.st.missed = 0;
   p.seasonSpells = p.seasonSpells || [];
   p.banned = p.banned || [];
+  // Milestones already passed before they existed are marked done without any fanfare.
+  if (!p.msDone) checkMilestones(true);
+  // Nationality: born with the one you play for. Caps from before the international windows were not
+  // split into friendlies and qualifiers: most are counted as competitive, and any tournament ties you.
+  if (!p.birthNat) p.birthNat = p.nat;
+  if (!p.tie && p.caps) p.tie = { comp: Math.ceil(p.caps * .6), adult: ageOf(p.by) > 21, finals: (p.career || []).some(r => Object.entries(r.comps || {}).some(([k, c]) => c.kind === 'nat' && !/qualifiers|friendlies|U21/.test(k))), last: S.season };
   if (p.st && !p.st.comps) {
     // Games played before the split by competition existed: league and one line for all cups.
     p.st.comps = {};
@@ -5296,7 +5923,7 @@ function retiredRecord() {
 // played in that season; anything else is a domestic cup.
 const LEGACY_TROPHY = [[/Club World Cup/, 6], [/World Cup( \d{4})?$/, 12], [/Champions League/, 12],
   [/European Championship|Euro|Copa América|Africa Cup|Asian Cup|Gold Cup|Nations League/, 8], [/Europa League|Conference League|Libertadores/, 5]];
-const LEGACY_AWARD = [[/Ballon d'Or/, 25], [/The Best|Golden Shoe|Yashin/, 8], [/Golden Boot|Player of the (Season|Year)|Golden Ball|Top Scorer/, 4], [/Team of the Season|World 11/, 1]];
+const LEGACY_AWARD = [[/Player of the Month/, .5], [/Ballon d'Or/, 25], [/The Best|Golden Shoe|Yashin/, 8], [/Golden Boot|Player of the (Season|Year)|Golden Ball|Top Scorer/, 4], [/Team of the Season|World 11/, 1]];
 // Icon: 120+ with 60%+ of the fans behind you, or 180+ whatever they say. Hero: 50+ with 50%+ of
 // the fans, or a legend at any club whatever the score (with a peak OVR of 75 or more).
 const ICON_SCORE = 120, ICON_ANY = 180, ICON_VOTE = 60, HERO_SCORE = 50, HERO_VOTE = 50, HERO_LEGEND_PEAK = 75;
