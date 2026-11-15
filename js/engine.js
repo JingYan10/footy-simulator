@@ -3075,6 +3075,7 @@ function generateOffers(count, guarantee = false) {
   // calls included. Under a release clause, clubs that would have bid get in touch with your agent instead.
   const divert = !guarantee && blockActive();
   if (!guarantee && offerLocked()) return;
+  if (!divert) bossReunion();
   // An ageing free agent hears from fewer and fewer clubs.
   const [odds, maxNew] = freeAgentInterest(), interest = 1, before = S.offers.length;
   if (Math.random() >= odds) { msg(`No club came forward. At ${ageOf(p.by)}, offers for a player without a club are getting scarce: it may be time to retire.`, 'bad'); return; }
@@ -3165,6 +3166,39 @@ function generateOffers(count, guarantee = false) {
   } else if (added) notify('good', added > 1 ? `${added} clubs want you!` : 'A club wants you!', `${names.join(', ')} ${added > 1 ? 'have' : 'has'} made you an offer. Check the Contract tab.`);
 }
 
+
+// ---------- old managers who loved you ----------
+// Part ways with a manager who adores you (affection 98+), because you left or he was sacked or
+// walked out, and he remembers. After a full season apart, each transfer window there is a chance he
+// asks for you: back to the club you shared if he is still there, or to join him at his new club
+// (as long as it isn't far above your level).
+const BOSS_LOVE = 98, BOSS_ASK = .35;
+const offerSeason = () => S.phase === 'offseason' ? S.season + 1 : S.season;
+function rememberBoss(c) {
+  const p = S.player;
+  if (p.loan || !c || c.id !== p.club || effAff() < BOSS_LOVE) return;
+  p.bosses = [...(p.bosses || []).filter(b => b.n !== c.mgr), { n: c.mgr, club: c.id, at: S.season + 1 }];
+}
+function bossReunion() {
+  const p = S.player, list = p.bosses || [], key = windowKey();
+  if (!list.length || p.bossKey === key || p.loan) return;
+  p.bossKey = key;
+  const home = p.club, now = offerSeason();
+  shuffle(list.slice()).some(b => {
+    if (now < b.at + 1 || (b.next || 0) > now) return false;
+    const c = Object.values(S.clubs).find(x => x.mgr === b.n);
+    if (!c || c.id === home || isBanned(c.id) || teamStrength(c) > calcOVR() + 8 || S.offers.some(o => o.club === c.id) || Math.random() >= BOSS_ASK) return false;
+    const back = c.id === b.club, was = club(b.club);
+    const o = makeOffer(c, 'transfer');
+    o.boss = { n: b.n, back, was: b.club };
+    b.next = now + 1; // asks at most once a season
+    S.offers.push(o);
+    const text = back ? `${b.n} has never forgotten you. He wants you back at ${c.name}.` : `${b.n}, your old manager at ${was ? was.name : 'your old club'}, is now at ${c.name} and wants you to join him.`;
+    msg(`${text} Offer: ${money(o.wage)}/week.`, 'good');
+    notify('good', back ? 'Come home?' : 'Your old boss calls', `${text} Check the Contract tab.`);
+    return true;
+  });
+}
 // Offers when a window opens: more for a breakout season or a transfer request.
 function windowOffers() {
   const { breakout } = scoutBuzz(), p = S.player;
@@ -3294,7 +3328,8 @@ function tryBlockMove(o) {
 }
 
 // The absolute week the next transfer window opens: January, or the summer after this season.
-const nextWindowAbs = () => S.phase === 'season' && S.week < JAN_WINDOW[0] ? S.season * SEASON_WEEKS + JAN_WINDOW[0] : (S.season + 1) * SEASON_WEEKS + 1;
+const nextWindowAbs = () => S.phase === 'offseason' ? (S.season + 1) * SEASON_WEEKS + JAN_WINDOW[0]
+  : S.week < JAN_WINDOW[0] ? S.season * SEASON_WEEKS + JAN_WINDOW[0] : (S.season + 1) * SEASON_WEEKS + 1;
 const canRefusePlay = () => { const p = S.player; return S.phase === 'season' && !!p.blockedMove && p.blockedMove.until > absWeek() && !strikeOn() && !p.loan && !p.needsContract; };
 // Refuse to play: one press is enough. The manager freezes you out (affection −30, never below the
 // point where he would tear up your contract) and the board is furious (−25). You sit out every game
@@ -3350,7 +3385,7 @@ function payRelease(half) {
 // chance to refuse lapses.
 function strikeWindow() {
   const p = S.player;
-  if (p.blockedMove && p.blockedMove.until <= absWeek()) p.blockedMove = null;
+  if (p.blockedMove && p.blockedMove.until <= absWeek()) { p.blockedMove = null; S.offers = S.offers.filter(o => !o.keep); }
   if (p.strike && p.strike.until <= absWeek()) {
     const c = club(p.strike.club);
     p.strike = null;
@@ -3405,6 +3440,8 @@ function acceptOffer(id) {
       notify('bad', 'Burned bridges', `You joined ${names}'s rivals. ${names} fans and board will hate you: they will never make you an offer again, and neither club will ever call you a legend.`);
     }
     testimonial();
+    rememberBoss(myClub());
+    if (o.boss) p.bosses = (p.bosses || []).filter(b => b.n !== o.boss.n);
     // Shown among your new club's signings for the season you join: the fee they paid (your value),
     // free if you had no club, or up from the academy.
     const freeMove = freeAgent();
@@ -3417,7 +3454,8 @@ function acceptOffer(id) {
     p.loan = null;
     p.joinedSeason = S.season;
     p.newClubUntil = newClubLock();
-    p.aff = o.promised ? 60 : 50;
+    // Your old boss still adores you; he starts where he left off, near enough.
+    p.aff = o.boss ? 85 : o.promised ? 60 : 50;
     p.affPen = 0;
     p.frozen = false;
     syncHousing();
@@ -3665,7 +3703,7 @@ function requestContract() {
 
 // ---------- managers and their boards ----------
 // Every manager has a rating (40–95) and his board's confidence in him (0–100). A manager rated above
-// his squad's level gets more out of it (up to +2 team rating in matches), a weak one less. The board
+// his squad's level gets more out of it (up to +3 team rating in matches), a weak one less. The board
 // judges every league game against what the squad should get, and the table every few weeks against
 // where the squad should be. Lose its confidence and he is sacked; the board then brings in someone
 // out of work, poaches a manager from a smaller club, or gives a newcomer his chance. All simulated:
@@ -3682,7 +3720,7 @@ function mgrOf(c) {
   }
   return m;
 }
-const mgrEdge = c => clamp((mgrOf(c).r - teamStrength(c)) / 5, -2, 2);
+const mgrEdge = c => clamp((mgrOf(c).r - teamStrength(c)) / 5, -3, 3);
 const jobLabel = j => j >= 70 ? 'Secure' : j >= 50 ? 'Stable' : j >= 32 ? 'Under pressure' : j >= 18 ? 'On thin ice' : 'Facing the sack';
 // Where a squad should finish: its rank by team rating in its league.
 function expectedRank(c) {
@@ -3984,6 +4022,7 @@ function mgrSeasonEnd() {
 }
 function sackManager(c, tell) {
   const m = mgrOf(c), old = c.mgr;
+  rememberBoss(c);
   // Your manager going: remember him for this season's line in your career history.
   const st = S.player.st;
   if (st && c.id === myClub().id && !(st.mgrs || []).includes(old)) st.mgrs = [...(st.mgrs || []), old];
@@ -4012,6 +4051,7 @@ function appointManager(c, poach = true) {
   if (best.kind === 'pool') S.mgrPool = S.mgrPool.filter(x => !(x.name === best.name && x.from === best.from));
   if (best.kind === 'poach') {
     const left = best.club;
+    rememberBoss(left);
     appointManager(left, false);
     const mine = myMgrClubs().includes(left.id);
     if (mine) {
@@ -4719,7 +4759,8 @@ function startNextSeason() {
     if (clubTier(c) === 1 && myRank() > slots + 1 && ageOf(p.by) <= 23) startLoan();
   } else if (sum.loanNext) startLoan();
   makeSeason();
-  S.offers = [];
+  // Your club's offer after blocking a move stays until the next window, like the blocked move itself.
+  S.offers = S.offers.filter(o => o.keep && p.blockedMove && p.blockedMove.offer === o.id);
   S.ovrSeasonStart = calcOVR();
   const age = ageOf(p.by);
   msg(`Season ${seasonLabel()} begins. You are ${age}.`);
