@@ -2196,7 +2196,7 @@ function weekEndEnergy(e = S.player.energy) {
   return Math.max(0, Math.round(left));
 }
 // The league game of a two-game week has been played; the midweek game is next.
-const leagueDone = () => !!(S.weekHalf && S.weekHalf.key === weekKey());
+const leagueDone = () => !!((S.weekHalf && S.weekHalf.key === weekKey()) || (S.weekTail && S.weekTail.key === weekKey()));
 
 // The minutes you were on the pitch: from kick-off as a starter, the closing spell as a sub.
 const userMinutes = u => !u || !u.mins ? [1, 90] : u.start ? [1, Math.min(90, u.mins)] : [Math.max(1, 91 - u.mins), 90];
@@ -3044,48 +3044,88 @@ function intlWeek(report) {
   // This week: the games.
   if (INTL_WINDOWS[S.week]) playWindow(INTL_WINDOWS[S.week], report);
 }
+// The window's two games, fixed when the week begins: opponents (your confederation for qualifiers,
+// anyone for friendlies) and days around your club's games (Saturday league, midweek cup).
+// Picked for them, you play each from the Home screen on its day, through the matchday like a club
+// game; the week does not end until you have. Not picked, they are played at the end of the week.
+function intlGames() {
+  const p = S.player, kind = INTL_WINDOWS[S.week];
+  if (!kind || S.phase !== 'season' || !p.nat) return [];
+  if (S.intl && S.intl.key === weekKey() && S.intl.nat === p.nat) return S.intl.games;
+  const me = 'N:' + p.nat, all = Object.keys(NATION_STR).filter(n => n !== p.nat), conf = (CONFED[confedOf(p.nat)] || []).filter(n => n !== p.nat);
+  const pool = kind === 'qualifier' && conf.length > 1 ? conf : all;
+  const o1 = pick(pool), o2 = pick(pool.filter(n => n !== o1));
+  const e = midweekFixture(), mo = e && typeof midweekOffset === 'function' ? midweekOffset(e) : -1;
+  const days = mo < 0 ? [3, 6] : mo === 5 ? [2, 6] : [1, 6];
+  const games = [{ h: me, a: 'N:' + o1, day: days[0], kind }, { h: 'N:' + o2, a: me, day: days[1], kind }];
+  S.intl = { key: weekKey(), nat: p.nat, games, cup: e ? { day: mo, opp: e.opp, tag: e.euro ? null : 'Cup', name: e.t.name } : null };
+  return games;
+}
+// Picked and available for this week's games.
+function intlUserPicked() {
+  const p = S.player, k = INTL_WINDOWS[S.week], c = p.intlPick && p.intlPick.week === S.week ? p.intlPick.choice : null;
+  return !!k && !!c && S.phase === 'season' && !p.needsContract && !p.injured && c !== 'none' && !(c === 'friendly' && k === 'qualifier');
+}
+const intlPending = () => intlUserPicked() && intlGames().some(g => !g.res);
+const nextIntlGame = () => intlUserPicked() ? intlGames().find(g => !g.res) || null : null;
+// Your part in a game, settled when you first look at it so the team sheet and the game agree.
+function intlSel(g) {
+  if (!g.sel) {
+    const first = natRivals().length === 0, start = Math.random() < (natCaptain() ? .95 : first ? .85 : .5);
+    g.sel = start ? starterMins(70) : Math.random() < .6 ? { mins: randi(10, 30), start: false } : { mins: 0, start: false };
+    save();
+  }
+  return g.sel;
+}
+function playIntlGame(g, withUser) {
+  const p = S.player, me = 'N:' + p.nat, isHome = g.h === me, label = g.kind === 'qualifier' ? 'Qualifier' : 'Friendly';
+  const user = withUser ? { ...intlSel(g), goals: 0, assists: 0, team: me } : null;
+  const r = simTeams(g.h, g.a, user, 2);
+  let rating = null;
+  if (user && user.mins) {
+    user.saves = matchSaves(user, teamStr(isHome ? g.a : g.h), teamStr(me));
+    rating = user.rating = summerRating(user, r, me);
+    p.caps = (p.caps || 0) + 1;
+    p.intlGoals = (p.intlGoals || 0) + user.goals;
+    if (g.kind === 'qualifier') { const t = capTie(); t.comp++; t.last = S.season; if (ageOf(p.by) >= 21) t.adult = true; }
+    addComp(p.st.comps = p.st.comps || {}, `${natName(p.nat)} ${g.kind === 'qualifier' ? 'qualifiers' : 'friendlies'}`, 'nat', 1, user.goals, user.assists, rating, user.mins);
+    addRep((rating - 6.4) * .4 + user.goals * .4 + .2);
+    p.energy = Math.max(0, p.energy - 12);
+    notifyHaul(user, natName(p.nat));
+    checkMilestones();
+  }
+  g.res = { gh: r.gh, ga: r.ga };
+  addNatGame({ comp: label, stage: `${INTL_MONTH[S.week]} window`, h: g.h, a: g.a, gh: r.gh, ga: r.ga, scorers: r.scorers, mins: user ? user.mins || 0 : 0, start: !!(user && user.start), goals: user ? user.goals : 0, assists: user ? user.assists : 0, rating, saves: user ? user.saves : undefined });
+  save();
+  return { comp: `${natName(p.nat)} · ${label}`, stage: `${INTL_MONTH[S.week]} window`, match: { ...r, user: user || { mins: 0, goals: 0, assists: 0 }, isHome } };
+}
+// The week begins: the break is announced, with your part in it.
+function intlWeekStart() {
+  const p = S.player, kind = INTL_WINDOWS[S.week];
+  if (!kind || !holdsTeamNat()) return;
+  const games = intlGames(), me = 'N:' + p.nat, c = p.intlPick && p.intlPick.week === S.week ? p.intlPick.choice : undefined;
+  const list = games.map(g => `${natName((g.h === me ? g.a : g.h).slice(2))} (${DAY_NAMES_E[(6 + g.day) % 7]})`).join(' and ');
+  const you = p.intlRetired ? '' : c === undefined ? ' You were not called up.' : c === null ? '' : intlUserPicked() ? ' You are in the squad: play them from the Home screen.' : p.injured ? ' You are injured and miss them.' : ' You are not available for them.';
+  notify(intlUserPicked() ? 'good' : '', 'International break', `${natName(p.nat)} play ${list} this week (${kind === 'qualifier' ? 'qualifiers' : 'friendlies'}).${you}`);
+}
+const DAY_NAMES_E = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function playWindow(kind, report) {
   const p = S.player, choice = p.intlPick && p.intlPick.week === S.week ? p.intlPick.choice : null;
+  const picked = intlUserPicked();
   p.intlPick = null;
-  // Your country plays whether you are there or not; its results are kept either way.
-  let playing = false;
   if (choice && !p.needsContract) {
     if (choice === 'none' || (choice === 'friendly' && kind === 'qualifier')) {
       changeFavor(kind === 'qualifier' ? (choice === 'none' ? -12 : -5) : -6);
       report.events.push(`Turned down ${natName(p.nat)}'s call-up`);
-    } else if (p.injured) report.events.push(`Missed ${natName(p.nat)}'s games through injury`);
-    else { changeFavor(4); playing = true; }
+    } else if (p.injured && !picked) report.events.push(`Missed ${natName(p.nat)}'s games through injury`);
+    else if (picked) changeFavor(4);
   }
-  const me = 'N:' + p.nat, all = Object.keys(NATION_STR).filter(n => n !== p.nat), conf = (CONFED[confedOf(p.nat)] || []).filter(n => n !== p.nat);
-  const pool = kind === 'qualifier' && conf.length ? conf : all;
-  const first = natRivals().length === 0, lines = [];
-  let caps = 0, goals = 0, assists = 0;
-  for (let i = 0; i < 2; i++) {
-    const opp = pick(pool);
-    const start = Math.random() < (natCaptain() ? .95 : first ? .85 : .5), mins = !playing ? 0 : start ? randi(60, 90) : Math.random() < .6 ? randi(10, 30) : 0;
-    const ms = teamStr(me), os = teamStr('N:' + opp), home = i === 0;
-    const gf = poisson(1.35 * Math.exp((ms - os + (home ? 2 : -2)) / 13)), ga = poisson(1.15 * Math.exp((os - ms - (home ? 2 : -2)) / 13));
-    let g = 0, a = 0;
-    if (mins) {
-      const rate = ({ FWD: .45, MID: .2, DEF: .06, GK: 0 }[POS_GROUP[p.pos]] || .05) * mins / 90 * clamp(calcOVR() / Math.max(50, ms), .6, 1.4);
-      for (let k = 0; k < gf; k++) { if (Math.random() < rate) g++; else if (Math.random() < rate * .7) a++; }
-      caps++; goals += g; assists += a;
-      if (kind === 'qualifier') { const t = capTie(); t.comp++; t.last = S.season; if (ageOf(p.by) >= 21) t.adult = true; }
-    }
-    const h = home ? me : 'N:' + opp, aw = home ? 'N:' + opp : me;
-    addNatGame({ comp: kind === 'qualifier' ? 'Qualifier' : 'Friendly', stage: `${INTL_MONTH[S.week]} window`, h, a: aw, gh: home ? gf : ga, ga: home ? ga : gf, mins, goals: g, assists: a });
-    lines.push(`${natName(p.nat)} ${gf}–${ga} ${natName(opp)}${mins ? (g ? ` (${g} goal${g > 1 ? 's' : ''})` : a ? ' (assist)' : '') : ' (unused)'}`);
-  }
-  if (!playing) return;
-  if (caps) {
-    p.caps = (p.caps || 0) + caps;
-    p.intlGoals = (p.intlGoals || 0) + goals;
-    addComp(p.st.comps = p.st.comps || {}, `${natName(p.nat)} ${kind === 'qualifier' ? 'qualifiers' : 'friendlies'}`, 'nat', caps, goals, assists, caps * clamp(6.7 + goals * .6 + assists * .3 + rand(-.3, .3), 5, 9), caps * randi(55, 85));
-    addRep(goals * .5 + .5);
-    checkMilestones();
-  }
+  // Games you were not part of are played now; yours were played on their days.
+  const me = 'N:' + p.nat, games = intlGames();
+  games.filter(g => !g.res).forEach(g => playIntlGame(g, false));
+  const lines = games.map(g => `${teamName(g.h)} ${g.res.gh}–${g.res.ga} ${teamName(g.a)}`);
   report.events.push(`${natName(p.nat)} ${kind === 'qualifier' ? 'qualifiers' : 'friendlies'}: ${lines.join(', ')}`);
-  msg(`International break: ${lines.join('; ')}.`, goals ? 'good' : '');
+  if (!picked) msg(`International break: ${lines.join('; ')}.`);
 }
 // Decisions waiting their turn: one is shown at a time.
 function queueDecision(d) { if (!S.decision) S.decision = d; else (S.dq = S.dq || []).push(d); }
@@ -3291,7 +3331,10 @@ function advanceWeek() {
   const report = { week: S.week, season: S.season, match: null, events: [] };
   // A week with a league game and a midweek game is played in two steps: the league game on Saturday,
   // then the midweek game on its own day. The second step picks up where the first left off.
-  const half = leagueDone() ? S.weekHalf : null;
+  // After the international games: the end of the week.
+  const tail = S.weekTail && S.weekTail.key === weekKey() ? S.weekTail : null;
+  if (tail) { if (intlPending()) return null; S.weekTail = null; return weekTail(report, tail.user, tail.cupUser, tail.fx); }
+  const half = leagueDone() && S.weekHalf && S.weekHalf.key === weekKey() ? S.weekHalf : null;
   S.weekHalf = null;
   const fx = half ? null : nextFixture();
   let weekEnergy = p.energy, user = null;
@@ -3386,6 +3429,13 @@ function advanceWeek() {
     S.results.unshift(resultRow(cupRes, efx.isHome, cupUser, efx.t.name.replace(/ \d{4}$/, ''), efx.euro ? 'euro' : 'cup', efx.stage));
   }
 
+  // Picked for the international break: the week ends only once you have played its games (from the
+  // Home screen, each on its day).
+  if (intlPending()) { S.weekTail = { key: weekKey(), user, cupUser, fx }; return report; }
+  return weekTail(report, user, cupUser, fx);
+}
+function weekTail(report, user, cupUser, fx) {
+  const p = S.player;
   pitchXp([user, cupUser].filter(Boolean), report);
 
   // Finances
@@ -3495,6 +3545,7 @@ function advanceWeek() {
 
   S.lastMatch = report;
   S.week++;
+  intlWeekStart();
   if (S.week === CUP_WEEKS.playoff[0]) buildPlayoffs();
   if (S.week > SEASON_WEEKS) endSeason(report);
   else {

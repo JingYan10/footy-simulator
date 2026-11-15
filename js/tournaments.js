@@ -570,7 +570,9 @@ function simTeams(h, a, user, home = 2) {
 
 function scorerName(id) {
   if (isClub(id)) return aiScorer(club(id)).n;
-  return aiScorer(tourSide(id)).n;
+  // Your country in a window: scorers come from the squad the coach named (your own goals are counted apart).
+  const s = S.natSnap, mine = s && S.phase === 'season' && id === 'N:' + S.player.nat && s.nat === S.player.nat && s.list.filter(x => !x.me);
+  return aiScorer(mine && mine.length ? { ...tourSide(id), players: mine } : tourSide(id)).n;
 }
 
 // ---------- tournament squads ----------
@@ -886,6 +888,8 @@ function playSummerStage() {
       user.saves = matchSaves(user, teamStr(res.h === me ? res.a : res.h), teamStr(me));
       const rating = summerRating(user, res, me);
       user.rating = rating;
+      const lg = (S.natGames || []).slice(-1)[0];
+      if (lg && lg.summer && lg.mins && isNation(me)) lg.rating = rating;
       notifyHaul(user, t.name.replace(/ \d{4}$/, ''));
       if (isNation(me)) { p.caps++; p.intlGoals = (p.intlGoals || 0) + user.goals; const tie = capTie(); tie.comp++; tie.finals = true; tie.last = S.season; }
       t.goals += user.goals;
@@ -1059,7 +1063,7 @@ function logNatGame(t, h, a, r, u) {
   const p = S.player, id = p && 'N:' + p.nat;
   if (!id || (h !== id && a !== id) || !NAT_EVENTS.some(e => e.key === t.key)) return;
   const st = t.stages[t.stage];
-  addNatGame({ comp: t.name, stage: st ? stRound(st) : '', h, a, gh: r.gh, ga: r.ga, pens: r.pens || null, pensScore: r.pensScore || null, winner: r.winner || null, mins: u ? u.mins || 0 : 0, goals: u ? u.goals || 0 : 0, assists: u ? u.assists || 0 : 0, summer: true });
+  addNatGame({ comp: t.name, stage: st ? stRound(st) : '', h, a, gh: r.gh, ga: r.ga, pens: r.pens || null, pensScore: r.pensScore || null, winner: r.winner || null, scorers: r.scorers, mins: u ? u.mins || 0 : 0, start: !!(u && u.start), goals: u ? u.goals || 0 : 0, assists: u ? u.assists || 0 : 0, summer: true });
 }
 function addNatGame(g) {
   S.natGames = [...(S.natGames || []), { nat: S.player.nat, season: S.season, week: S.week, ...g }].slice(-80);

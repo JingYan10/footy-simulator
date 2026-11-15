@@ -715,7 +715,9 @@ function viewHome() {
   let matchCard;
   // The week's team sheet (and any one-week position change) is settled when the week comes up.
   if (fx && !p.injured && S.phase === 'season') matchdaySelection(fx);
-  if (fx) {
+  const ig = intlDue();
+  if (ig) matchCard = intlCard(ig);
+  else if (fx) {
     const opp = club(fx.opp);
     const sel = p.injured ? '<span class="bad">Injured, you will miss this match</span>' : `Role: <b>${squadStatus()}</b>${matchPos() !== p.pos && weekPosTold() ? ` at <b>${matchPos()}</b>` : ''} · Start chance <b>${Math.round(Math.max(startChance().start, rotationStart(false, fx.opp)) * 100)}%</b>${rotationStart(false, fx.opp) > startChance().start ? ' <span class="good">(weak opponent: the manager rotates)</span>' : ''}`;
     matchCard = `<section class="card hero">
@@ -735,7 +737,7 @@ function viewHome() {
       ${refuseBtn()}
     </section>`;
   } else {
-    matchCard = `<section class="card hero"><h2>Week ${S.week}</h2>${weekStrip()}<p class="muted" style="margin:0">${leagueDone() ? 'The league game is done. Next up: the midweek game.' : 'No league match this week. Rest, train and get ready.'}</p>
+    matchCard = `<section class="card hero"><h2>Week ${S.week}</h2>${weekStrip()}<p class="muted" style="margin:0">${leagueDone() ? (midweekFixture() ? 'The league game is done. Next up: the midweek game.' : "This week's games are done.") : 'No league match this week. Rest, train and get ready.'}</p>
       ${S.phase === 'season' && !p.injured ? (p.slots > 0 ? `<div class="small flood" style="text-align:center">${p.slots} training session${p.slots > 1 ? 's' : ''} left this week</div>` + tiredNote('div') : '<div class="small bad" style="text-align:center">You have already trained this week: no sessions left until next week.</div>') : ''}
       ${euroLine()}
       ${midweekFixture() ? '<button class="btn primary block" data-act="matchday">To matchday</button>' + refuseBtn() : '<button class="btn primary block" data-act="advance">Next week</button>'}</section>`;
@@ -768,15 +770,43 @@ function tiredNote(tag) {
     : next < TIRED_ENERGY ? `Careful: another session leaves you on about ${next} energy after ${two}. Ending the week under ${TIRED_ENERGY} makes injuries more likely.` : '';
   return text ? (tag === 'div' ? `<div class="small bad" style="text-align:center">${text}</div>` : `<p class="bad small" style="margin:0">${text}</p>`) : '';
 }
-const todayDate = () => leagueDone() && midweekFixture() ? dayAfter(midweekOffset(midweekFixture())) : weekDate();
+const todayDate = () => { const g = S && S.player && intlDue(); return g ? dayAfter(g.day) : leagueDone() && midweekFixture() ? dayAfter(midweekOffset(midweekFixture())) : weekDate(); };
 const dayLabel = d => `${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
-// This week, day by day: today is the Saturday, games marked with the opponent's crest.
+// Your next international game, when it is the next thing on this week's calendar.
+function intlDue() {
+  const g = nextIntlGame();
+  if (!g) return null;
+  const e = midweekFixture(), clubDay = !leagueDone() && nextFixture() ? 0 : e ? midweekOffset(e) : Infinity;
+  return g.day < clubDay ? g : null;
+}
+// This week, day by day: today is the Saturday, games marked with the opponent's crest. In an
+// international break your country's games are on it too (the score once played).
 function weekStrip() {
-  const fx = nextFixture(), e = midweekFixture(), mo = e ? midweekOffset(e) : -1, today = leagueDone() ? mo : 0;
+  const fx = nextFixture(), e = midweekFixture(), mo = e ? midweekOffset(e) : -1, ig = intlDue(), me = 'N:' + S.player.nat;
+  const intl = intlGames(), cupDone = !e && S.intl && S.intl.key === weekKey() && S.intl.cup;
+  const today = ig ? ig.day : leagueDone() ? mo : 0;
   return `<div class="week-strip">${[0, 1, 2, 3, 4, 5, 6].map(i => {
-    const d = dayAfter(i), game = i === 0 && fx ? { opp: fx.opp, tag: leagueDone() ? 'Played' : 'League' } : i === mo ? { opp: e.opp, tag: compShort(e.t.name) } : null;
-    return `<div class="wd${i === today ? ' today' : ''}${game ? ' game' : ''}${i < today ? ' past' : ''}"><small>${i === today ? 'Today' : DAY_NAMES[d.getUTCDay()]}</small><b>${d.getUTCDate()}</b>${game ? `${crest(game.opp, 'mini')}<span>${game.tag}</span>` : '<span class="rest">–</span>'}</div>`;
+    const d = dayAfter(i), g = intl.find(x => x.day === i);
+    const game = i === 0 && fx ? { opp: fx.opp, tag: leagueDone() ? 'Played' : 'League' } : i === mo ? { opp: e.opp, tag: compShort(e.t.name) }
+      : cupDone && cupDone.day === i ? { opp: cupDone.opp, tag: 'Played' }
+      : g ? { opp: g.h === me ? g.a : g.h, tag: g.res ? `${g.h === me ? g.res.gh : g.res.ga}–${g.h === me ? g.res.ga : g.res.gh}` : g.kind === 'qualifier' ? 'Qual' : 'Friendly', played: !!g.res } : null;
+    const past = i < today || (game && game.played && i !== today);
+    return `<div class="wd${i === today ? ' today' : ''}${game ? ' game' : ''}${past ? ' past' : ''}"><small>${i === today ? 'Today' : DAY_NAMES[d.getUTCDay()]}</small><b>${d.getUTCDate()}</b>${game ? `${crest(game.opp, 'mini')}<span>${game.tag}</span>` : '<span class="rest">–</span>'}</div>`;
   }).join('')}</div>`;
+}
+// Your country's game, on its day: like the club's matchday card.
+function intlCard(g) {
+  const p = S.player, me = 'N:' + p.nat, opp = g.h === me ? g.a : g.h, sel = intlSel(g);
+  const side = id => `<div class="team">${crest(id)}<b>${esc(teamName(id))}</b><span>${Math.round(teamStr(id))} rated</span></div>`;
+  const role = sel.start ? '<span class="good">You start</span>' : sel.mins ? '<span class="flood">On the bench, should get on</span>' : '<span class="muted">On the bench</span>';
+  const n = intlGames().indexOf(g) + 1;
+  return `<section class="card hero">
+      <div class="row"><h2>International break</h2><span class="small muted">${g.kind === 'qualifier' ? 'Qualifier' : 'Friendly'} ${n} of 2</span></div>
+      ${weekStrip()}
+      <div class="fixture">${side(g.h)}<div class="vs">VS</div>${side(g.a)}</div>
+      <div class="small muted" style="text-align:center">${role} · ${esc(natCoach(p.nat))}'s ${esc(natName(p.nat))} ${g.h === me ? `host ${esc(teamName(opp))}` : `visit ${esc(teamName(opp))}`}</div>
+      <button class="btn primary block" data-act="intlMatchday">To matchday</button>
+    </section>`;
 }
 
 // The midweek cup game (European or domestic), shown like the league game.
@@ -854,7 +884,7 @@ function summerCard() {
     const ko = t.ko.map(k => { const r = k.res.find(x => x.h === me || x.a === me); return r ? `<div class="small">${k.name}: ${esc(teamName(r.h))} ${r.gh}–${r.ga} ${esc(teamName(r.a))}${r.pens ? ` (${esc(teamName(r.pens))} win ${r.pensScore ? pensText(r) + ' ' : ''}on penalties)` : ''}</div>` : ''; }).join('');
     return `<section class="card hero"><div class="row"><h2>${esc(t.name)}</h2><span class="small">${isNation(me) ? esc(natName(me.slice(2))) : esc(teamName(me))}</span></div>
       ${body}${table}${ko}
-      ${t.winner ? '' : `<div class="btns"><button class="btn primary sm" data-act="summerMatchday">To matchday</button><button class="btn sm" data-act="summerSim">Simulate the rest</button></div>`}</section>`;
+      ${t.winner ? '' : `<div class="btns"><button class="btn primary sm" data-act="summerMatchday">To matchday</button></div>`}</section>`;
   }).join('');
 }
 
@@ -1505,11 +1535,15 @@ function natResultsView() {
   const rows = list.map(r => {
     const mine = r.h === me, gf = mine ? r.gh : r.ga, ga = mine ? r.ga : r.gh;
     const res = gf > ga || (gf === ga && r.winner === me) ? ['W', 'good'] : gf < ga || (r.winner && r.winner !== me) ? ['L', 'bad'] : ['D', 'draw'];
-    const you = r.mins ? `<span class="small">${r.mins}'${r.goals ? ` · ${r.goals} G` : ''}${r.assists ? ` · ${r.assists} A` : ''}</span>` : '<span class="small muted">–</span>';
-    return `<div class="result"><div class="natres">
-        <span class="rmeta"><span class="small muted">${seasonLabel(r.season)}</span><span class="rcomp ${r.summer ? 'cup' : 'league'}">${esc(r.summer ? r.comp.replace(/ \d{4}$/, '') : r.comp)}</span><span class="small muted">${esc(r.stage || '')}</span></span>
-        <span class="rline">${tieRow(r.h, r.a, { gh: r.gh, ga: r.ga, pens: r.pens, pensScore: r.pensScore, winner: r.winner || (r.gh > r.ga ? r.h : r.ga > r.gh ? r.a : null) })}</span>
-        <span class="rright">${you}<span class="rbadge ${res[1]}">${res[0]}</span></span></div></div>`;
+    const meta = `<span class="rmeta"><span class="small muted">${seasonLabel(r.season)}</span><span class="rcomp ${r.summer ? 'cup' : 'league'}">${esc(r.summer ? r.comp.replace(/ \d{4}$/, '') : r.comp)}</span><span class="small muted">${esc((r.stage || '').replace(/^(\w{3})\w* window$/, '$1').replace('Group matchday', 'Group MD'))}</span></span>
+        <span class="rline">${tieRow(r.h, r.a, { gh: r.gh, ga: r.ga, pens: r.pens, pensScore: r.pensScore, winner: r.winner || (r.gh > r.ga ? r.h : r.ga > r.gh ? r.a : null) })}</span>`;
+    // Games you played open like the club's results: the goals and your numbers.
+    if (r.mins) {
+      const goals = r.scorers && r.scorers.length ? `<div class="scorers">${goalTimeline(r.scorers)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
+      return `<details class="result"><summary>${meta}<span class="rright">${resStats(r)}<span class="rbadge ${res[1]}">${res[0]}</span></span></summary>
+        <div class="rbody">${goals}<div class="small muted">You: ${r.mins}'${r.start != null ? ` · ${r.start ? 'Started' : 'Sub'}` : ''} · ${r.goals || 0} G · ${r.assists || 0} A${r.rating ? ` · ${rateBox(r.rating, 1)}` : ''}</div></div></details>`;
+    }
+    return `<div class="result"><div class="natres">${meta}<span class="rright"><span class="small muted">–</span><span class="rbadge ${res[1]}">${res[0]}</span></span></div></div>`;
   }).join('');
   return `<section class="card"><h2>Results</h2><div class="results">${rows}</div></section>`;
 }
@@ -2297,6 +2331,36 @@ function showSummerMatchday() {
     <div class="btns"><button class="btn primary block" data-act="summerKick">Kick off</button><button class="btn block" data-act="close">Back</button></div>`);
 }
 
+// An international game: both team sheets, your country's players in their squad numbers.
+function showIntlMatchday() {
+  const g = intlDue();
+  if (!g) return;
+  const p = S.player, me = 'N:' + p.nat, opp = g.h === me ? g.a : g.h, sel = intlSel(g), nn = natNos();
+  // Your side is the squad the coach named for this window, in its numbers.
+  const base = tourSide(me), snap = S.natSnap && S.natSnap.nat === p.nat ? S.natSnap.list.filter(x => !x.me) : null;
+  const mySide = { ...base, players: snap ? snap.map(x => ({ n: x.n, pos: x.pos, r: x.r, no: x.no })) : base.players }, oppSide = tourSide(opp);
+  const role = shapeRole(p.pos, mySide);
+  const meChip = { n: p.name, pos: p.pos, r: calcOVR(), no: nn.mine, me: true, start: !!sel.start, squad: true };
+  const mine = teamSheet(mySide, meChip, formationOf(mySide)), theirs = teamSheet(oppSide, null, formationOf(oppSide));
+  const where = sel.start ? `<span class="good">You start ${role !== p.pos ? `${roleText(p.pos, role)} in ${esc(mySide.mgr)}'s ${formationOf(mySide)}` : `as ${POS_NAMES[p.pos].toLowerCase()}`}.</span>`
+    : sel.mins ? '<span class="flood">You start on the bench, but should get on.</span>' : '<span class="muted">You are on the bench.</span>';
+  const benchHtml = s => s.bench.map(pl => `<span class="${pl.me ? 'me' : ''}">${esc(shortN(pl.n))} <small>${pl.pos} ${pl.no ? `#${pl.no}` : pl.r}</small></span>`).join('');
+  const sheet = (c, s) => `<div><h4>${esc(c.short)} · ${s.shape}</h4>${pitchHtml(s)}<div class="lp-bench"><b>Bench</b>${benchHtml(s)}</div></div>`;
+  const sheets = g.h === me ? sheet(mySide, mine) + sheet(oppSide, theirs) : sheet(oppSide, theirs) + sheet(mySide, mine);
+  const side = id => `<div class="team">${crest(id)}<b>${esc(teamName(id))}</b></div>`;
+  openModal(`<div class="row"><h3 style="margin:0">${g.kind === 'qualifier' ? 'Qualifier' : 'Friendly'} · ${INTL_MONTH[S.week]} window</h3><span class="small muted">${dayLabel(dayAfter(g.day))}</span></div>
+    <div class="fixture">${side(g.h)}<div class="vs">VS</div>${side(g.a)}</div>
+    <p class="small" style="margin:0;text-align:center">${where}</p>
+    <div class="sheet-tabs">${sheets}</div>
+    <div class="btns"><button class="btn primary block" data-act="intlKick">Kick off</button><button class="btn block" data-act="close">Back</button></div>`);
+}
+function doIntlPlay() {
+  const g = intlDue();
+  if (!g) return;
+  const r = playIntlGame(g, true);
+  render(); showSummerReport(r);
+}
+
 // Asking a top-flight club to make you a starter (33–35). The answer is decided straight away; the
 // club takes a few seconds to "talk it over" on screen first.
 const ROLE_ASK_WAIT = 3200;
@@ -2493,6 +2557,8 @@ document.addEventListener('click', e => {
     case "askContract": { const r = requestContract(); toast(r === "offer" ? (S.offers.some(o => o.raise) ? "Pay rise offered" : "New contract offered") : r === "overpaid" ? "Already paid above your value" : r === "refused" ? "The club said no" : r === "tooOld" ? "Not at your age, they say" : r === "soon" ? "Too soon to ask again" : r === "locked" ? (blockActive() ? "Your release clause blocks salary talks" : clauseActive() ? "Your loyalty clause blocks salary talks" : "You only just re-signed") : r === "challenge" ? "Not yet: the board set you a task" : r === "task" ? "Finish the board's task first" : r === "newclub" ? "Settle in first: not in your first season" : r === "notyet" ? "Only in the last season of your contract" : "Not possible right now"); render(); return; }
     case 'summerPlay': doSummerPlay(); return;
     case 'summerMatchday': showSummerMatchday(); return;
+    case 'intlMatchday': showIntlMatchday(); return;
+    case 'intlKick': closeModal(); doIntlPlay(); return;
     case 'roleAsk': showRoleAsk(v); return;
     case 'careerSub': careerSub = v; window.scrollTo(0, 0); render(); return;
     case 'shirtAskList': showShirtAskList(); return;
