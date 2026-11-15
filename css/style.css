@@ -717,6 +717,7 @@ td.clubcrest .crest { margin: 0; }
 .sqmove { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sqmove > div:not(.crest) { flex: 1; }
 .sqmove .sqname { font-weight: 700; overflow-wrap: anywhere; }
+.sqmove.me .sqname { color: var(--flood); }
 .sqmove .pos-chip { flex: none; width: 36px; text-align: center; font: 800 11px var(--display); padding: 2px 0; border-radius: 4px; background: var(--surface-2); color: var(--chalk); }
 .sqmove .chip { flex: none; }
 .crest img.ink { filter: brightness(0) invert(1); }

@@ -787,6 +787,7 @@ function chooseStart(clubId) {
   planPositionAsk();
   p.seasonPos = p.pos;
   p.offerLock = absWeek() + OFFER_LOCK_WEEKS;
+  p.arrival = { club: clubId, season: S.season, from: null };
   msg(`Welcome to ${c.name}! ${c.mgr} has handed you a 3-year youth contract at ${money(p.wage)}/week.`, 'good');
   msg('Win the manager over: hit his objectives, follow his match plans and play well. Low affection means fewer starts, and at zero you are released.');
   setObjectives();
@@ -1192,7 +1193,7 @@ const eliteTopFlight = c => clubTier(c) === 1 && tierPrestige(c) >= .8;function 
   const p = S.player, home = club(p.loan ? p.loan.parent : p.club);
   const nat = league(c.league).nat;
   if (clubTier(c) === 1 && vetYears() > 0) {
-    if ([...VET_LEAGUES, 'POR'].includes(nat)) return true;
+    if ([...VET_LEAGUES, ...VET_FRIENDLY].includes(nat)) return true;
     if (!vetTopFlight(c)) return false;
   }
   const buzz = scoutBuzz();
@@ -1201,9 +1202,11 @@ const eliteTopFlight = c => clubTier(c) === 1 && tierPrestige(c) >= .8;function 
 
 // Leagues that chase big-name veterans, and the most you have ever been paid.
 const VET_LEAGUES = ['KSA', 'USA'];
+// Portuguese, Dutch and Belgian clubs keep wanting a veteran at any age, like the lower leagues.
+const VET_FRIENDLY = ['POR', 'NED', 'BEL'];
 // After 33 the big top-flight clubs lose interest fast: 15% as keen at 34, 5% at 35, gone at 36.
-// Saudi, MLS and Portuguese clubs don't count here.
-const bigTopFlight = c => clubTier(c) === 1 && ![...VET_LEAGUES, 'POR'].includes(league(c.league).nat);
+// Saudi, MLS, Portuguese, Dutch and Belgian clubs don't count here.
+const bigTopFlight = c => clubTier(c) === 1 && ![...VET_LEAGUES, ...VET_FRIENDLY].includes(league(c.league).nat);
 function vetTopFlight(c) {
   if (!bigTopFlight(c)) return 1;
   return [1, .15, .05][vetYears()] ?? 0;
@@ -3141,8 +3144,8 @@ function generateOffers(count, guarantee = false) {
       S.offers.push(o); added++; names.push(c.name);
       msg(`${c.name} (${league(c.league).name}) want your experience and offer ${money(wage)}/week${o.prime ? ', close to your prime wage' : ''}.`, 'good');
     });
-    // Lower-league and Portuguese clubs want a veteran too, paying what your OVR is worth now.
-    const modest = shuffle(Object.values(S.clubs).filter(c => free(c) && !VET_LEAGUES.includes(nat(c)) && (clubTier(c) >= 2 || nat(c) === 'POR') && teamStrength(c) <= ovr + 2 && teamStrength(c) >= ovr - 18)
+    // Lower-league, Portuguese, Dutch and Belgian clubs want a veteran too, paying what your OVR is worth now.
+    const modest = shuffle(Object.values(S.clubs).filter(c => free(c) && !VET_LEAGUES.includes(nat(c)) && (clubTier(c) >= 2 || VET_FRIENDLY.includes(nat(c))) && teamStrength(c) <= ovr + 2 && teamStrength(c) >= ovr - 18)
       .sort((a, b) => teamStrength(b) - teamStrength(a)).slice(0, 15));
     modest.slice(0, Math.random() < .5 ? 2 : 1).filter(() => Math.random() < interest).forEach(add);
   }
@@ -3402,6 +3405,10 @@ function acceptOffer(id) {
       notify('bad', 'Burned bridges', `You joined ${names}'s rivals. ${names} fans and board will hate you: they will never make you an offer again, and neither club will ever call you a legend.`);
     }
     testimonial();
+    // Shown among your new club's signings for the season you join: the fee they paid (your value),
+    // free if you had no club, or up from the academy.
+    const freeMove = freeAgent();
+    p.arrival = { club: o.club, season: S.phase === 'offseason' ? S.season + 1 : S.season, from: o.callup || freeMove ? null : p.loan ? p.loan.parent : p.club, fee: o.callup ? null : freeMove ? 0 : playerValue(), free: freeMove };
     // Your stats so far this season stay with your old club as their own career row.
     closeSpell();
     p.club = o.club;
@@ -4438,6 +4445,7 @@ function pickLoanClub(parent) {
 function startLoan() {
   const p = S.player, parent = myClub(), dest = pickLoanClub(parent);
   p.loan = { parent: parent.id, parentAff: p.aff };
+  p.arrival = { club: dest.id, season: S.season, from: parent.id, loan: true };
   p.listed = false;
   p.club = dest.id;
   p.aff = 55;

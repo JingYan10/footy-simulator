@@ -489,8 +489,12 @@ function boardTargetsHtml(c, m) {
 // new player walks into.
 const sqOpen = { v: false };
 function squadMovesCard() {
-  const c = myClub(), log = S.squadMoves && S.squadMoves.season === S.season && S.squadMoves.clubs[c.id];
-  if (!log || (!log.out.length && !log.in.length)) return '';
+  const c = myClub(), p = S.player, saved = S.squadMoves && S.squadMoves.season === S.season && S.squadMoves.clubs[c.id];
+  // You count as one of the signings in the season you join.
+  const a = p.arrival, me = a && a.club === c.id && a.season === S.season
+    ? { n: p.name, pos: p.pos, r: calcOVR(), age: ageOf(p.by), from: a.from, fee: a.fee, free: a.free, loan: a.loan, me: true } : null;
+  const log = { out: saved ? saved.out : [], in: [...(me ? [me] : []), ...(saved ? saved.in : [])] };
+  if (!log.out.length && !log.in.length) return '';
   // Fee after the club: "· €12.5M", or "Free" when the contract had run out. Older saves have no fee.
   const fee = x => x.fee == null ? '' : x.fee > 0 ? ` <span class="muted">·</span> <b class="num">${money(x.fee)}</b>` : '';
   const row = (x, side) => {
@@ -498,10 +502,11 @@ function squadMovesCard() {
     const how = side === 'out'
       ? (x.why === 'retired' ? '<span class="muted">Retired</span>' : x.why === 'released' ? '<span class="muted">Released</span>'
         : `<span class="muted">${x.fee === 0 ? 'Free transfer to' : 'Sold to'}</span> ${esc(club(other).name)}${fee(x)}`)
+      : x.loan ? `<span class="muted">On loan from</span> ${esc(club(other).name)}`
       : other ? `<span class="muted">${x.fee === 0 ? 'Free from' : 'From'}</span> ${esc(club(other).name)}${fee(x)}`
       : x.free ? '<span class="muted">Free agent</span>' : '<span class="muted">Academy</span>';
-    const role = side === 'in' ? arrivalRole(c, x.n) : null;
-    return `<div class="sqmove"><span class="pos-chip">${x.pos}</span><div style="min-width:0"><div class="sqname">${esc(x.n)} <span class="muted small">${x.age} · ${x.r}</span></div><div class="small">${how}</div></div>${other ? crest(other, 'mini') : ''}${role ? `<span class="chip ${role === 'Starter' ? 'good' : ''}">${role}</span>` : ''}</div>`;
+    const role = side === 'in' && !x.me ? arrivalRole(c, x.n) : null;
+    return `<div class="sqmove${x.me ? ' me' : ''}"><span class="pos-chip">${x.pos}</span><div style="min-width:0"><div class="sqname">${esc(x.n)} <span class="muted small">${x.age} · ${x.r}</span></div><div class="small">${how}</div></div>${other ? crest(other, 'mini') : ''}${role ? `<span class="chip ${role === 'Starter' ? 'good' : ''}">${role}</span>` : ''}${x.me ? '<span class="chip good">You</span>' : ''}</div>`;
   };
   const spent = log.in.reduce((s, x) => s + (x.fee || 0), 0), got = log.out.reduce((s, x) => s + (x.fee || 0), 0);
   const net = spent || got ? `<div class="small muted">Spent <b class="num" style="color:var(--chalk)">${money(spent)}</b> · Received <b class="num" style="color:var(--chalk)">${money(got)}</b></div>` : '';
