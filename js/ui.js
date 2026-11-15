@@ -2021,6 +2021,8 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 const POP_ICON = {
   good: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.2 5.8 20.9l1.6-7L2 9.2l7.1-.6z"/></svg>',
   bad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 15a4 4 0 0 1-.6-8 5.5 5.5 0 0 1 10.6 1.5A3.5 3.5 0 0 1 17 15z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></svg>',
+  // Neutral news (an international break you weren't picked for, a new national coach).
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></svg>',
   // Transfer talks: two hands shaking on a deal.
   talks: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11l4-4 4 2 3-2 4 1 5 4"/><path d="M22 11l-3 3-6-4-3 3-2-2"/><path d="M6 13l4 4a1.5 1.5 0 0 0 2.2-2l1.3 1.3a1.5 1.5 0 0 0 2.2-2l.8.7a1.5 1.5 0 0 0 2-2.2L19 14"/><path d="M2 11l3 3"/></svg>',
 };
@@ -2062,7 +2064,7 @@ function showPopup(pop) {
   const fx = pop.kind === 'talks' ? 'good' : pop.kind;
   fxLayer.className = pop.kind === 'talks' ? 'good talks' : pop.kind;
   fxLayer.innerHTML = `<canvas></canvas><div class="pop" role="dialog" aria-modal="true">
-    ${pop.kind === 'talks' ? '<div class="talks-tag">Transfer talks</div>' : ''}<div class="pop-icon">${POP_ICON[pop.kind]}</div><h3>${esc(pop.title)}</h3><p>${esc(pop.text)}</p>
+    ${pop.kind === 'talks' ? '<div class="talks-tag">Transfer talks</div>' : ''}<div class="pop-icon">${POP_ICON[pop.kind] || POP_ICON.info}</div><h3>${esc(pop.title)}</h3><p>${esc(pop.text)}</p>
     <button class="btn ${fx === 'good' ? 'primary' : ''} block" data-act="popNext">${pop.kind === 'talks' ? "Let's do this" : 'Continue'}</button></div>`;
   fxLayer.hidden = false;
   startFx(fxLayer.querySelector('canvas'), fx);
