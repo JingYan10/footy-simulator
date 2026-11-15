@@ -446,7 +446,7 @@ function closeSpell() {
 const roundAttrs = a => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, Math.round(v)]));
 function careerRow(st, c) {
   const p = S.player;
-  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, no: p.shirt && p.shirt.club === c.id ? p.shirt.no : undefined, league: league(c.league).name, apps: st.apps + st.cup.apps, mins: (st.mins || 0) + ((st.cup && st.cup.mins) || 0), tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.seasonPos || p.pos, alts: [...altPositions()], posApps: { ...(st.posApps || {}) }, comps: JSON.parse(JSON.stringify(st.comps || {})), attrs: roundAttrs(p.attrs) };
+  return { season: S.season, club: c.name + (p.loan && p.club === c.id ? ' (loan)' : ''), clubId: c.id, no: p.shirt && p.shirt.club === c.id ? p.shirt.no : undefined, league: league(c.league).name, apps: st.apps + st.cup.apps, mins: (st.mins || 0) + ((st.cup && st.cup.mins) || 0), tackles: st.tackles || 0, cleanAll: st.cleanAll || 0, saves: st.saves || 0, goals: st.goals + st.cup.goals, assists: st.assists + st.cup.assists, avg: Math.round((st.apps ? st.rsum / st.apps : 0) * 100) / 100, ovr: calcOVR(), pos: p.seasonPos || p.pos, alts: [...altPositions()], posApps: { ...(st.posApps || {}) }, mgrs: [...new Set([...(st.mgrs || []), c.mgr])], comps: JSON.parse(JSON.stringify(st.comps || {})), attrs: roundAttrs(p.attrs) };
 }
 
 function seasonTotals() {
@@ -3977,6 +3977,9 @@ function mgrSeasonEnd() {
 }
 function sackManager(c, tell) {
   const m = mgrOf(c), old = c.mgr;
+  // Your manager going: remember him for this season's line in your career history.
+  const st = S.player.st;
+  if (st && c.id === myClub().id && !(st.mgrs || []).includes(old)) st.mgrs = [...(st.mgrs || []), old];
   S.mgrPool = [...(S.mgrPool || []), { name: old, nat: c.mgrNat, r: Math.max(40, m.r - 1), from: c.id }].slice(-MGR_POOL_MAX);
   const hire = appointManager(c);
   const mine = myMgrClubs().includes(c.id);
