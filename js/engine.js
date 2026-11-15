@@ -1540,6 +1540,8 @@ function resolveDecision(choice) {
   else if (d.type === 'switch') { if (choice === 'switch') switchNation(d.nat); else msg(`You stay with ${natName(p.nat)}. You can still switch to ${natName(d.nat)} from the Career tab while FIFA allows it.`); }
   else if (d.type === 'callup') { if (p.intlPick && p.intlPick.week === d.week) p.intlPick.choice = choice; }
   else if (d.type === 'natTour') resolveNatTour(d, choice === 'accept');
+  else if (d.type === 'press') resolvePress(d, choice);
+  else if (d.type === 'captain') resolveCaptain(d, choice === 'accept');
   else if (d.type === 'position') resolvePositionAsk(d, choice === 'accept');
   else if (d.type === 'shirt') resolveShirtAsk(d, choice === 'yes');
   else if (d.type === 'recall') {
@@ -2298,6 +2300,8 @@ function matchRating(user, res) {
   if (p.energy < 30) r -= .4;
   // A red card ruins the afternoon; a booking takes a little off.
   if (user.red) r -= 1.5; else if (user.yellow) r -= .1;
+  // Big words in the press conference: a lift for the next game.
+  r += S.player.pressForm || 0;
   r -= vetYears() * .06; // a step slower every year past 33
   r -= rustPenalty(); // short of match sharpness after an injury
   if (adjusting()) r -= ADJUST_RATING; // still learning a new position
@@ -2548,12 +2552,14 @@ function addMilestone(text) {
 }
 
 // ---------- captaincy ----------
-// The manager hands the armband to a key player he trusts (affection 80+), 22 or older, in at
-// least his second season at the club, or to a long-serving starter (fourth season, 27+). The
-// captain lifts the side a little when he plays, the manager's goodwill settles higher, and the
-// season shows the armband in your history. A transfer request, being frozen out or falling out
-// with the manager (affection below 40) costs it; leaving the club ends it.
-const CAPTAIN_EDGE = .5;
+// The manager offers the armband to a key player he adores (affection 95+), 22 or older, in at least
+// his second season at the club, or to a long-serving starter (fourth season, 27+). You can turn it
+// down (he is a little disappointed and waits a season). The captain lifts the side a little when he
+// plays, the manager's goodwill settles at 60 instead of 50, and the season shows the armband in your
+// history; but a club is keener to block its captain's move. Step down whenever you like (it costs
+// some goodwill with the manager and board). A transfer request, being frozen out or falling out with
+// the manager (affection below 40) costs it; leaving the club ends it.
+const CAPTAIN_EDGE = .5, CAPTAIN_AFF = 95, CAPTAIN_BLOCK = 1.25;
 const seasonsHere = () => new Set([...(S.player.career || []).filter(r => r.clubId === S.player.club).map(r => r.season), S.season]).size;
 const isCaptain = () => !!S.player.captain && S.player.captain === S.player.club && !S.player.loan;
 function captainWeek() {
@@ -2570,16 +2576,38 @@ function captainWeek() {
     }
     return;
   }
-  if (p.loan || p.listed || S.phase !== 'season') return;
+  if (p.loan || p.listed || S.phase !== 'season' || S.decision || (p.capNo && p.capNo.club === c.id && p.capNo.season >= S.season)) return;
   const st = squadStatus(), age = ageOf(p.by), yrs = seasonsHere();
-  const ok = effAff() >= 80 && ((st === 'Key Player' && age >= 22 && yrs >= 2) || (st === 'Starter' && age >= 27 && yrs >= 4));
+  const ok = effAff() >= CAPTAIN_AFF && ((st === 'Key Player' && age >= 22 && yrs >= 2) || (st === 'Starter' && age >= 27 && yrs >= 4));
   if (!ok || Math.random() >= 1 / 6) return;
+  queueDecision({ type: 'captain', club: c.id, text: `${c.mgr} wants you as ${c.name} captain. The team plays a little better with you leading it and he will think even more of you, but the club will be keener to block any move away.` });
+}
+function resolveCaptain(d, yes) {
+  const p = S.player, c = myClub();
+  if (d.club !== p.club) return;
+  if (!yes) {
+    p.capNo = { club: c.id, season: S.season };
+    changeAff(-3);
+    msg(`You turned down the ${c.name} captaincy. ${c.mgr} is a little disappointed (−3) and will not ask again this season.`);
+    return;
+  }
   p.captain = c.id;
   p.capSeasons = [...new Set([...(p.capSeasons || []), `${c.id}:${S.season}`])];
   addRep(2); changeBoard(5);
   addMilestone(`Named ${c.name} captain`);
-  notify('good', 'Captain!', `${c.mgr} has made you ${c.name} captain. Lead by example: the team plays a little better with you on the pitch.`);
+  p.pressFlag = 'captain';
+  notify('good', 'Captain!', `You are ${c.name} captain. Lead by example: the team plays a little better with you on the pitch.`);
   achv('captain');
+}
+function stepDownCaptain() {
+  const p = S.player, c = myClub();
+  if (!isCaptain()) return false;
+  p.captain = null;
+  p.capNo = { club: c.id, season: S.season };
+  changeAff(-5); changeBoard(-3);
+  msg(`You gave up the ${c.name} captaincy. ${c.mgr} (−5) and the board (−3) are disappointed.`, 'bad');
+  save();
+  return true;
 }
 const wasCaptain = (clubId, season) => (S.player.capSeasons || []).includes(`${clubId}:${season}`);
 
@@ -2734,6 +2762,8 @@ function earnNickname() {
   if ((p.spGoals || 0) >= 12) opts.push([pick(['Dead-Ball King', 'The Sniper']), 'your set pieces']);
   if ((p.attrs.PAC || 0) >= 88 && p.pos !== 'GK') opts.push([pick(['The Flash', 'The Rocket', 'Road Runner']), 'your pace']);
   if ((p.capSeasons || []).length >= 3) opts.push(['The Skipper', 'leading from the front']);
+  if ((p.media || 0) >= 6) opts.push([pick(['The Mouth', 'Mr Box Office']), 'never holding back in front of the cameras']);
+  if ((p.media || 0) <= -6) opts.push([pick(['Mr Humble', 'The Gentleman']), 'always putting the team first']);
   if (!opts.length) opts.push([`${last}inho`, 'how much they love you']);
   const [n, why] = opts[0];
   p.nickname = { n, why, season: S.season };
@@ -2945,6 +2975,7 @@ function switchNation(nat) {
   p.caps = 0; p.intlGoals = 0;
   p.tie = { comp: 0, adult: false, finals: false, last: null };
   p.natFavor = 60; p.natSnub = 0; p.intlRetired = null;
+  p.pressFlag = 'nation';
   callUpCache = null;
   addMilestone(`Switched national team from ${natName(old)} to ${natName(nat)}`);
   notify('good', `Now playing for ${natName(nat)}`, `FIFA has approved your switch. ${natName(nat)} is your national team for the rest of your career.`);
@@ -2964,6 +2995,7 @@ function intlWeek(report) {
   const p = S.player, kind = INTL_WINDOWS[S.week + 1];
   // A week ahead: the call-up.
   if (kind && calledUp() && !p.needsContract) {
+    if (!p.caps && !p.natPressed) { p.natPressed = true; p.pressFlag = 'nation'; }
     const risky = kind === 'qualifier' && !tiedForGood() && p.switched == null;
     if (risky) {
       p.intlPick = { week: S.week + 1, choice: null };
@@ -3014,6 +3046,166 @@ function playWindow(kind, report) {
 }
 // Decisions waiting their turn: one is shown at a time.
 function queueDecision(d) { if (!S.decision) S.decision = d; else (S.dq = S.dq || []).push(d); }
+
+// ---------- press conferences ----------
+// Now and then, after something has happened (a hat-trick, a red card, a derby win, a hammering, a new
+// manager, the armband, transfer talk, contract talks, a big game ahead, your country), the press
+// want a word. Three tones: humble pleases the manager but does little for your name; confident lifts
+// your name and your next game, but a poor one after big talk earns a backlash; edgy makes headlines
+// and makes the club nervous. A promise to win is judged by the next game. How you usually answer
+// (p.media, −10 humble to +10 outspoken) shapes your nickname and the fans' vote at retirement.
+// At most one every 4 to 6 weeks.
+// Each answer: [button, quote, effects]. Effects: aff, rep, board, fav (national coach), media,
+// form (next game), boast (a promise judged by the next game; double: twice the stakes), wage (raise
+// on your club's renewal offer), fine (weeks of wages), ban (chance of an extra game's ban), buzz
+// (one more club interested next window).
+const PRESS = {
+  star: { q: () => 'You were the best player out there today. How are you feeling?', a: {
+    humble: ['Credit to the team', "Credit to the lads. I just did my job.", { aff: 2, media: -1 }],
+    confident: ['Form of my life', "I'm in the form of my life and I want more.", { rep: 1, form: .2, media: 1 }],
+    edgy: ['Best in the league', "Right now? I'm the best in this league.", { rep: 2, aff: -1, board: -1, media: 2 }] } },
+  slump: { q: () => "You're going through a rough patch. What's wrong?", a: {
+    humble: ["I'll work harder", "I'll keep my head down and work harder.", { aff: 3, media: -1 }],
+    confident: ['Form is temporary', 'Form is temporary, class is permanent.', { rep: .5, form: .2, media: 1 }],
+    edgy: ["The system doesn't suit me", "Honestly, the way we play doesn't suit me.", { aff: -5, rep: .5, media: 2 }] } },
+  title: { q: () => "You're up near the top. Can you win the league?", a: {
+    humble: ['One game at a time', 'One game at a time. Nothing is won in March.', { aff: 1, media: -1 }],
+    confident: ['We can win it', 'We can win the league. I believe that.', { title: 1, media: 1 }],
+    edgy: ['Nobody can stop us', 'Nobody is stopping us this year.', { title: 1.5, rep: 1, board: -1, media: 2 }] } },
+  haul: { q: c => `${c.goals} goals today. What's the secret?`, a: {
+    humble: ["It's about the team", "It's about the team. The lads made it easy for me.", { aff: 2, rep: .3, media: -1 }],
+    confident: ["There's more to come", "I told you I'd score. There's plenty more coming.", { rep: 1, media: 1, form: .2 }],
+    edgy: ['The doubters are quiet', "Some people doubted me. They're very quiet now.", { rep: 2, aff: -2, board: -1, media: 2 }] } },
+  red: { q: () => 'You were sent off. What happened out there?', a: {
+    humble: ['I let the team down', "I let the lads down. It won't happen again.", { aff: 3, media: -1 }],
+    confident: ["I'd do it again", "Harsh. I play with passion and I'd make that tackle again.", { rep: .5, aff: -1, media: 1 }],
+    edgy: ['Blame the referee', 'The referee was a disgrace. Everyone saw it.', { rep: 1.5, board: -3, media: 2, fine: 1, ban: .35 }] } },
+  derby: { q: c => `You beat ${c.oppName} in the ${c.derby}. What does it mean?`, a: {
+    humble: ['Just three points', "It's three points. We respect them.", { aff: 1, media: -1 }],
+    confident: ['This city is ours', 'Tonight showed everyone who runs this city.', { rep: 1.5, media: 1 }],
+    edgy: ["They're a small club", "Honestly? They're a small club with a big mouth.", { rep: 2.5, board: -2, aff: 1, media: 2 }] } },
+  defeat: { q: () => 'A heavy defeat today. What went wrong?', a: {
+    humble: ['We look at ourselves', 'We have to look at ourselves. Me first.', { aff: 2, media: -1 }],
+    confident: ['We win the next one', "We'll bounce back. I promise you we win the next one.", { boast: true, media: 1 }],
+    edgy: ['Some need a mirror', 'Some players need to take a hard look in the mirror.', { rep: 1, aff: -3, board: -1, media: 2 }] } },
+  rumour: { q: () => 'There are stories linking you with a move. Are you happy here?', a: {
+    humble: ['Fully committed', "I'm happy here. This club means everything to me.", { aff: 4, media: -1 }],
+    confident: ['Focused on football', "I don't read the papers. I'm focused on my football.", { aff: 1 }],
+    edgy: ['Never say never', "Never say never. It's a short career.", { aff: -4, rep: 1, media: 1, buzz: true }] } },
+  contract: { q: () => 'Talks on a new contract are going on. Where are you at?', a: {
+    humble: ['I just want to stay', "I just want to stay. The money isn't the point.", { aff: 3, media: -1 }],
+    confident: ['I know my worth', 'I know what I bring. The club knows it too.', { rep: .5, aff: -1, wage: .03, media: 1 }],
+    edgy: ['Others are interested', "Let's just say other clubs have called my agent.", { aff: -4, wage: .08, media: 2, buzz: true }] } },
+  boast: { q: c => `Big game next: ${c.oppName}. How do you see it?`, a: {
+    humble: ["They're a great side", "They're a top side. We'll give everything.", { aff: 1, media: -1 }],
+    confident: ["We'll win", "We'll win. Simple as that.", { boast: true, media: 1 }],
+    edgy: ['They should be scared', "If I were them, I'd be scared.", { boast: true, double: true, rep: 1, board: -1, media: 2 }] } },
+  mgr: { q: c => `${c.mgr} is the new manager. What do you make of him?`, a: {
+    humble: ["I'll earn my place", "Nothing is given. I'll earn my place like everyone else.", { aff: 4, media: -1 }],
+    confident: ['He knows what I can do', "He knows what I can do. I'm part of his plans.", { aff: 1, rep: .5, media: 1 }],
+    edgy: ['I miss the old boss', "Honestly, I'll miss the old gaffer.", { aff: -5, rep: 1, media: 2 }] } },
+  captain: { q: () => "You've been named captain. How does it feel?", a: {
+    humble: ['An honour', "It's an honour. The whole dressing room deserves it.", { aff: 2, board: 2, media: -1 }],
+    confident: ["We'll win things", 'This team will win things with me wearing the armband.', { rep: 1.5, media: 1 }],
+    edgy: ['About time', "About time, if I'm honest.", { rep: 1, aff: -2, media: 2 }] } },
+  nation: { q: c => `What does playing for ${c.nat} mean to you?`, a: {
+    humble: ['Proud', "Every cap is a dream. I'm proud to play for my country.", { fav: 6, media: -1 }],
+    confident: ['I want trophies', c => `I want to lead ${c.nat} to a trophy.`, { fav: 3, rep: 1, media: 1 }],
+    edgy: [c => c.free ? 'Keeping my options open' : 'Play me more', c => c.free ? "I'm keeping my options open." : 'The coach should be playing me more.', { fav: -7, rep: .7, media: 2 }] } },
+};
+const pressVal = (x, c) => typeof x === 'function' ? x(c) : x;
+function pressHint(e) {
+  const bits = [];
+  if (e.aff) bits.push(`manager ${e.aff > 0 ? '+' : '−'}${Math.abs(e.aff)}`);
+  if (e.rep) bits.push(e.rep >= 1.5 ? 'big reputation boost' : e.rep > 0 ? 'reputation up' : 'reputation down');
+  if (e.board) bits.push(`board ${e.board > 0 ? '+' : '−'}${Math.abs(e.board)}`);
+  if (e.fav) bits.push(`national coach ${e.fav > 0 ? 'pleased' : 'annoyed'}`);
+  if (e.form) bits.push('a lift for your next game, but a poor one earns a backlash');
+  if (e.boast) bits.push(e.double ? 'win the next game and you are a hero, lose and they will never let you forget it' : 'judged by the next game');
+  if (e.title) bits.push(e.title > 1 ? 'win the league and you are a legend, miss out and you will hear about it' : 'judged at the end of the season');
+  if (e.wage) bits.push('a better contract offer');
+  if (e.fine) bits.push("risks a fine and a longer ban");
+  if (e.buzz) bits.push('more clubs take note');
+  return bits.join(' · ') || 'Safe';
+}
+function pressWeek(user, cupUser, report, fx) {
+  const p = S.player;
+  if (p.needsContract || !p.club || S.phase !== 'season' || absWeek() < (p.pressNext || 0) || S.decision || (S.dq || []).length) return;
+  const played = [user, cupUser].filter(u => u && u.mins), res = report.match, c = myClub(), topics = [];
+  const ctx = { mgr: c.mgr, nat: natName(p.nat), free: !tiedForGood() && p.switched == null };
+  if (played.some(u => u.red)) topics.push(['red', .7]);
+  const g = Math.max(0, ...played.map(u => u.goals || 0));
+  if (g >= 3) { ctx.goals = g; topics.push(['haul', .7]); }
+  if (fx && res && user && user.mins) {
+    const mine = fx.isHome ? res.gh : res.ga, theirs = fx.isHome ? res.ga : res.gh, dn = derbyName(res.h, res.a);
+    if (dn && mine > theirs) { ctx.derby = dn; ctx.oppName = club(fx.opp).name; topics.push(['derby', .6]); }
+    if (theirs - mine >= 3) topics.push(['defeat', .6]);
+  }
+  if (g < 3 && played.some(u => (u.rating || 0) >= 8)) topics.push(['star', .4]);
+  if ((p.form || []).length >= 3 && p.form.slice(-3).reduce((s, r) => s + r, 0) / 3 < 6.3) topics.push(['slump', .35]);
+  if (!p.titleBoast && S.week >= 15 && S.week <= 38 && leagueTable(c.league).findIndex(r => r.id === p.club) < 2) topics.push(['title', .2]);
+  if (p.pressFlag) { topics.push([p.pressFlag, .8]); p.pressFlag = null; }
+  if (p.listed || inquiries().length || (inWindow() && S.offers.some(o => o.type === 'transfer'))) topics.push(['rumour', .25]);
+  if (S.offers.some(o => o.type === 'renew' && o.club === p.club && !o.raise)) topics.push(['contract', .3]);
+  const nx = nextFixture();
+  if (nx && S.clubs[nx.opp]) {
+    const rank = leagueTable(c.league).findIndex(r => r.id === nx.opp);
+    if (rank >= 0 && rank < 3 && nx.opp !== p.club) topics.push(['boast', .3, nx.opp]);
+  }
+  const hit = topics.find(([, chance]) => Math.random() < chance);
+  if (!hit) return;
+  const [topic, , opp] = hit;
+  if (topic === 'boast') ctx.oppName = club(opp).name;
+  const T = PRESS[topic];
+  if (topic === 'mgr' && !ctx.mgr) return;
+  p.pressNext = absWeek() + randi(4, 6);
+  const lead = (p.media || 0) >= 5 ? 'The reporters know you never hold back. ' : '';
+  const opts = ['humble', 'confident', 'edgy'].map(k => { const [label, , e] = T.a[k]; return [k, pressVal(label, ctx), pressHint(e)]; });
+  queueDecision({ type: 'press', topic, ctx, opts, text: lead + T.q(ctx) });
+}
+function resolvePress(d, choice) {
+  const p = S.player, T = PRESS[d.topic];
+  if (!T || !T.a[choice]) return;
+  const [, quote, e] = T.a[choice], said = pressVal(quote, d.ctx);
+  if (e.aff) changeAff(e.aff);
+  if (e.rep) addRep(e.rep);
+  if (e.board) changeBoard(e.board);
+  if (e.fav) changeFavor(e.fav);
+  p.media = clamp((p.media || 0) + (e.media || 0), -10, 10);
+  if (e.form) p.pressForm = e.form;
+  if (e.boast) p.boast = { at: absWeek(), double: !!e.double };
+  if (e.title) p.titleBoast = { season: S.season, k: e.title };
+  if (e.wage) S.offers.filter(o => o.type === 'renew' && o.club === p.club).forEach(o => { o.wage = Math.round(o.wage * (1 + e.wage) / 10) * 10; });
+  if (e.buzz) p.pressBuzz = true;
+  let extra = '';
+  if (e.fine) {
+    const fine = Math.round(p.wage * e.fine);
+    p.money -= fine;
+    extra = ` The FA fined you ${money(fine)}.`;
+    if (Math.random() < e.ban) { p.ban = (p.ban || 0) + 1; extra += ' And one more game added to your ban.'; }
+  }
+  const tone = choice === 'humble' ? 'good' : choice === 'edgy' ? 'bad' : 'good';
+  msg(`Press conference: "${said}"${extra}`, choice === 'edgy' ? 'bad' : '');
+  notify(tone, 'Headline', `${p.name}: "${said}"${extra}`);
+}
+// A promise to win, judged by your next game; a confident answer's lift, judged by your rating.
+function pressAfterMatch(res, isHome, user, report) {
+  const p = S.player;
+  if (p.pressForm && user.mins) {
+    if (user.rating < 6.2) { addRep(-1); report.events.push('Big talk, poor game: the press have a go at you'); notify('bad', 'Headline', `All talk? ${p.name} flops after his big words.`); }
+    p.pressForm = 0;
+  }
+  // Press conferences come after the week's games, so the next game you play is the one that judges it.
+  if (!p.boast) return;
+  const b = p.boast, k = b.double ? 1.5 : 1;
+  p.boast = null;
+  const mine = isHome ? res.gh : res.ga, theirs = isHome ? res.ga : res.gh;
+  const won = mine > theirs || (mine === theirs && res.winner === (isHome ? res.h : res.a));
+  const lost = mine < theirs || (mine === theirs && res.winner && !won);
+  if (won) { addRep(2 * k); changeAff(2); report.events.push('You promised a win and delivered'); notify('good', 'Headline', `${p.name} delivers on his promise.`); }
+  else if (lost) { addRep(-2 * k); changeAff(-3); report.events.push('You promised a win and lost: the press will not let it go'); notify('bad', 'Headline', `Big talk, no win: ${p.name} eats his words.`); }
+  else { addRep(-.5); report.events.push('You promised a win and drew'); }
+}
 
 // ---------- weekly loop ----------
 // Your birthday falls in this game week: a message, and your age ticks over.
@@ -3122,6 +3314,7 @@ function advanceWeek() {
     }
     if (p.promise > 0) p.promise--;
     if (p.chance > 0) p.chance--;
+    pressAfterMatch(res, fx.isHome, user, report);
     S.results.unshift(resultRow(res, fx.isHome, user, league(myClub().league).name, 'league'));
   }
   p.order = null;
@@ -3146,6 +3339,7 @@ function advanceWeek() {
       const my = efx.t.my = efx.t.my || { apps: 0, goals: 0, assists: 0, rsum: 0 };
       my.apps++; my.goals += cupUser.goals; my.assists += cupUser.assists; my.rsum += cupUser.rating;
     }
+    pressAfterMatch(cupRes, efx.isHome, cupUser, report);
     S.results.unshift(resultRow(cupRes, efx.isHome, cupUser, efx.t.name.replace(/ \d{4}$/, ''), efx.euro ? 'euro' : 'cup', efx.stage));
   }
 
@@ -3215,7 +3409,7 @@ function advanceWeek() {
   p.trainedThisWeek = 0;
   p.weekEquip = 0;
   p.affPen = Math.max(0, p.affPen - 1.5);
-  p.aff += (50 - p.aff) * .04; // Goodwill fades unless you keep earning it.
+  p.aff += ((isCaptain() ? 60 : 50) - p.aff) * .04; // Goodwill fades unless you keep earning it (a captain's settles higher).
   // Rivals' standing with the manager drifts week to week.
   const g = POS_GROUP[p.pos];
   myClub().players.forEach(pl => { if (POS_GROUP[pl.pos] === g) pl.a = clamp(pl.a + rand(-1.5, 1.5) + (pl.a < 55 ? .3 : -.3), 20, 95); });
@@ -3261,6 +3455,7 @@ function advanceWeek() {
   if (S.week > SEASON_WEEKS) endSeason(report);
   else {
     tickObjectives();
+    pressWeek(user, cupUser, report, fx);
     maybeOrder();
     maybeDecision();
     maybePositionAsk();
@@ -3821,7 +4016,10 @@ function windowOffers() {
   // A club you agreed to listen to comes back with a bid.
   if (p.interested && p.interested !== p.club && !isBanned(p.interested) && topFlightOpen(club(p.interested)) && !S.offers.some(o => o.club === p.interested)) S.offers.push(makeOffer(club(p.interested), 'transfer'));
   p.interested = null;
-  generateOffers(randi(1, 3) + (breakout ? 2 : 0) + (S.player.listed ? 2 : 0));
+  // Talked up your options in the press: one more club takes note.
+  const buzz = p.pressBuzz ? 1 : 0;
+  p.pressBuzz = false;
+  generateOffers(randi(1, 3) + (breakout ? 2 : 0) + (S.player.listed ? 2 : 0) + buzz);
 }
 
 // A first-team call-up is not a transfer-window bid: it stays until answered or it lapses.
@@ -3916,7 +4114,8 @@ function blockChance() {
   const p = S.player, st = squadStatus();
   if (p.needsContract || p.loan || p.listed || !p.club) return 0;
   const base = st === 'Key Player' ? .55 : st === 'Starter' ? (effAff() >= 70 ? .4 : .25) : 0;
-  return base * (lastYear() ? .35 : 1);
+  // A club is keener to keep its captain.
+  return Math.min(.7, base * (lastYear() ? .35 : 1) * (isCaptain() ? CAPTAIN_BLOCK : 1));
 }
 function tryBlockMove(o) {
   const p = S.player;
@@ -4684,7 +4883,7 @@ function freshMgrName(nat) {
 // good or bad, goes with him.
 function newManagerForMe(c) {
   const p = S.player;
-  if (c.id === p.club) { p.aff = 50 + (p.aff - 50) * .4; p.affPen = 0; p.frozen = false; }
+  if (c.id === p.club) { p.aff = 50 + (p.aff - 50) * .4; p.affPen = 0; p.frozen = false; p.pressFlag = 'mgr'; }
   else if (p.loan && c.id === p.loan.parent && p.loan.parentAff != null) p.loan.parentAff = 50 + (p.loan.parentAff - 50) * .4;
 }
 
@@ -4925,6 +5124,13 @@ function endSeason() {
   const give = (short, full, rep) => { awards.push(short); p.awards.push({ name: full, season: S.season }); addRep(rep); };
   const gone = p.needsContract;
   if (pos === 1 && !gone) { awards.push(`${L.name} champion`); p.trophies.push({ name: L.name, club: c.name, season: S.season }); addRep(6); }
+  // You said in the press you would win the league: now the papers judge it.
+  if (p.titleBoast && p.titleBoast.season === S.season && !gone) {
+    const k = p.titleBoast.k;
+    if (pos === 1) { addRep(3 * k); awards.push('Promised the title and delivered'); }
+    else { addRep(-2.5 * k); changeAff(-3); awards.push(`Promised the title, finished ${pos}${ordinal(pos)}`); notify('bad', 'Headline', `${p.name} promised the title. They finished ${pos}${ordinal(pos)}.`); }
+  }
+  p.titleBoast = null;
   const scorers = topScorers(lid, 1);
   if (scorers[0] && scorers[0].me) give('Golden Boot', `${L.name} Golden Boot`, 4);
   const assisters = topAssists(lid, 1);
@@ -5146,7 +5352,7 @@ function aiFee(pl, from, to, paid = false) {
   const l = league(from.league);
   const market = l.tier === 3 ? .35 : l.tier === 2 ? .6 : VET_LEAGUES.includes(l.nat) ? .8 : 1;
   const rich = 1 + clamp((mktStr(to) - mktStr(from)) / 20, 0, .4);
-  const v = 5e5 * Math.exp((pl.r - 60) / 6) * (VALUE_POS[pl.pos] || 1) * valueAge(age) * market * rich * rand(.7, 1.35);
+  const v = softCap(marketBase(pl.r) * (VALUE_POS[pl.pos] || 1) * valueAge(age) * (NAT_PREMIUM[pl.nat] || 1) * leaguePremium(l) * market * rich * rand(.7, 1.35));
   const step = v >= 1e7 ? 5e5 : v >= 1e6 ? 1e5 : 1e4;
   return Math.max(0, Math.round(v / step) * step);
 }
@@ -5630,6 +5836,13 @@ const netWorth = () => S.player.money + portfolioValue() + collectionValue();
 // What a club would pay for you: mostly OVR (about €2.7M at 70, €14M at 80, €63M at 89), then your
 // position (goalscorers cost the most, keepers the least), age, reputation, years left on your contract
 // and how much money there is in your league. Form moves it up to 30% either way (see valueForm).
+// Today's market: about €38M for an 80 before age and reputation, rising faster below 80 and a little
+// slower above, so a 90 is worth well over €100M. Past €150M a value only creeps up (the record is
+// around €200M). English players carry the homegrown premium, and the Premier League pays the most.
+function marketBase(r) { return 3.8e7 * Math.exp((r - 80) / (r < 80 ? 5.8 : 7.8)); }
+const softCap = v => v > 1.5e8 ? 1.5e8 + (v - 1.5e8) * .4 : v;
+const NAT_PREMIUM = { ENG: 1.25 };
+const leaguePremium = l => l.tier === 1 && l.nat === 'ENG' ? 1.15 : 1;
 const VALUE_POS = { ST: 1.2, LW: 1.15, RW: 1.15, CAM: 1.1, CM: 1, LM: 1, RM: 1, CDM: .95, CB: .9, LB: .85, RB: .85, GK: .65 };
 const valueAge = a => a <= 21 ? 1.5 : a <= 23 ? 1.3 : a <= 26 ? 1.15 : a <= 28 ? 1 : a === 29 ? .85 : a === 30 ? .7 : a === 31 ? .55 : a === 32 ? .45 : a === 33 ? .35 : Math.max(.08, .25 - (a - 34) * .05);
 // How a season went, from -1 (awful) to 1 (outstanding): 60% output for the position against its
@@ -5659,10 +5872,10 @@ function valueForm(p) {
 function playerValue(p = S.player) {
   if (p.needsContract) return 0;
   const c = club(p.loan ? p.loan.parent : p.club), l = league(c.league), ovr = calcOVR(p);
-  const base = 5e5 * Math.exp((ovr - 60) / 6);
+  const base = marketBase(ovr);
   const contract = p.years <= 0 ? .3 : p.years === 1 ? .7 : p.years === 2 ? .9 : 1;
   const market = l.tier === 3 ? .35 : l.tier === 2 ? .6 : VET_LEAGUES.includes(l.nat) ? .8 : 1;
-  const v = base * (VALUE_POS[p.pos] || 1) * valueAge(ageOf(p.by)) * (.8 + p.rep / 250) * contract * market * valueForm(p);
+  const v = softCap(base * (VALUE_POS[p.pos] || 1) * valueAge(ageOf(p.by)) * (.8 + p.rep / 250) * (NAT_PREMIUM[p.nat] || 1) * leaguePremium(l) * contract * market * valueForm(p));
   const step = v >= 1e7 ? 5e5 : v >= 1e6 ? 1e5 : 1e4;
   return Math.max(1e4, Math.round(v / step) * step);
 }
@@ -5913,7 +6126,7 @@ function retiredRecord() {
     startYear: baseYear(),
     id: p.careerId || (p.careerId = Date.now()), name: p.name, nat: p.nat, pos: p.pos, career: p.career, trophies: p.trophies, awards: p.awards,
     caps: p.caps, intlGoals: p.intlGoals || 0, attrs: roundAttrs(p.attrs), money: p.money, by: p.by, lastClub: p.club ? myClub().name : '–', retiredAge: ageOf(p.by),
-    peak: Math.max(calcOVR(), ...p.career.map(r => r.ovr)), rep: Math.round(p.rep),
+    peak: Math.max(calcOVR(), ...p.career.map(r => r.ovr)), rep: Math.round(p.rep), media: p.media || 0,
   };
 }
 // ---------- card status at retirement ----------
@@ -5958,7 +6171,9 @@ function fanVote(rec) {
   const oneClub = clubs.length === 1 && clubs[0].seasons >= 8, rivals = clubs.some(c => c.rivals.length);
   const luck = strHash(`${rec.id}|${rec.name}|vote`) % 13 - 6;
   const vote = 10 + Math.min(40, elite * 5) + Math.min(24, standout * 4) + Math.min(12, big * 3) + legends * 8
-    + (oneClub ? 10 : 0) - (rivals ? 10 : 0) + (rec.rep || 0) / 10 + luck;
+    + (oneClub ? 10 : 0) - (rivals ? 10 : 0) + (rec.rep || 0) / 10 + luck
+    // Fans warm to a humble player, and a little to a showman.
+    + ((rec.media || 0) <= -5 ? 3 : (rec.media || 0) >= 7 ? 2 : 0);
   const notes = [elite && `${elite} season${elite > 1 ? 's' : ''} at 85+`, standout && `${standout} standout season${standout > 1 ? 's' : ''}`,
     big && `${big} major trophies`.replace(/^1 major trophies/, '1 major trophy'), legends && 'club legend', oneClub && 'one-club player', rivals && 'played for rivals'].filter(Boolean);
   return { vote: Math.round(clamp(vote, 3, 98)), notes };

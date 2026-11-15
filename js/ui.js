@@ -1742,7 +1742,7 @@ function viewCareer() {
   return seg + `<section class="card hero"><h2>Profile</h2>${p.nickname ? `<div class="nick" title="Since ${seasonLabel(p.nickname.season)}, for ${esc(p.nickname.why)}">“${esc(p.nickname.n)}”</div>` : ""}
       <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div>${p.shirt && p.shirt.club === p.club && !p.shirt.repick ? `<div><small>Shirt</small><b>#${p.shirt.no}</b></div>` : ''}<div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${p.intlRetired ? 'Retired' : calledUp() ? 'In squad' : u21Pick() ? 'U21s' : 'Not picked'}</b></div>${isCaptain() ? '<div><small>Armband</small><b class="good">Captain</b></div>' : ''}${spLabel() ? `<div><small>Set pieces</small><b>${spLabel()}</b></div>` : ''}
       <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div title="Transfer value: OVR, position, age, reputation, contract, league and this season's form"><small>Value</small><b>${value ? money(value) : 'Free agent'}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b>${p.u21Caps ? `<small>U21: ${p.u21Caps}${p.u21Goals ? ` (${p.u21Goals}g)` : ''}</small>` : ''}</div></div>
-      <div class="small muted">${nationNote()}</div>${canRetireIntl() ? '<button class="btn sm block" data-act="intlRetireAsk">Retire from international football</button>' : ''}${canAskShirt() ? '<button class="btn sm block" data-act="shirtAskList">Ask a teammate for his shirt</button>' : ''}</section>
+      <div class="small muted">${nationNote()}</div>${isCaptain() ? '<button class="btn sm block" data-act="capQuitAsk">Step down as captain</button>' : ''}${canRetireIntl() ? '<button class="btn sm block" data-act="intlRetireAsk">Retire from international football</button>' : ''}${canAskShirt() ? '<button class="btn sm block" data-act="shirtAskList">Ask a teammate for his shirt</button>' : ''}</section>
     ${nationalityCard()}
     <section class="card"><h2>This season</h2><div class="${statGrid(p.pos)}"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div>${gkCells(p.pos, p.st.saves, p.st.cleanAll)}<div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
       ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Cups: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}
@@ -2024,7 +2024,10 @@ function showShirtPicker() {
 function showDecision() {
   const d = S.decision;
   const nat = S.player.nat;
-  const opts = d.type === 'citizen'
+  const opts = d.type === 'press' ? d.opts
+    : d.type === 'captain'
+    ? [['accept', 'Accept the armband', 'Reputation and board up, the team a little better with you, the manager fonder of you. Harder to leave'], ['decline', 'Turn it down', 'Stay free to move on. The manager is a little disappointed (−3)']]
+    : d.type === 'citizen'
     ? [['apply', `Apply for citizenship of ${natName(d.nat)}`, 'The paperwork takes a few weeks'], ['later', 'Not now', 'You can apply later from the Career tab']]
     : d.type === 'switch'
     ? [['switch', `Play for ${natName(d.nat)}`, 'For the rest of your career: you can only switch once'], ['stay', `Stay with ${natName(nat)}`, 'You can still switch later while FIFA allows it']]
@@ -2041,7 +2044,7 @@ function showDecision() {
     : d.type === 'rumour'
     ? [['deny', 'Deny it publicly', 'The manager likes loyalty (+3)'], ['silent', 'Say nothing', 'He wonders why you stayed quiet (−1)']]
     : [['reject', 'Reject them', `Show you are committed (+${d.rival ? 8 : 4}${d.rival ? ', rivals!' : ''})`], ['listen', 'Tell your agent to listen', 'They may bid in the window (−2)']];
-  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?', shirt: 'He wants your shirt', citizen: 'Citizenship', switch: 'Switch national team?', callup: 'International call-up', natTour: 'Tournament call-up' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
+  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?', shirt: 'He wants your shirt', citizen: 'Citizenship', switch: 'Switch national team?', callup: 'International call-up', natTour: 'Tournament call-up', press: 'Press conference', captain: 'The armband' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
     <div class="inbox">${opts.map(([v, l, s]) => `<button class="house" data-act="decide" data-v="${v}"><span><b>${l}</b><br><span class="small muted">${s}</span></span></button>`).join('')}</div>`);
 }
 
@@ -2408,6 +2411,8 @@ document.addEventListener('click', e => {
     case 'intlRetireAsk': confirmSheet('Retire from international football?', `You stop playing for ${esc(natName(S.player.nat))} for good: no more call-ups or tournaments. In return your body ages a little slower. This cannot be undone.`, 'intlRetire', 'Retire from internationals'); return;
     case 'intlRetire': retireIntl(); closeModal(); render(); nextPopup(); return;
     case 'achvShow': showAchievements(); return;
+    case 'capQuitAsk': confirmSheet('Step down as captain?', `You hand back the ${esc(myClub().name)} armband. ${esc(myClub().mgr)} (−5) and the board (−3) will be disappointed, and he will not offer it again this season.`, 'capQuit', 'Step down'); return;
+    case 'capQuit': stepDownCaptain(); closeModal(); render(); return;
     case 'citApply': applyCitizenship(v); render(); return;
     case 'natSwitchAsk': confirmSheet(`Play for ${esc(natName(v))}?`, `You switch national team from ${esc(natName(S.player.nat))} to ${esc(natName(v))} for the rest of your career. FIFA allows only one switch.`, 'natSwitch', `Switch to ${esc(natName(v))}`, v); return;
     case 'natSwitch': switchNation(v); closeModal(); render(); nextPopup(); return;
