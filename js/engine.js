@@ -951,9 +951,9 @@ function startChance() {
   // Just back from injury: the manager eases you in.
   if (p.rust > 0) start *= .75;
   // Nobody is guaranteed a shirt: at most an 85% chance of starting (95% for a keeper, whom
-  // managers rarely rotate).
+  // managers rarely rotate, or for the captain).
   // Turned down a new position this season: the manager leaves you out a little more.
-  return { start: Math.max(0, clamp(start, 0, matchPos() === 'GK' ? MAX_START_GK : MAX_START) -(p.posRefused === S.season ? POS_REFUSE_START : 0)), subShare };
+  return { start: Math.max(0, clamp(start, 0, matchPos() === 'GK' || isCaptain() ? MAX_START_GK : MAX_START) -(p.posRefused === S.season ? POS_REFUSE_START : 0)), subShare };
 }
 
 // ---------- pop-up events ----------
@@ -1439,6 +1439,8 @@ function squadNumbers(c) {
   const taken = new Set(c.players.filter(pl => pl.no).map(pl => pl.no));
   const mine = S.player.shirt && S.player.shirt.club === c.id ? S.player.shirt.no : null;
   if (mine) taken.add(mine);
+  // A number you asked for and were refused is held back for you once its owner has gone.
+  (S.player.shirtWant || []).forEach(w => { if (w.club === c.id) taken.add(w.no); });
   c.players.filter(pl => !pl.no).sort((a, b) => b.r - a.r).forEach(pl => {
     const prefs = pl.pos === 'GK' && taken.has(1) ? BACKUP_GK : SHIRT_PREF[pl.pos] || [];
     let no = prefs.find(n => !taken.has(n));
@@ -1499,13 +1501,17 @@ function chemForm() {
 }
 // The other way round: you ask a team-mate for his shirt. He is likelier to say yes the better you
 // are next to him and the bigger your name. Yes: you swap numbers and click on the pitch (as above).
-// No: you are the one left sulking (as above). Each team-mate is asked once at most, either way.
-const canAskShirt = () => { const p = S.player; return !!(p.shirt && p.shirt.club === p.club && !p.shirt.repick && !p.loan && S.phase !== 'retired'); };
+// No: you are the one left sulking (as above), and the number is yours the moment he leaves: you are
+// asked whether you want to switch. Each team-mate is asked once at most, and three asks per club.
+const SHIRT_ASKS = 3;
+const shirtAsksLeft = () => { const p = S.player, a = p.shirtAskN; return SHIRT_ASKS - (a && a.club === p.club ? a.n : 0); };
+const canAskShirt = () => { const p = S.player; return !!(p.shirt && p.shirt.club === p.club && !p.shirt.repick && !p.loan && S.phase !== 'retired' && shirtAsksLeft() > 0); };
 const shirtAskOdds = pl => clamp(.35 + (calcOVR() - pl.r) * .04 + (S.player.rep || 0) / 400, .1, .85);
 function askTeammateShirt(name) {
   const p = S.player, c = myClub(), mate = c.players.find(pl => pl.n === name), asked = p.shirtAsked = p.shirtAsked || [];
   if (!canAskShirt() || !mate || asked.includes(name)) return null;
   asked.push(name);
+  p.shirtAskN = { club: c.id, n: SHIRT_ASKS - shirtAsksLeft() + 1 };
   const yes = Math.random() < shirtAskOdds(mate), mine = p.shirt.no, his = mate.no;
   if (yes) {
     mate.no = mine;
@@ -1514,10 +1520,37 @@ function askTeammateShirt(name) {
     msg(`${name} handed you his number ${his} shirt and took your ${mine}. You two click on the pitch now.`, 'good');
   } else {
     p.shirtSnub = { club: c.id, name, until: absWeek() + SHIRT_SNUB_WEEKS };
+    p.shirtWant = [...(p.shirtWant || []).filter(w => w.no !== his || w.club !== c.id), { club: c.id, no: his, name }];
     msg(`${name} said no to giving up his number ${his}. You are not happy about it, and the dressing room can feel it.`, 'bad');
   }
   save();
   return { yes, name, his, mine };
+}
+// A number you were refused, now free: its owner left (or changed numbers). Asked once; leaving the
+// club forgets it.
+function shirtFreeWeek() {
+  const p = S.player, c = p.club && S.clubs[p.club];
+  if (!(p.shirtWant || []).length) return;
+  p.shirtWant = p.shirtWant.filter(w => w.club === p.club || (p.loan && w.club === p.loan.parent));
+  if (!c || p.loan || !p.shirt || p.shirt.club !== c.id || p.shirt.repick) return;
+  squadNumbers(c);
+  const w = p.shirtWant.find(x => x.club === c.id && x.no !== p.shirt.no && !c.players.some(pl => pl.no === x.no));
+  if (!w) return;
+  p.shirtWant = p.shirtWant.filter(x => x !== w);
+  const gone = !c.players.some(pl => pl.n === w.name);
+  queueDecision({ type: 'shirtFree', no: w.no, club: c.id, text: `${gone ? `${w.name} has left ${c.name}` : `${w.name} has changed numbers`}, so the number ${w.no} shirt you asked him for is free. Do you want it? You wear ${p.shirt.no} now.` });
+}
+function resolveShirtFree(d, yes) {
+  const p = S.player;
+  if (d.nat) {
+    const nn = natNos();
+    if (yes && nn.nat === p.nat) { nn.mine = d.no; msg(`You will wear the number ${d.no} shirt for ${natName(p.nat)}.`, 'good'); }
+    return;
+  }
+  if (yes && p.club === d.club && p.shirt && p.shirt.club === d.club && !myClub().players.some(pl => pl.no === d.no)) {
+    p.shirt = { club: d.club, no: d.no };
+    msg(`The number ${d.no} shirt is yours at last.`, 'good');
+  }
 }
 function resolveShirtAsk(d, yes) {
   const p = S.player, c = myClub(), mate = c.players.find(pl => pl.n === d.name);
@@ -1544,6 +1577,8 @@ function resolveDecision(choice) {
   else if (d.type === 'captain') resolveCaptain(d, choice === 'accept');
   else if (d.type === 'position') resolvePositionAsk(d, choice === 'accept');
   else if (d.type === 'shirt') resolveShirtAsk(d, choice === 'yes');
+  else if (d.type === 'shirtFree') resolveShirtFree(d, choice === 'yes');
+  else if (d.type === 'natCaptain') resolveNatCaptain(d, choice === 'accept');
   else if (d.type === 'recall') {
     if (choice === 'return') recallLoan();
     else { p.loan.parentAff = clamp(p.loan.parentAff - 8, 0, 100); msg(`You asked to stay on loan. ${club(d.club).mgr} is disappointed (−8 when you return).`, 'bad'); }
@@ -2989,10 +3024,13 @@ function switchNation(nat) {
 // friendlies), your standing choice in the Career tab (normally: available) answers for you.
 // Turning your country down costs the coach's goodwill; fall low enough and he stops calling.
 const INTL_WINDOWS = { 6: 'qualifier', 10: 'qualifier', 14: 'qualifier', 31: 'friendly' };
+const INTL_MONTH = { 6: 'September', 10: 'October', 14: 'November', 31: 'March' };
 const natFavor = () => S.player.natFavor ?? 60;
 function changeFavor(d) { const p = S.player; p.natFavor = clamp(natFavor() + d, 0, 100); if (p.natFavor < 25) { p.natSnub = absWeek() + 20; p.natFavor = 45; msg(`${natName(p.nat)}'s coach is tired of being turned down: no call-ups for about 20 weeks.`, 'bad'); } }
 function intlWeek(report) {
   const p = S.player, kind = INTL_WINDOWS[S.week + 1];
+  // A week ahead the coach names his squad, with or without you.
+  if (kind) natSquadUpdate(`${INTL_MONTH[S.week + 1]} ${new Date(todayDate().getTime() + 7 * 864e5).getUTCFullYear()}`);
   // A week ahead: the call-up.
   if (kind && calledUp() && !p.needsContract) {
     if (!p.caps && !p.natPressed) { p.natPressed = true; p.pressFlag = 'nation'; }
@@ -3009,20 +3047,22 @@ function intlWeek(report) {
 function playWindow(kind, report) {
   const p = S.player, choice = p.intlPick && p.intlPick.week === S.week ? p.intlPick.choice : null;
   p.intlPick = null;
-  if (!choice || p.needsContract) return;
-  if (choice === 'none' || (choice === 'friendly' && kind === 'qualifier')) {
-    changeFavor(kind === 'qualifier' ? (choice === 'none' ? -12 : -5) : -6);
-    report.events.push(`Turned down ${natName(p.nat)}'s call-up`);
-    return;
+  // Your country plays whether you are there or not; its results are kept either way.
+  let playing = false;
+  if (choice && !p.needsContract) {
+    if (choice === 'none' || (choice === 'friendly' && kind === 'qualifier')) {
+      changeFavor(kind === 'qualifier' ? (choice === 'none' ? -12 : -5) : -6);
+      report.events.push(`Turned down ${natName(p.nat)}'s call-up`);
+    } else if (p.injured) report.events.push(`Missed ${natName(p.nat)}'s games through injury`);
+    else { changeFavor(4); playing = true; }
   }
-  if (p.injured) { report.events.push(`Missed ${natName(p.nat)}'s games through injury`); return; }
-  changeFavor(4);
-  const me = 'N:' + p.nat, pool = (CONFED[confedOf(p.nat)] || []).filter(n => n !== p.nat);
+  const me = 'N:' + p.nat, all = Object.keys(NATION_STR).filter(n => n !== p.nat), conf = (CONFED[confedOf(p.nat)] || []).filter(n => n !== p.nat);
+  const pool = kind === 'qualifier' && conf.length ? conf : all;
   const first = natRivals().length === 0, lines = [];
   let caps = 0, goals = 0, assists = 0;
   for (let i = 0; i < 2; i++) {
-    const opp = kind === 'qualifier' ? pick(pool) : pick(Object.keys(NATION_STR).filter(n => n !== p.nat));
-    const start = Math.random() < (first ? .85 : .5), mins = start ? randi(60, 90) : Math.random() < .6 ? randi(10, 30) : 0;
+    const opp = pick(pool);
+    const start = Math.random() < (natCaptain() ? .95 : first ? .85 : .5), mins = !playing ? 0 : start ? randi(60, 90) : Math.random() < .6 ? randi(10, 30) : 0;
     const ms = teamStr(me), os = teamStr('N:' + opp), home = i === 0;
     const gf = poisson(1.35 * Math.exp((ms - os + (home ? 2 : -2)) / 13)), ga = poisson(1.15 * Math.exp((os - ms - (home ? 2 : -2)) / 13));
     let g = 0, a = 0;
@@ -3032,8 +3072,11 @@ function playWindow(kind, report) {
       caps++; goals += g; assists += a;
       if (kind === 'qualifier') { const t = capTie(); t.comp++; t.last = S.season; if (ageOf(p.by) >= 21) t.adult = true; }
     }
+    const h = home ? me : 'N:' + opp, aw = home ? 'N:' + opp : me;
+    addNatGame({ comp: kind === 'qualifier' ? 'Qualifier' : 'Friendly', stage: `${INTL_MONTH[S.week]} window`, h, a: aw, gh: home ? gf : ga, ga: home ? ga : gf, mins, goals: g, assists: a });
     lines.push(`${natName(p.nat)} ${gf}–${ga} ${natName(opp)}${mins ? (g ? ` (${g} goal${g > 1 ? 's' : ''})` : a ? ' (assist)' : '') : ' (unused)'}`);
   }
+  if (!playing) return;
   if (caps) {
     p.caps = (p.caps || 0) + caps;
     p.intlGoals = (p.intlGoals || 0) + goals;
@@ -3433,6 +3476,7 @@ function advanceWeek() {
   renewTaskWeek();
   noteRenewal();
   shirtRequestWeek();
+  shirtFreeWeek();
   if (calcOVR() >= 90) achv('ovr90');
   if (calcOVR() >= 95) achv('ovr95');
   const card = cardTier(calcOVR());

@@ -26,6 +26,7 @@ const ICONS = {
   train: '<path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/>',
   shop: '<path d="M4 8h16l-1.5 11a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM9 8V6a3 3 0 0 1 6 0v2"/>',
   club: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  nation: '<path d="M5 21V4M5 4h12l-2.5 4L17 12H5"/>',
   agent: '<path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 7h18v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM3 12h18"/>',
   career: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',
   contract: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
@@ -180,7 +181,7 @@ function topbar() {
 }
 
 function nav() {
-  const tabs = [['home', 'Home'], ['train', 'Train'], ['contract', 'Contract'], ['shop', 'Shop'], ['agent', 'Agent'], ['club', 'Club'], ['career', 'Career']];
+  const tabs = [['home', 'Home'], ['train', 'Train'], ['contract', 'Contract'], ['shop', 'Shop'], ['agent', 'Agent'], ['club', 'Club'], ['nation', 'Nation'], ['career', 'Career']];
   return `<nav class="tabs"><div class="in">${tabs.map(([k, l]) => `
     <button class="${tab === k ? 'on' : ''}" data-act="tab" data-v="${k}" aria-label="${l}">
       ${icon(k)}<span>${l}</span>${k === 'contract' && S.offers.length ? '<i class="dot"></i>' : ''}${k === 'agent' && (S.player.sponsorReqs || []).length ? '<i class="dot"></i>' : ''}${k === 'train' && S.phase === 'season' && S.player.slots > 0 && !S.player.injured ? '<i class="dot" style="background:var(--flood)"></i>' : ''}
@@ -193,7 +194,7 @@ function render() {
   if (!S) { renderCreate(); return; }
   if (S.phase === 'choose') { renderChoose(); return; }
   const scrollY = window.scrollY;
-  const views = { home: viewHome, train: viewTrain, contract: viewContract, shop: viewShop, agent: viewAgent, club: viewClub, career: viewCareer };
+  const views = { home: viewHome, train: viewTrain, contract: viewContract, shop: viewShop, agent: viewAgent, club: viewClub, nation: viewNation, career: viewCareer };
   app.innerHTML = topbar() + `<main class="wrap">${views[tab]()}</main>` + nav();
   const chip = app.querySelector('.cuptabs .on');
   if (chip) chip.parentElement.scrollLeft = chip.offsetLeft - chip.parentElement.offsetLeft - 24;
@@ -201,6 +202,7 @@ function render() {
   nextPopup();
   // New club, or you gave your shirt away: pick a number before anything else.
   if (needShirt() && modal.hidden && !POPUPS.length && !S.decision) showShirtPicker();
+  else if (needNatShirt() && modal.hidden && !POPUPS.length && !S.decision) showNatShirtPicker();
 }
 
 // ---------- home ----------
@@ -1422,7 +1424,7 @@ function viewClub() {
   const lid = viewLeague || c.league;
   const head = `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${c.name}</b><div class="small muted">Manager: ${c.mgr} (${NATIONS[c.mgrNat] || c.mgrNat}) · Rating ${mgrOf(c).r} · ${jobLabel(mgrOf(c).job)}</div></div>${crest(c.id)}</div>
     ${parentOf(c) ? `<div class="small flood">${esc(parentOf(c).name)}'s second team: play well and get called up to their first team (team rating ${Math.round(teamStrength(parentOf(c)))}).</div>` : ''}
-    <div class="small muted">${league(c.league).name} (${TIER_LABEL[clubTier(c)].toLowerCase()}) · Team rating ${Math.round(teamStrength(c))} · Your role: <b style="color:var(--chalk)">${squadStatus()}</b></div></section>`;
+    <div class="small muted">${league(c.league).name} (${TIER_LABEL[clubTier(c)].toLowerCase()}) · Team rating ${Math.round(teamStrength(c))} · Your role: <b style="color:var(--chalk)">${squadStatus()}</b>${isCaptain() ? ' · <b class="good">Captain</b>' : ''}</div>${isCaptain() ? '<button class="btn sm block" data-act="capQuitAsk">Step down as captain</button>' : ''}</section>`;
   const seg = `<div class="seg">${[['table', 'Table'], ['results', 'Results'], ['rivals', 'Rivals'], ['squad', 'Squad'], ['scorers', 'Goals'], ['assists', 'Assists'], ['cups', 'Cups']].map(([k, l]) => `<button class="${clubView === k ? 'on' : ''}" data-act="clubView" data-v="${k}">${l}</button>`).join('')}</div>`;
   const countries = [...new Set(S.leagues.map(l => l.country))];
   const lgSel = ['table', 'scorers', 'assists'].includes(clubView) ?`<select class="btn block" data-act="league" aria-label="League">${countries.map(ct => `<optgroup label="${ct}">${S.leagues.filter(l => l.country === ct).sort((a, b) => a.tier - b.tier).map(l => `<option value="${l.id}" ${l.id === lid ? 'selected' : ''}>${l.name}</option>`).join('')}</optgroup>`).join('')}</select>` : '';
@@ -1440,11 +1442,12 @@ function viewClub() {
       </tbody></table></div></section>` + leagueAwardsCard(lid);
   } else if (clubView === 'squad') {
     const p = S.player;
+    squadNumbers(c);
     const rows = c.players.map(pl => ({ ...pl, age: ageOf(pl.by) }));
-    rows.push({ n: p.name, pos: p.pos, age: ageOf(p.by), nat: p.nat, r: calcOVR(), me: true });
+    rows.push({ n: p.name, pos: p.pos, age: ageOf(p.by), nat: p.nat, r: calcOVR(), no: p.shirt && p.shirt.club === c.id && !p.shirt.repick ? p.shirt.no : null, me: true });
     rows.sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos) || b.r - a.r);
-    body = squadMovesCard() + `<section class="card"><div class="tablewrap"><table><thead><tr><th>Pos</th><th>Player</th><th>Nat</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
-      ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.n)}</td><td class="natcell">${natFlag(r.nat)}</td><td class="r">${r.age}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
+    body = squadMovesCard() + shirtAskCard(false) + `<section class="card"><div class="tablewrap"><table><thead><tr><th class="r">#</th><th>Pos</th><th>Player</th><th>Nat</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td class="r num">${r.no || '–'}</td><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.n)}</td><td class="natcell">${natFlag(r.nat)}</td><td class="r">${r.age}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
       </tbody></table></div></section>`;
   } else if (clubView === 'results') {
     body = `<div class="lgcrest">${resultsView()}</div>`;
@@ -1459,6 +1462,118 @@ function viewClub() {
   return head + seg + lgSel + body;
 }
 
+
+// ---------- nation ----------
+// Your national team, laid out like the Club tab: the coach and where you stand, then the squad (with
+// its changes since the last one), results, your rivals for a place, tournaments and past coaches.
+let natView = 'squad';
+const natOpen = { v: true };
+function natStatus() {
+  const p = S.player, floor = callUpFloor(p.nat), ahead = natRivals().length;
+  if (p.intlRetired) return ['muted', 'Retired from international football'];
+  if (!holdsTeamNat()) return ['bad', `No longer a ${natName(p.nat)} citizen`];
+  if ((p.natSnub || 0) > absWeek()) return ['bad', `Out of favour for ${p.natSnub - absWeek()} more weeks`];
+  if (calcOVR() < floor) return ['muted', `Not picked yet: you need about ${floor} OVR`];
+  if (ahead >= 2) return ['muted', `Not picked: ${ahead} ${p.pos}s ahead of you`];
+  const av = p.intlAvail || 'all';
+  return av === 'all' ? ['good', 'In the squad'] : av === 'friendly' ? ['good', 'In the squad (friendlies only)'] : ['bad', 'Picked, but you made yourself unavailable'];
+}
+// The next international window, or the next finals your country can play in.
+function natNext() {
+  const w = Object.keys(INTL_WINDOWS).map(Number).find(x => S.phase === 'season' && x > S.week);
+  const window = w ? `${INTL_MONTH[w]} window in ${w - S.week} week${w - S.week > 1 ? 's' : ''} (${INTL_WINDOWS[w] === 'qualifier' ? 'qualifiers' : 'friendlies'})` : null;
+  const from = baseYear() + S.season + 1;
+  const ev = NAT_EVENTS.filter(e => natEventFor(e, S.player.nat)).map(e => ({ e, y: nextEventYear(e, from) })).sort((a, b) => a.y - b.y)[0];
+  return [window, ev ? `${ev.e.name} ${ev.y}${ev.y === from ? ' (next summer)' : ''}` : null].filter(Boolean).join(' · ');
+}
+function natMovesCard() {
+  const p = S.player, log = S.natMoves && S.natMoves.nat === p.nat ? S.natMoves.list : [];
+  if (!log.length) return '';
+  const row = (x, side) => {
+    const how = side === 'in' ? 'Called up' : x.why === 'retired' ? 'Retired' : x.me ? 'Left out' : 'Dropped';
+    const cl = x.club && S.clubs[x.club];
+    return `<div class="sqmove${x.me ? ' me' : ''}"><span class="pos-chip">${x.pos}</span><div style="min-width:0"><div class="sqname">${esc(x.me ? p.name : x.n)} <span class="muted small">${x.age} · ${x.r}</span></div><div class="small"><span class="muted">${how}</span>${cl ? ` · ${esc(cl.name)}` : ''}</div></div>${cl ? crest(x.club, 'mini') : ''}${x.me ? '<span class="chip good">You</span>' : ''}</div>`;
+  };
+  const block = m => `<div class="small" style="margin-top:6px"><b>${esc(m.when)}</b> <span class="muted">${m.out.length} out · ${m.in.length} in</span></div>
+    ${m.out.map(x => row(x, 'out')).join('')}${m.in.map(x => row(x, 'in')).join('')}`;
+  return `<section class="card"><details class="mdrop" style="padding:0" ${natOpen.v ? 'open' : ''} ontoggle="natOpen.v = this.open"><summary><h2>Squad changes</h2><span class="small muted">${log[0].out.length} out · ${log[0].in.length} in</span></summary><div class="mbody">
+    ${log.slice(0, 3).map(block).join('')}</div></details></section>`;
+}
+function natResultsView() {
+  const p = S.player, me = 'N:' + p.nat, list = (S.natGames || []).filter(g => g.nat === p.nat).slice().reverse();
+  if (!list.length) return `<section class="card"><p class="small muted" style="margin:0">${esc(natName(p.nat))} haven't played since this was added. Their next games: ${esc(natNext() || 'not set')}.</p></section>`;
+  const rows = list.map(r => {
+    const mine = r.h === me, gf = mine ? r.gh : r.ga, ga = mine ? r.ga : r.gh;
+    const res = gf > ga || (gf === ga && r.winner === me) ? ['W', 'good'] : gf < ga || (r.winner && r.winner !== me) ? ['L', 'bad'] : ['D', 'draw'];
+    const you = r.mins ? `<span class="small">${r.mins}'${r.goals ? ` · ${r.goals} G` : ''}${r.assists ? ` · ${r.assists} A` : ''}</span>` : '<span class="small muted">–</span>';
+    return `<div class="result"><div class="natres">
+        <span class="rmeta"><span class="small muted">${seasonLabel(r.season)}</span><span class="rcomp ${r.summer ? 'cup' : 'league'}">${esc(r.summer ? r.comp.replace(/ \d{4}$/, '') : r.comp)}</span><span class="small muted">${esc(r.stage || '')}</span></span>
+        <span class="rline">${tieRow(r.h, r.a, { gh: r.gh, ga: r.ga, pens: r.pens, pensScore: r.pensScore, winner: r.winner || (r.gh > r.ga ? r.h : r.ga > r.gh ? r.a : null) })}</span>
+        <span class="rright">${you}<span class="rbadge ${res[1]}">${res[0]}</span></span></div></div>`;
+  }).join('');
+  return `<section class="card"><h2>Results</h2><div class="results">${rows}</div></section>`;
+}
+// Asking a team-mate for his number: at the club (three asks there) or with your country (three in
+// your international career). Numbers you were refused and are waiting on are listed.
+function shirtAskCard(nation) {
+  const p = S.player;
+  let can, left, wait, where;
+  if (nation) {
+    if (!natInSquad() || !natNos().mine) return '';
+    can = canAskNatShirt(); left = natAsksLeft(); wait = natNos().want; where = 'in your international career';
+  } else {
+    if (!p.shirt || p.shirt.club !== p.club || p.shirt.repick || p.loan) return '';
+    can = canAskShirt(); left = shirtAsksLeft(); wait = (p.shirtWant || []).filter(w => w.club === p.club); where = 'at this club';
+  }
+  const mine = nation ? natNos().mine : p.shirt.no;
+  return `<section class="card"><div class="row"><div><b>Your number: #${mine}</b><div class="small muted">${left} of 3 shirt request${left === 1 ? '' : 's'} left ${where}${wait.length ? ` · waiting on ${wait.map(w => `#${w.no} (${esc(w.name)})`).join(', ')}` : ''}</div></div>
+    ${can ? `<button class="btn sm" style="white-space:nowrap" data-act="${nation ? 'natShirtAskList' : 'shirtAskList'}">Ask for a shirt</button>` : ''}</div></section>`;
+}
+function viewNation() {
+  const p = S.player, nat = p.nat, id = 'N:' + nat, [cls, status] = natStatus(), since = natCoachSince(nat);
+  const fav = Math.round(natFavor()), favCls = fav >= 60 ? 'good' : fav >= 40 ? '' : 'bad';
+  const head = `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${esc(natName(nat))}</b><div class="small muted">Coach: ${esc(natCoach(nat))} (rating ${natCoachR(nat)}${since != null ? `, since ${seasonLabel(since)}` : ''}) · ${confedOf(nat) || 'Independent'} · Team rating ${NATION_STR[nat] || 60}</div></div>${crest(id)}</div>
+    <div class="small muted">Your status: <b class="${cls}" style="${cls === 'muted' ? 'color:var(--chalk)' : ''}">${status}</b>${natCaptain() ? ' · <b class="good">Captain</b>' : ''} · ${p.caps || 0} cap${p.caps === 1 ? '' : 's'}, ${p.intlGoals || 0} goal${p.intlGoals === 1 ? '' : 's'}</div>
+    ${holdsTeamNat() && !p.intlRetired ? `<div class="energy" style="margin-top:6px"><span>Coach</span><div class="bar"><i class="${favCls}" style="width:${fav}%"></i></div><b class="num">${fav}</b></div>` : ''}
+    <div class="small muted">Next: ${esc(natNext() || '–')}</div>${natCaptain() ? '<button class="btn sm block" data-act="natCapQuitAsk">Step down as captain</button>' : ''}</section>`;
+  const seg = `<div class="seg">${[['squad', 'Squad'], ['results', 'Results'], ['rivals', 'Rivals'], ['tours', 'Cups'], ['coaches', 'Coaches']].map(([k, l]) => `<button class="${natView === k ? 'on' : ''}" data-act="natView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  let body = '';
+  if (natView === 'squad') {
+    const snap = S.natSnap && S.natSnap.nat === nat && S.natSnap.list.some(x => x.no) ? S.natSnap : null;
+    const rows = (snap ? snap.list.map(x => x.me ? { ...x, r: calcOVR() } : x) : natSquad(nat)).slice().sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos) || (a.no || 99) - (b.no || 99));
+    body = natMovesCard() + shirtAskCard(true) + `<div class="lgcrest"><section class="card"><p class="small muted" style="margin:0 0 6px">${snap ? `The squad ${esc(natCoach(nat))} named for ${esc(snap.when || 'the last games')}` : `The squad ${esc(natCoach(nat))} would pick today`}: the best two in each position, three goalkeepers. Players from leagues outside the game show no club.</p><div class="tablewrap"><table><thead><tr><th class="r">#</th><th>Pos</th><th>Player</th><th class="clubcrest">Club</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td class="r num">${r.no || '–'}</td><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.me ? p.name : r.n)}</td><td class="clubcrest">${r.club && S.clubs[r.club] ? `<span title="${esc(club(r.club).name)}">${crest(r.club, 'mini')}</span>` : '<span class="muted">–</span>'}</td><td class="r">${ageOf(r.by)}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
+      </tbody></table></div></section></div>`;
+  } else if (natView === 'results') {
+    body = `<div class="lgcrest">${natResultsView()}</div>`;
+  } else if (natView === 'rivals') {
+    const ovr = calcOVR(), floor = callUpFloor(nat), list = [];
+    Object.values(S.clubs).forEach(c => c.players.forEach(pl => { if (pl.nat === nat && pl.pos === p.pos) list.push({ n: pl.n, r: pl.r, by: pl.by, club: c.id }); }));
+    list.push({ n: p.name, r: ovr, by: p.by, club: p.needsContract ? null : p.club, me: true });
+    list.sort((a, b) => b.r - a.r || (a.me ? -1 : 1));
+    const top = list.slice(0, 15);
+    if (!top.some(r => r.me)) top.push(list.find(r => r.me));
+    body = `<div class="lgcrest"><section class="card"><h2>Fighting for a place</h2><p class="small muted" style="margin:0">Every ${natName(nat)} ${POS_NAMES[p.pos].toLowerCase()} at the game's clubs. The coach takes the best two who are at least ${floor} OVR; above the line go.</p>
+      <div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th class="clubcrest">Club</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
+      ${top.map((r, i) => `<tr class="${r.me ? 'me' : ''}" ${i === 1 ? 'style="border-bottom:2px solid var(--flood)"' : ''}><td>${list.indexOf(r) + 1}</td><td class="clubname">${esc(r.n)}${r.r < floor ? ' <span class="small muted">below the level</span>' : ''}</td><td class="clubcrest">${r.club && S.clubs[r.club] ? crest(r.club, 'mini') : '<span class="muted">–</span>'}</td><td class="r">${ageOf(r.by)}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
+      </tbody></table></div></section></div>`;
+  } else if (natView === 'tours') {
+    const from = baseYear() + S.season + 1;
+    const next = NAT_EVENTS.filter(e => natEventFor(e, nat)).map(e => ({ e, y: nextEventYear(e, from) })).sort((a, b) => a.y - b.y);
+    const past = (S.history || []).filter(h => NAT_EVENTS.some(e => e.key === h.key) && (h.nat === nat || (h.nat == null && NAT_EVENTS.some(e => e.key === h.key && natEventFor(e, nat))))).reverse();
+    const reachCls = r => r === 'Winners' ? 'good' : r === 'Did not qualify' || r === 'Group stage' ? 'bad' : '';
+    body = `<section class="card"><h2>Coming up</h2>${next.map(({ e, y }) => `<div class="row small" style="padding:4px 0"><span>${e.name} ${y}</span><span class="muted">${y === from ? 'Next summer' : `In ${y - from + 1} years`}</span></div>`).join('')}</section>
+      <section class="card"><h2>Past tournaments</h2>${past.length ? past.map(h => `<div class="sqmove"><div style="min-width:0;flex:1"><div class="sqname">${esc(h.name)}</div><div class="small"><span class="muted">Won by</span> ${esc(teamName(h.winner))}${h.runnerUp ? ` <span class="muted">· beat</span> ${esc(teamName(h.runnerUp))}` : ''}</div></div>${crest(h.winner, 'mini')}${h.reach ? `<span class="chip ${reachCls(h.reach)}">${natFlag(nat)} ${h.reach}</span>` : ''}</div>`).join('') : '<p class="small muted" style="margin:0">None yet in your career.</p>'}</section>`;
+  } else {
+    const rec = (S.natCoaches || {})[nat], past = rec ? rec.past.slice().reverse() : [];
+    const span = (f, t) => `${f != null ? seasonLabel(f) : 'Before you'} – ${t != null ? seasonLabel(t) : 'now'}`;
+    body = `<section class="card"><h2>Coaches</h2>
+      <div class="sqmove me"><div style="min-width:0;flex:1"><div class="sqname">${esc(natCoach(nat))}</div><div class="small muted">${span(since, null)} · Rating ${natCoachR(nat)}</div></div><span class="chip good">Now</span></div>
+      ${past.map(c => `<div class="sqmove"><div style="min-width:0;flex:1"><div class="sqname">${esc(c.name)}</div><div class="small muted">${span(c.from, c.to)} · ${esc(c.why)}</div></div>${c.r ? `<span class="chip">${c.r}</span>` : ''}</div>`).join('')}
+      <p class="small muted" style="margin:6px 0 0">A poor finals or a failure to qualify can cost the coach his job; the bigger the nation, the less patience. A new coach starts with an open mind about you.</p></section>`;
+  }
+  return head + seg + body;
+}
 // The competition chips scroll sideways with the mouse wheel and by dragging, not just by swiping.
 document.addEventListener('wheel', e => {
   const row = e.target.closest && e.target.closest('.cuptabs');
@@ -1740,9 +1855,9 @@ function viewCareer() {
   // History: every season and every honour, on their own page.
   if (careerSub === 'history') return seg + careerTables();
   return seg + `<section class="card hero"><h2>Profile</h2>${p.nickname ? `<div class="nick" title="Since ${seasonLabel(p.nickname.season)}, for ${esc(p.nickname.why)}">“${esc(p.nickname.n)}”</div>` : ""}
-      <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div>${p.shirt && p.shirt.club === p.club && !p.shirt.repick ? `<div><small>Shirt</small><b>#${p.shirt.no}</b></div>` : ''}<div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${p.intlRetired ? 'Retired' : calledUp() ? 'In squad' : u21Pick() ? 'U21s' : 'Not picked'}</b></div>${isCaptain() ? '<div><small>Armband</small><b class="good">Captain</b></div>' : ''}${spLabel() ? `<div><small>Set pieces</small><b>${spLabel()}</b></div>` : ''}
+      <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div>${p.shirt && p.shirt.club === p.club && !p.shirt.repick ? `<div><small>Shirt</small><b>#${p.shirt.no}</b></div>` : ''}<div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${p.intlRetired ? 'Retired' : calledUp() ? 'In squad' : u21Pick() ? 'U21s' : 'Not picked'}</b></div>${isCaptain() || natCaptain() ? `<div><small>Armband</small><b class="good">${[isCaptain() ? 'Club' : '', natCaptain() ? 'Country' : ''].filter(Boolean).join(' & ')} captain</b></div>` : ''}${spLabel() ? `<div><small>Set pieces</small><b>${spLabel()}</b></div>` : ''}
       <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div title="Transfer value: OVR, position, age, reputation, contract, league and this season's form"><small>Value</small><b>${value ? money(value) : 'Free agent'}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b>${p.u21Caps ? `<small>U21: ${p.u21Caps}${p.u21Goals ? ` (${p.u21Goals}g)` : ''}</small>` : ''}</div></div>
-      <div class="small muted">${nationNote()}</div>${isCaptain() ? '<button class="btn sm block" data-act="capQuitAsk">Step down as captain</button>' : ''}${canRetireIntl() ? '<button class="btn sm block" data-act="intlRetireAsk">Retire from international football</button>' : ''}${canAskShirt() ? '<button class="btn sm block" data-act="shirtAskList">Ask a teammate for his shirt</button>' : ''}</section>
+      <div class="small muted">${nationNote()}</div>${canRetireIntl() ? '<button class="btn sm block" data-act="intlRetireAsk">Retire from international football</button>' : ''}</section>
     ${nationalityCard()}
     <section class="card"><h2>This season</h2><div class="${statGrid(p.pos)}"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div>${gkCells(p.pos, p.st.saves, p.st.cleanAll)}<div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
       ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Cups: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}
@@ -1989,28 +2104,44 @@ function startFx(canvas, kind, lvl = 0) {
 // Pick your shirt number at a new club (or after giving yours away): the numbers that suit your
 // position first, then every other free one. Taken numbers are not offered.
 // Your team-mates and their numbers, with the chance each would hand his over. Each can be asked once.
-function showShirtAskList() {
-  if (!canAskShirt()) return;
-  const p = S.player, c = myClub(), asked = p.shirtAsked || [];
-  squadNumbers(c);
-  const rows = c.players.slice().sort((a, b) => a.no - b.no).map(pl => {
-    const done = asked.includes(pl.n);
-    return `<button class="house" data-act="shirtAsk" data-v="${esc(pl.n)}" ${done ? 'disabled' : ''}><span><b>#${pl.no} ${esc(pl.n)}</b> <span class="small muted">${pl.pos} ${pl.r}</span><br><span class="small muted">${done ? 'Already asked' : `About ${Math.round(shirtAskOdds(pl) * 100)}% he says yes`}</span></span></button>`;
-  }).join('');
-  openModal(`<h3>Ask for a shirt</h3><p style="margin:0">You wear #${p.shirt.no}. If he says yes you swap numbers and click on the pitch (scoring and assists up a touch). If he says no, you'll be sulking for a while (down a touch). You can only ask each team-mate once.</p>
+function showShirtAskList(nation = false) {
+  const p = S.player;
+  if (nation ? !canAskNatShirt() : !canAskShirt()) return;
+  let list, mine, left, where;
+  if (nation) {
+    const nn = natNos();
+    list = S.natSnap.list.filter(x => !x.me).map(x => ({ ...x, key: natKey(x), done: nn.asked.includes(natKey(x)) }));
+    mine = nn.mine; left = natAsksLeft(); where = `for ${natName(p.nat)}`;
+  } else {
+    const c = myClub(), asked = p.shirtAsked || [];
+    squadNumbers(c);
+    list = c.players.map(pl => ({ ...pl, key: pl.n, done: asked.includes(pl.n) }));
+    mine = p.shirt.no; left = shirtAsksLeft(); where = `at ${c.name}`;
+  }
+  const rows = list.sort((a, b) => a.no - b.no).map(pl => `<button class="house" data-act="${nation ? 'natShirtAsk' : 'shirtAsk'}" data-v="${esc(pl.key)}" ${pl.done ? 'disabled' : ''}><span><b>#${pl.no} ${esc(pl.n)}</b> <span class="small muted">${pl.pos} ${pl.r}</span><br><span class="small muted">${pl.done ? 'Already asked' : `About ${Math.round(shirtAskOdds(pl) * 100)}% he says yes`}</span></span></button>`).join('');
+  openModal(`<h3>Ask for a shirt</h3><p style="margin:0">You wear #${mine} ${esc(where)}. If he says yes you swap numbers${nation ? '' : ' and click on the pitch (scoring and assists up a touch)'}. If he says no, ${nation ? '' : "you'll be sulking for a while (down a touch), and "}the number is held for you if he ever ${nation ? 'drops out of the squad' : 'leaves'}. <b>${left} ask${left === 1 ? '' : 's'} left</b> ${nation ? 'in your international career' : 'at this club'}; each player once.</p>
     <div class="inbox">${rows}</div><button class="btn block" data-act="close">Back</button>`);
 }
 // Asking takes him a moment to answer.
-function doShirtAsk(name) {
-  const r = askTeammateShirt(name);
+function doShirtAsk(key, nation = false) {
+  const r = nation ? askNatShirt(key) : askTeammateShirt(key);
   if (!r) return;
+  const name = r.name;
   openModal(`<h3>Asking ${esc(name)}</h3><p class="flood" style="margin:0;text-align:center"><b>He's thinking about it…</b></p>`);
   setTimeout(() => {
     render();
     openModal(r.yes
-      ? `<h3 class="good">He said yes</h3><p style="margin:0">${esc(name)} hands you the #${r.his} shirt and takes your #${r.mine}. You two click on the pitch now.</p><button class="btn primary block" data-act="close">Great</button>`
-      : `<h3 class="bad">He said no</h3><p style="margin:0">${esc(name)} is keeping his #${r.his}. You're not happy about it, and the dressing room can feel it for a while.</p><button class="btn primary block" data-act="close">OK</button>`);
+      ? `<h3 class="good">He said yes</h3><p style="margin:0">${esc(name)} hands you the #${r.his} shirt and takes your #${r.mine}.${nation ? '' : ' You two click on the pitch now.'}</p><button class="btn primary block" data-act="close">Great</button>`
+      : `<h3 class="bad">He said no</h3><p style="margin:0">${esc(name)} is keeping his #${r.his}.${nation ? '' : " You're not happy about it, and the dressing room can feel it for a while."} If he ever ${nation ? 'drops out of the squad' : 'leaves'}, you'll be asked if you want it.</p><button class="btn primary block" data-act="close">OK</button>`);
   }, 1500);
+}
+// Your first call-up: pick a national team number from those still free.
+function showNatShirtPicker() {
+  const p = S.player, { pref, rest } = natFreeShirts();
+  const btn = n => `<button class="shirt-no ${pref.includes(n) ? 'pref' : ''}" data-act="natShirtPick" data-v="${n}">${n}</button>`;
+  openModal(`<h3>Your ${esc(natName(p.nat))} number</h3><p style="margin:0">You're in the ${esc(natName(p.nat))} squad. Choose a number from the ones still free; it's yours for every squad you're in.</p>
+    ${pref.length ? `<div class="small muted">Suits a ${POS_NAMES[p.pos].toLowerCase()}</div><div class="shirt-grid">${pref.map(btn).join('')}</div>` : ''}
+    <div class="small muted">Other free numbers</div><div class="shirt-grid">${rest.map(btn).join('')}</div>`);
 }
 
 function showShirtPicker() {
@@ -2041,10 +2172,14 @@ function showDecision() {
     ? [['return', 'Go back now', 'Your loan ends and you rejoin the squad straight away'], ['stay', 'Ask to stay on loan', `${club(d.club).mgr} will be disappointed (−8 when you return)`]]
     : d.type === 'shirt'
     ? [['yes', 'Give him the shirt', 'You pick another number; you two click on the pitch (scoring and assists up a touch while you play together)'], ['no', 'Keep your number', 'He sulks: scoring and assists down a touch for about 12 weeks']]
+    : d.type === 'natCaptain'
+    ? [['accept', 'Accept the armband', 'Reputation up, the coach pleased (+5), you start nearly every game'], ['decline', 'Turn it down', 'The coach is a little disappointed (−3) and waits a season']]
+    : d.type === 'shirtFree'
+    ? [['yes', `Take the number ${d.no}`, 'Your old number goes back in the pool'], ['no', 'Keep my number', 'The shirt goes to someone else']]
     : d.type === 'rumour'
     ? [['deny', 'Deny it publicly', 'The manager likes loyalty (+3)'], ['silent', 'Say nothing', 'He wonders why you stayed quiet (−1)']]
     : [['reject', 'Reject them', `Show you are committed (+${d.rival ? 8 : 4}${d.rival ? ', rivals!' : ''})`], ['listen', 'Tell your agent to listen', 'They may bid in the window (−2)']];
-  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?', shirt: 'He wants your shirt', citizen: 'Citizenship', switch: 'Switch national team?', callup: 'International call-up', natTour: 'Tournament call-up', press: 'Press conference', captain: 'The armband' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
+  openModal(`<h3>${{ recall: 'Recalled from loan', rumour: 'Rumours', approach: 'Transfer approach', position: 'A new position?', shirt: 'He wants your shirt', shirtFree: 'A shirt is free', natCaptain: 'Captain your country', citizen: 'Citizenship', switch: 'Switch national team?', callup: 'International call-up', natTour: 'Tournament call-up', press: 'Press conference', captain: 'The armband' }[d.type]}</h3><p style="margin:0">${esc(d.text)}</p>
     <div class="inbox">${opts.map(([v, l, s]) => `<button class="house" data-act="decide" data-v="${v}"><span><b>${l}</b><br><span class="small muted">${s}</span></span></button>`).join('')}</div>`);
 }
 
@@ -2316,6 +2451,7 @@ document.addEventListener('click', e => {
     case 'foot': draft.foot = v; renderCreate(); return;
     case 'tab': tab = v; window.scrollTo(0, 0); render(); return;
     case 'clubView': clubView = v; render(); return;
+    case 'natView': natView = v; render(); return;
     case 'cupTab': cupTab = v; cupPart = null; render(); return;
     case 'shopView': shopView = v; render(); return;
     case 'luxCat': luxCat = v; render(); return;
@@ -2362,6 +2498,9 @@ document.addEventListener('click', e => {
     case 'shirtAskList': showShirtAskList(); return;
     case 'shirtAsk': doShirtAsk(v); return;
     case 'shirtPick': if (pickShirt(+v)) { closeModal(); toast(`Number ${v} it is`); render(); } return;
+    case 'natShirtPick': if (pickNatShirt(+v)) { closeModal(); toast(`Number ${v} it is`); render(); } return;
+    case 'natShirtAskList': showShirtAskList(true); return;
+    case 'natShirtAsk': doShirtAsk(v, true); return;
     case 'summerKick': closeModal(); doSummerPlay(); return;
     case 'soShoot': { const [col, row] = v.split(',').map(Number); soStep({ col, row }); return; }
     case 'soDive': soStep({ col: +v }); return;
@@ -2413,6 +2552,8 @@ document.addEventListener('click', e => {
     case 'achvShow': showAchievements(); return;
     case 'capQuitAsk': confirmSheet('Step down as captain?', `You hand back the ${esc(myClub().name)} armband. ${esc(myClub().mgr)} (−5) and the board (−3) will be disappointed, and he will not offer it again this season.`, 'capQuit', 'Step down'); return;
     case 'capQuit': stepDownCaptain(); closeModal(); render(); return;
+    case 'natCapQuitAsk': confirmSheet('Step down as captain?', `You hand back the ${esc(natName(S.player.nat))} armband. The coach (−8) will be disappointed and will not offer it again this season.`, 'natCapQuit', 'Step down'); return;
+    case 'natCapQuit': stepDownNatCaptain(); closeModal(); render(); return;
     case 'citApply': applyCitizenship(v); render(); return;
     case 'natSwitchAsk': confirmSheet(`Play for ${esc(natName(v))}?`, `You switch national team from ${esc(natName(S.player.nat))} to ${esc(natName(v))} for the rest of your career. FIFA allows only one switch.`, 'natSwitch', `Switch to ${esc(natName(v))}`, v); return;
     case 'natSwitch': switchNation(v); closeModal(); render(); nextPopup(); return;

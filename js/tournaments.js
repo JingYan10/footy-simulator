@@ -114,7 +114,7 @@ const isWorld = id => id.startsWith('W:');
 const isClub = id => !isNation(id) && !isWorld(id);
 function teamName(id) { return isNation(id) ? natName(id.slice(2)) : isWorld(id) ? WORLD_CLUBS[+id.slice(2)][0] : club(id).name; }
 function teamCode(id) { return isNation(id) ? id.slice(2) : isWorld(id) ? shortName(WORLD_CLUBS[+id.slice(2)][0]) : club(id).short; }
-function teamStr(id) { return isNation(id) ? NATION_STR[id.slice(2)] || 60 : isWorld(id) ? WORLD_CLUBS[+id.slice(2)][2] : teamStrength(club(id)); }
+function teamStr(id) { return isNation(id) ? (NATION_STR[id.slice(2)] || 60) + natCoachEdge(id.slice(2)) : isWorld(id) ? WORLD_CLUBS[+id.slice(2)][2] : teamStrength(club(id)); }
 
 // The national team picks you on merit: you need a minimum level for your country, and
 // if two or more of your compatriots in your position are rated higher, you miss out.
@@ -355,6 +355,7 @@ function playStage(t, userFor) {
       // Last-five form for the league phase table.
       if (t.form) { const rh = r.gh > r.ga ? 'W' : r.gh < r.ga ? 'L' : 'D'; t.form[h].push(rh); t.form[a].push(rh === 'W' ? 'L' : rh === 'L' ? 'W' : 'D'); }
       if (u) mine = r;
+      logNatGame(t, h, a, r, u);
     }));
   } else if (st.leg === 1) {
     // First leg: the lower-placed club at home. The tie is decided next time.
@@ -388,6 +389,7 @@ function playStage(t, userFor) {
       r.winner = r.gh > r.ga ? h : r.gh < r.ga ? a : r.pens;
       res.push(r);
       if (u) mine = r;
+      logNatGame(t, h, a, r, u);
     });
     t.ko.push({ name: stRound(st), ties, res });
     if (stRound(st) === 'Final') t.winner = res[0].winner;
@@ -600,7 +602,7 @@ function tourSide(id) {
     const real = Object.values(S.clubs).flatMap(c => c.players.filter(pl => pl.nat === nat));
     const pool = real.concat(genSquad(`N|${nat}|${S.season}`, str - 3, nat, true));
     const players = POSITIONS.flatMap(pos => pool.filter(pl => pl.pos === pos).sort((a, b) => b.r - a.r).slice(0, SQUAD_TARGET[pos]));
-    side = { id, name: natName(nat), short: nat, mgr: seeded(`coach|${nat}`, () => randomName(nat)), players };
+    side = { id, name: natName(nat), short: nat, mgr: natCoach(nat), players };
   } else {
     const [name, nat, str] = WORLD_CLUBS[+id.slice(2)];
     side = { id, name, short: teamCode(id), mgr: seeded(`coach|${name}`, () => randomName(nat)), players: genSquad(`W|${name}|${S.season}`, str - 3, nat) };
@@ -815,6 +817,7 @@ function buildSummer() {
     if (!isClub(teams[0]) && calledUp() && !t.mine && (!ev.confed || ev.confed.includes(confedOf(p.nat)))) {
       msg(`${natName(p.nat)} failed to qualify for the ${t.name}.`, 'bad');
     }
+    if (teams.includes('N:' + p.nat)) natSquadUpdate(t.name);
     // Your country at a finals: unavailable by your own choice, or asked first if playing would tie you to them.
     if (t.mine && isNation(t.mine)) {
       const avail = p.intlAvail || 'all';
@@ -930,7 +933,7 @@ function summerSelection(me) {
   if (isClub(me) && S.player.needsContract) return { mins: 0, start: false, free: true };
   if (isClub(me)) return selection();
   const ovr = calcOVR(), str = NATION_STR[me.slice(2)] || 60;
-  const start = ovr >= str + 2 ? .9 : ovr >= str - 2 ? .65 : ovr >= str - 5 ? .35 : .15;
+  const start = natCaptain() ? .95 : ovr >= str + 2 ? .9 : ovr >= str - 2 ? .65 : ovr >= str - 5 ? .35 : .15;
   const r = Math.random();
   if (r < start) return starterMins(70);
   if (r < start + (1 - start) * .5) return { mins: randi(10, 30), start: false };
@@ -962,7 +965,9 @@ function finishTournament(t) {
   t.done = true;
   const final = t.ko && t.ko.length ? t.ko[t.ko.length - 1].res[0] : null;
   const runnerUp = t.runnerUp || (final ? (final.winner === final.h ? final.a : final.h) : null);
-  S.history = [...(S.history || []), { key: t.key, name: t.name, season: t.season, winner: t.winner, runnerUp }].slice(-240);
+  const entry = { key: t.key, name: t.name, season: t.season, winner: t.winner, runnerUp };
+  S.history = [...(S.history || []), entry].slice(-240);
+  natTournamentDone(t, entry);
   const p = S.player, mine = (t.winner === p.club && !p.needsContract) || (isNation(t.winner) && t.winner === t.mine);
   // Season-end awards and the review pick these up (in the summer, straight into the review).
   const note = text => { if (S.seasonSummary && S.phase === 'offseason') S.seasonSummary.awards.push(text); else (S.cupWins = S.cupWins || []).push(text); };
@@ -992,4 +997,218 @@ function finishTournament(t) {
     msg(`You won the ${a}!`, 'good');
   });
   if (won.length) notify('good', 'Award winner!', won.join(' · '));
+}
+
+// ---------- your national team ----------
+// The squad your country names for each international window and finals: the best two in every
+// position (three goalkeepers) among its players at the game's clubs, the same rule that decides your
+// own call-up, topped up with players from leagues outside the game where it has too few. Between
+// one squad and the next the changes are kept: who came in, who was dropped, who retired.
+// Every game your country plays is kept for its results, whether you played or not.
+// The coach can be sacked after a poor finals or a failure to qualify (a big nation expects more), or
+// move on after a long spell. A new coach starts with an open mind about you.
+const NAT_EVENTS = SUMMER_EVENTS.filter(e => e.key !== 'CWC');
+const natSlots = pos => pos === 'GK' ? 3 : 2;
+const natEventFor = (ev, nat) => !ev.confed || ev.confed.includes(confedOf(nat));
+function natCoach(nat) { const c = (S.natCoaches || {})[nat]; return c ? c.name : seeded(`coach|${nat}`, () => randomName(nat)); }
+const natCoachSince = nat => ((S.natCoaches || {})[nat] || {}).from ?? null;
+// A coach's rating sits around his nation's level; his side plays up to 3 better or worse for it,
+// like a club manager (see mgrEdge). A nation that sacks its coach hires around its own level.
+let natCoachRCache = {};
+function natCoachR(nat) {
+  const c = (S.natCoaches || {})[nat];
+  if (c && c.r) return c.r;
+  if (natCoachRCache[nat] == null) natCoachRCache[nat] = seeded(`coachr|${nat}`, () => clamp(Math.round((NATION_STR[nat] || 60) - 1 + rand(-4, 4)), 45, 92));
+  return natCoachRCache[nat];
+}
+const natCoachEdge = nat => clamp((natCoachR(nat) - (NATION_STR[nat] || 60)) / 5, -3, 3);
+function changeNatCoach(nat, why) {
+  const all = S.natCoaches = S.natCoaches || {}, old = all[nat] || { name: natCoach(nat), from: null, past: [] };
+  let name = randomName(nat), guard = 0;
+  while (name === old.name && guard++ < 9) name = randomName(nat);
+  all[nat] = { name, r: clamp(Math.round((NATION_STR[nat] || 60) + rand(-5, 4)), 45, 93), from: S.season + 1, past: [...old.past, { name: old.name, r: old.r || natCoachR(nat), from: old.from, to: S.season, why }].slice(-12) };
+  tourSideCache = {};
+  const p = S.player;
+  if (nat !== p.nat) return;
+  const snubbed = (p.natSnub || 0) > absWeek();
+  p.natFavor = Math.max(natFavor(), 55); p.natSnub = 0;
+  msg(`${natName(nat)}: ${old.name} is gone (${why.toLowerCase()}). ${name} is the new coach.`);
+  notify('', `New ${natName(nat)} coach`, `${old.name} is gone: ${why.toLowerCase()}. ${name} takes over and starts with an open mind about you.${snubbed ? ' You can be called up again.' : ''}`);
+}
+// How far a team went: Winners, Runners-up, the knockout round it went out in, or the group stage.
+function natReach(t, id) {
+  if (t.winner === id) return 'Winners';
+  for (let i = (t.ko || []).length - 1; i >= 0; i--) if (t.ko[i].ties.some(x => x.includes(id))) return t.ko[i].name === 'Final' ? 'Runners-up' : t.ko[i].name;
+  return 'Group stage';
+}
+const NAT_SACK = { 'Did not qualify': [.5, .85], 'Group stage': [.35, .7], 'Round of 16': [.12, .4], 'Quarter-final': [.08, .2], 'Semi-final': [.08, .1], 'Runners-up': [.08, .08], Winners: [.1, .1] };
+function natTournamentDone(t, entry) {
+  const p = S.player, ev = NAT_EVENTS.find(e => e.key === t.key);
+  if (!p || !ev || !natEventFor(ev, p.nat)) return;
+  const id = 'N:' + p.nat, reach = (t.teams || t.groups.flat()).includes(id) ? natReach(t, id) : 'Did not qualify';
+  entry.nat = p.nat; entry.reach = reach;
+  const big = (NATION_STR[p.nat] || 60) >= 80, since = natCoachSince(p.nat), yrs = since == null ? 4 : S.season - since + 1;
+  if (Math.random() < (NAT_SACK[reach] || [.1, .1])[big ? 1 : 0]) {
+    changeNatCoach(p.nat, reach === 'Winners' ? 'Stepped down as a champion' : ['Runners-up', 'Semi-final'].includes(reach) ? 'Moved on'
+      : reach === 'Did not qualify' ? 'Sacked after failing to qualify' : `Sacked after a ${reach.toLowerCase()} exit`);
+  } else if (yrs >= 6 && Math.random() < .3) changeNatCoach(p.nat, 'Moved on after a long spell');
+}
+
+// Your country's games: the international windows and its finals.
+function logNatGame(t, h, a, r, u) {
+  const p = S.player, id = p && 'N:' + p.nat;
+  if (!id || (h !== id && a !== id) || !NAT_EVENTS.some(e => e.key === t.key)) return;
+  const st = t.stages[t.stage];
+  addNatGame({ comp: t.name, stage: st ? stRound(st) : '', h, a, gh: r.gh, ga: r.ga, pens: r.pens || null, pensScore: r.pensScore || null, winner: r.winner || null, mins: u ? u.mins || 0 : 0, goals: u ? u.goals || 0 : 0, assists: u ? u.assists || 0 : 0, summer: true });
+}
+function addNatGame(g) {
+  S.natGames = [...(S.natGames || []), { nat: S.player.nat, season: S.season, week: S.week, ...g }].slice(-80);
+}
+
+// The squad, best first in each position. You hold a place while you are called up.
+let natGenCache = null;
+function natSquad(nat = S.player.nat) {
+  const p = S.player, me = nat === p.nat && calledUp(), str = NATION_STR[nat] || 60, floor = callUpFloor(nat);
+  const key = `${nat}|${S.season}`;
+  if (!natGenCache || natGenCache.key !== key) natGenCache = { key, list: genSquad(`N|${nat}|${S.season}`, str - 3, nat, true) };
+  const real = [];
+  Object.values(S.clubs).forEach(c => c.players.forEach(pl => { if (pl.nat === nat) real.push({ n: pl.n, pos: pl.pos, r: pl.r, by: pl.by, club: c.id }); }));
+  const byR = (x, y) => y.r - x.r;
+  return POSITIONS.flatMap(pos => {
+    const mine = me && p.pos === pos ? [{ n: p.name, pos, r: calcOVR(), by: p.by, club: p.needsContract ? null : p.club, me: true }] : [];
+    const n = natSlots(pos) - mine.length;
+    const list = real.filter(x => x.pos === pos && x.r >= floor - 6).sort(byR).slice(0, n);
+    const gen = natGenCache.list.filter(x => x.pos === pos).sort(byR).slice(0, n - list.length).map(x => ({ n: x.n, pos, r: x.r, by: x.by, club: null, gen: true }));
+    return [...mine, ...list, ...gen].sort(byR);
+  });
+}
+// The squad named for a window or finals, against the one before. Every player in it has a number
+// (see natAssignNumbers); the changes are kept for the players at the game's clubs.
+const natKey = x => x.me ? '#me' : `${x.n}|${x.by}`;
+function natSquadUpdate(when) {
+  const p = S.player, nat = p.nat, key = natKey;
+  const now = natSquad(nat).map(x => ({ n: x.n, pos: x.pos, r: x.r, by: x.by, club: x.club, me: x.me || undefined, gen: x.gen || undefined }));
+  const old = S.natSnap && S.natSnap.nat === nat ? S.natSnap.list.filter(x => !x.gen) : null;
+  const freed = natAssignNumbers(now);
+  S.natSnap = { nat, list: now, when };
+  natCaptainCheck();
+  const nn = natNos();
+  freed.forEach(w => {
+    nn.want = nn.want.filter(x => x !== w);
+    queueDecision({ type: 'shirtFree', nat: true, no: w.no, text: `${w.name} is not wearing the ${natName(nat)} number ${w.no} this time, so the shirt you asked him for is free. Do you want it? You wear ${nn.mine} now.` });
+  });
+  if (!old) return;
+  const real = now.filter(x => !x.gen);
+  const oldK = new Set(old.map(key)), nowK = new Set(real.map(key)), around = new Set();
+  Object.values(S.clubs).forEach(c => c.players.forEach(pl => around.add(`${pl.n}|${pl.by}`)));
+  const age = x => ageOf(x.by);
+  const ins = real.filter(x => !oldK.has(key(x))).map(x => ({ ...x, age: age(x) }));
+  const outs = old.filter(x => !nowK.has(key(x))).map(x => ({ ...x, age: age(x), why: x.me ? (p.intlRetired ? 'retired' : 'dropped') : around.has(key(x)) ? 'dropped' : 'retired' }));
+  if (!ins.length && !outs.length) return;
+  const log = S.natMoves && S.natMoves.nat === nat ? S.natMoves.list : [];
+  S.natMoves = { nat, list: [{ when, season: S.season, in: ins, out: outs }, ...log].slice(0, 6) };
+}
+
+// National shirt numbers. Players keep theirs from one squad to the next; newcomers take the classic
+// number for their position if it is free, else the lowest free one. Your number is yours from your
+// first call-up (you pick it) and kept for you even when you are left out.
+// You can ask a squad-mate for his number three times in your international career (each once). If
+// he says no and later is not in the squad, the number is held for you and you are asked if you want it.
+const NAT_SHIRT_ASKS = 3;
+function natNos() {
+  const p = S.player;
+  if (!S.natNos || S.natNos.nat !== p.nat) S.natNos = { nat: p.nat, map: {}, mine: null, asks: 0, asked: [], want: [] };
+  return S.natNos;
+}
+function natAssignNumbers(list) {
+  const nn = natNos(), map = {}, taken = new Set();
+  if (nn.mine) taken.add(nn.mine);
+  list.forEach(x => { const no = !x.me && nn.map[natKey(x)]; if (no && !taken.has(no)) { map[natKey(x)] = no; taken.add(no); } });
+  const freed = list.some(x => x.me) && nn.mine ? nn.want.filter(w => !taken.has(w.no)) : [];
+  freed.forEach(w => taken.add(w.no));
+  list.filter(x => !x.me && !map[natKey(x)]).sort((a, b) => b.r - a.r).forEach(x => {
+    const prefs = x.pos === 'GK' && taken.has(1) ? [12, 23, 13, 22] : SHIRT_PREF[x.pos] || [];
+    const no = prefs.find(n => !taken.has(n)) || [...Array.from({ length: 88 }, (_, i) => i + 12), ...Array.from({ length: 11 }, (_, i) => i + 1)].find(n => !taken.has(n));
+    map[natKey(x)] = no; taken.add(no);
+  });
+  nn.map = map;
+  list.forEach(x => { x.no = x.me ? nn.mine : map[natKey(x)]; });
+  return freed;
+}
+const natInSquad = () => { const s = S.natSnap; return !!(s && s.nat === S.player.nat && s.list.some(x => x.me)); };
+const needNatShirt = () => S.phase !== 'retired' && natInSquad() && !natNos().mine && !S.player.intlRetired;
+// Numbers 1 to 26 nobody in the squad wears, those that suit your position first.
+function natFreeShirts() {
+  const s = S.natSnap, taken = new Set(s.list.filter(x => !x.me).map(x => x.no)), pos = S.player.pos;
+  const pref = [...new Set([...(SHIRT_PREF[pos] || []), ...(pos === 'GK' ? [12, 23, 13, 22] : SHIRT_ALT[pos] || [])])].filter(n => n <= 26 && !taken.has(n));
+  const rest = Array.from({ length: 26 }, (_, i) => i + 1).filter(n => !taken.has(n) && !pref.includes(n));
+  return { pref, rest };
+}
+function pickNatShirt(no) {
+  const { pref, rest } = natFreeShirts(), nn = natNos();
+  if (![...pref, ...rest].includes(no)) return false;
+  nn.mine = no;
+  const me = S.natSnap.list.find(x => x.me);
+  if (me) me.no = no;
+  msg(`You will wear the number ${no} shirt for ${natName(S.player.nat)}.`, 'good');
+  save();
+  return true;
+}
+const natAsksLeft = () => NAT_SHIRT_ASKS - (natNos().asks || 0);
+const canAskNatShirt = () => natInSquad() && !!natNos().mine && natAsksLeft() > 0 && !S.player.intlRetired && S.phase !== 'retired';
+function askNatShirt(key) {
+  const p = S.player, nn = natNos(), mate = canAskNatShirt() && S.natSnap.list.find(x => !x.me && natKey(x) === key);
+  if (!mate || nn.asked.includes(key)) return null;
+  nn.asks = (nn.asks || 0) + 1; nn.asked.push(key);
+  const yes = Math.random() < shirtAskOdds(mate), mine = nn.mine, his = mate.no;
+  if (yes) {
+    mate.no = mine; nn.map[key] = mine; nn.mine = his;
+    const me = S.natSnap.list.find(x => x.me);
+    if (me) me.no = his;
+    msg(`${mate.n} handed you the ${natName(p.nat)} number ${his} and took your ${mine}.`, 'good');
+  } else {
+    nn.want = [...nn.want.filter(w => w.no !== his), { no: his, name: mate.n }];
+    msg(`${mate.n} is keeping the ${natName(p.nat)} number ${his}. If he is ever left out, it is yours.`, 'bad');
+  }
+  save();
+  return { yes, name: mate.n, his, mine };
+}
+
+// National captaincy. At a squad announcement, a coach who rates you highly (goodwill 80+) may hand
+// the armband to an established international (20+ caps, 24 or older) who is one of the best three in
+// his squad. Turn it down and he waits a season. The captain is nearly always picked to start (95%).
+// It goes when you are left out of a squad, fall out with the coach (below 40), retire from
+// international football or switch country; you can also step down (the coach is disappointed, −8).
+const natCaptain = () => { const p = S.player; return !!p.natCap && p.natCap === p.nat && !p.intlRetired && holdsTeamNat(); };
+function natCaptainCheck() {
+  const p = S.player;
+  if (p.natCap && (p.natCap !== p.nat || p.intlRetired || !holdsTeamNat() || !natInSquad() || natFavor() < 40)) {
+    const why = p.intlRetired ? null : !natInSquad() ? 'You were left out of the squad, so' : 'The coach has lost faith in you:';
+    p.natCap = null;
+    if (why) { msg(`${why} you are no longer ${natName(p.nat)} captain.`, 'bad'); notify('bad', 'Captaincy lost', `You are no longer ${natName(p.nat)} captain.`); }
+    return;
+  }
+  if (natCaptain() || !natInSquad() || (p.natCapNo != null && p.natCapNo >= S.season)) return;
+  const ovr = calcOVR(), better = S.natSnap.list.filter(x => !x.me && x.r > ovr).length;
+  if ((p.caps || 0) < 20 || ageOf(p.by) < 24 || natFavor() < 80 || better > 2 || Math.random() >= 1 / 3) return;
+  queueDecision({ type: 'natCaptain', nat: p.nat, text: `${natCoach(p.nat)} wants you to captain ${natName(p.nat)}. You would start nearly every game and your name would grow, but you would be expected in every squad.` });
+}
+function resolveNatCaptain(d, yes) {
+  const p = S.player;
+  if (d.nat !== p.nat) return;
+  if (!yes) { p.natCapNo = S.season; changeFavor(-3); msg(`You turned down the ${natName(p.nat)} captaincy. The coach is a little disappointed (−3).`); return; }
+  p.natCap = p.nat;
+  addRep(3); changeFavor(5);
+  addMilestone(`Named ${natName(p.nat)} captain`);
+  p.pressFlag = 'captain';
+  notify('good', 'Captain!', `You are ${natName(p.nat)} captain. You will lead your country out.`);
+}
+function stepDownNatCaptain() {
+  const p = S.player;
+  if (!natCaptain()) return false;
+  p.natCap = null; p.natCapNo = S.season;
+  changeFavor(-8);
+  msg(`You gave up the ${natName(p.nat)} captaincy. The coach is disappointed (−8).`, 'bad');
+  save();
+  return true;
 }
