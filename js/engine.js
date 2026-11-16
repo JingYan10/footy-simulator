@@ -1436,9 +1436,11 @@ const BACKUP_GK = [13, 25, 31, 12, 30];
 const SHIRT_ALT = { GK: [], RB: [12, 22, 24, 32], LB: [12, 21, 23, 26], CB: [6, 23, 24, 33], CDM: [16, 18, 21, 28], CM: [16, 18, 20, 21], CAM: [20, 21, 22, 30], RM: [17, 27, 47], LM: [18, 23, 28], RW: [17, 27, 77], LW: [18, 21, 27], ST: [19, 29, 39, 99] };
 function squadNumbers(c) {
   if (!c || !c.players) return;
-  const taken = new Set(c.players.filter(pl => pl.no).map(pl => pl.no));
   const mine = S.player.shirt && S.player.shirt.club === c.id ? S.player.shirt.no : null;
-  if (mine) taken.add(mine);
+  const taken = new Set(mine ? [mine] : []);
+  // No two players share a number: your shirt is always yours, and on any other clash (a save from
+  // before signings gave up their old club's number) the better player keeps it and the other gets a new one.
+  c.players.filter(pl => pl.no).sort((a, b) => b.r - a.r).forEach(pl => { if (taken.has(pl.no)) delete pl.no; else taken.add(pl.no); });
   // A number you asked for and were refused is held back for you once its owner has gone.
   (S.player.shirtWant || []).forEach(w => { if (w.club === c.id) taken.add(w.no); });
   c.players.filter(pl => !pl.no).sort((a, b) => b.r - a.r).forEach(pl => {
@@ -5517,6 +5519,7 @@ function signReplacement(c, vacated, depth = 0) {
     const fee = aiFee(pl, s, c);
     squadLog(s.id).out.push({ ...plCard(pl), why: 'sold', to: c.id, fee });
     squadLog(c.id).in.push({ ...plCard(pl), from: s.id, fee });
+    delete pl.no; // a new club, a new number
     signReplacement(s, pos, depth + 1);
     return;
   }
@@ -5535,6 +5538,7 @@ function movePlayer(pl, c, dest, paid = false) {
     squadLog(c.id).out.push({ ...plCard(pl), why: 'sold', to: dest.id, fee });
     squadLog(dest.id).in.push({ ...plCard(pl), from: c.id, fee });
   } else squadLog(c.id).out.push({ ...plCard(pl), why: 'released' });
+  delete pl.no; // a new club, a new number
 }
 
 // A club near (or a bit below) level `lvl`, in country nat (or any top flight when wide).
