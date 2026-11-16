@@ -884,6 +884,9 @@ function playSummerStage() {
   let report = null;
   if (res) {
     report = { stage: st.name, comp: t.name, match: { ...res, user, isHome: res.h === me } };
+    report.match.ev = matchEvents(res, user, me);
+    const lgx = (S.natGames || []).slice(-1)[0];
+    if (isNation(me) && lgx && lgx.summer && lgx.season === S.season && (lgx.h === me || lgx.a === me)) lgx.ev = report.match.ev;
     if (user.mins) {
       user.saves = matchSaves(user, teamStr(res.h === me ? res.a : res.h), teamStr(me));
       const rating = summerRating(user, res, me);

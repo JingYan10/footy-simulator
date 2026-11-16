@@ -234,6 +234,16 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .scorers .ast .ico { width: 12px; height: 12px; }
 .scorers .me { color: var(--flood); font-weight: 700; }
 .scorers .me .ball { color: var(--flood); }
+.scorers .ev { font-size: 12px; opacity: .85; }
+.scorers .ev .ast { opacity: .8; }
+.scorers .subon { color: #4cd07d; }
+.scorers .suboff { color: #ff6b6b; }
+.scorers .inj { color: #ff6b6b; width: 12px; height: 12px; }
+.mcard { display: inline-block; flex: none; width: 9px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-left: 3px; }
+.mcard.y { background: #f5c518; }
+.mcard.r { background: #e5383b; }
+.mcard.y2 { background: linear-gradient(135deg, #f5c518 50%, #e5383b 50%); }
+.scorers .mcard { margin: 0 2px; }
 .bigstat { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
 /* keepers show six stats: two rows of three */
 .bigstat.six { grid-template-columns: repeat(3, 1fr); }

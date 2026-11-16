@@ -1539,7 +1539,7 @@ function natResultsView() {
         <span class="rline">${tieRow(r.h, r.a, { gh: r.gh, ga: r.ga, pens: r.pens, pensScore: r.pensScore, winner: r.winner || (r.gh > r.ga ? r.h : r.ga > r.gh ? r.a : null) })}</span>`;
     // Games you played open like the club's results: the goals and your numbers.
     if (r.mins) {
-      const goals = r.scorers && r.scorers.length ? `<div class="scorers">${goalTimeline(r.scorers)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
+      const goals = r.scorers && (r.scorers.length || (r.ev || []).length) ? `<div class="scorers">${goalTimeline(r.scorers, r.ev)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
       return `<details class="result"><summary>${meta}<span class="rright">${resStats(r)}<span class="rbadge ${res[1]}">${res[0]}</span></span></summary>
         <div class="rbody">${goals}<div class="small muted">You: ${r.mins}'${r.start != null ? ` · ${r.start ? 'Started' : 'Sub'}` : ''} · ${r.goals || 0} G · ${r.assists || 0} A${r.rating ? ` · ${rateBox(r.rating, 1)}` : ''}</div></div></details>`;
     }
@@ -1654,8 +1654,8 @@ function resultsView() {
     const gh = r.h ? r.gh : r.isHome ? r.gf : r.ga, ga = r.h ? r.gaH : r.isHome ? r.ga : r.gf;
     const won = r.winner ? myTeams().includes(r.winner) : null;
     const res = r.gf > r.ga || (r.gf === r.ga && won) ? ['W', 'good'] : r.gf < r.ga || won === false ? ['L', 'bad'] : ['D', 'draw'];
-    const me = r.mins ? `${r.mins}' · ${r.start ? 'Started' : 'Sub'} · ${r.goals} G · ${r.assists} A · ${rateBox(r.rating || null, 1)}` : r.rested ? 'Rested' : 'Did not play';
-    const goals = r.scorers && r.scorers.length ? `<div class="scorers">${goalTimeline(r.scorers)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
+    const me = r.mins ? `${r.mins}'${myCards(r)} · ${r.start ? 'Started' : 'Sub'} · ${r.goals} G · ${r.assists} A · ${rateBox(r.rating || null, 1)}` : r.rested ? 'Rested' : 'Did not play';
+    const goals = r.scorers && (r.scorers.length || (r.ev || []).length) ? `<div class="scorers">${goalTimeline(r.scorers, r.ev)}</div>` : r.scorers ? '<p class="small muted" style="margin:0">No goals.</p>' : '';
     return `<details class="result ${r.comp === 'Champions League' ? 'ucl' : ''}"><summary>
         <span class="rmeta"><span class="small muted">Wk ${Math.min(r.week, SEASON_WEEKS)}</span><span class="rcomp ${r.kind || 'league'}">${esc(r.comp || 'League')}</span>${r.derby ? `<span class="rderby">${esc(r.derby)}</span>` : ''}</span>
         <span class="rline">${tieRow(h, a, { gh, ga, pens: r.pens, pensScore: r.pensScore, winner: r.winner || (gh > ga ? h : ga > gh ? a : null) })}</span>
@@ -1844,18 +1844,29 @@ function careerHistory(p = S.player) {
 
 // Honours split into what you won yourself, with your clubs and with your country.
 const NAT_EVENT = /^(World Cup|European Championship|Copa América|AFC Asian Cup|Africa Cup of Nations)\b/;
+// Player of the Month awards saved before they kept their month: this season's are matched, in order,
+// with the months you won (S.potm). Older ones show their season.
+function potmMonths(awards) {
+  const pm = S && S.potm, mine = pm ? pm.list.filter(m => m.me) : [];
+  let k = 0;
+  return awards.map(a => {
+    if (a.month != null || !/Player of the Month/.test(a.name) || !pm || a.season !== pm.season || !mine[k]) return a;
+    const month = MONTH_NAMES.indexOf(mine[k++].month);
+    return month < 0 ? a : { ...a, month, year: baseYear() + a.season + (month < 7 ? 1 : 0) };
+  });
+}
 function honoursCardTabs(p = S.player) {
   const natNames = new Set(Object.keys({ ...NATIONS, ...(typeof EXTRA_NATIONS !== 'undefined' ? EXTRA_NATIONS : {}) }).map(natName));
   const isNatTrophy = t => t.nat || natNames.has(t.club);
   const groups = {
-    ind: p.awards.filter(a => !(a.nat || NAT_EVENT.test(a.name))).map(a => ({ name: a.name, season: a.season })),
+    ind: (S && p === S.player ? potmMonths(p.awards) : p.awards).filter(a => !(a.nat || NAT_EVENT.test(a.name))).map(a => ({ name: a.name, season: a.season, ord: a.month != null ? a.year * 12 + a.month : null })),
     club: p.trophies.filter(t => !isNatTrophy(t)).map(t => ({ name: t.name, sub: t.club, season: t.season })),
     nat: [...p.trophies.filter(isNatTrophy).map(t => ({ name: t.name, season: t.season })), ...p.awards.filter(a => a.nat || NAT_EVENT.test(a.name)).map(a => ({ name: a.name, season: a.season }))],
   };
   // The same honour won more than once shows as one line with a count and every season.
   const grouped = list => {
     const m = new Map();
-    list.forEach(h => { const k = h.name + '|' + (h.sub || ''); const g = m.get(k) || { ...h, seasons: [] }; g.seasons.push(h.season); m.set(k, g); });
+    list.forEach(h => { const k = h.name + '|' + (h.sub || ''); const g = m.get(k) || { ...h, seasons: [], ords: [] }; g.seasons.push(h.season); g.ords.push(h.ord ?? null); m.set(k, g); });
     return [...m.values()].sort((a, b) => b.seasons.length - a.seasons.length || Math.min(...a.seasons) - Math.min(...b.seasons));
   };
   const tabs = [['ind', 'Individual'], ['club', 'Club'], ['nat', 'Country']];
@@ -1865,7 +1876,8 @@ function honoursCardTabs(p = S.player) {
   // "Competition: season, season" under it.
   // National tournaments are played in the summer after the season, so they show a single year.
   const label = honTab === 'nat' ? s => String(baseYear() + s + 1) : seasonLabel;
-  const hline = h => `<div class="honline"><b>${esc(h.name)}</b>: ${h.seasons.slice().sort((a, b) => a - b).map(label).join(', ')}</div>`;
+  // Player of the Month shows the month it was won in ("Sep 2025"); everything else its season.
+  const hline = h => `<div class="honline"><b>${esc(h.name)}</b>: ${h.seasons.map((s, i) => ({ s, o: (h.ords || [])[i] })).sort((a, b) => a.s - b.s || (a.o || 0) - (b.o || 0)).map(x => x.o != null ? `${MONTHS[x.o % 12]} ${Math.floor(x.o / 12)}` : label(x.s)).join(', ')}</div>`;
   const teamBlock = (name, items, crestHtml = '', sub = '') => `<div class="honteam"><div class="clubcell">${crestHtml}<span><b class="honhead">${esc(name)}</b>${sub ? `<div class="small muted">${sub}</div>` : ''}</span></div>${items.map(hline).join('')}</div>`;
   let body;
   if (honTab === 'club') {
@@ -2456,20 +2468,34 @@ function closeModal() { modal.hidden = true; modal.innerHTML = ''; }
 const BALL = '<svg class="ico ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-label="Goal"><circle cx="12" cy="12" r="9"/><path d="M12 7.5l4 2.9-1.5 4.7h-5L8 10.4z"/><path d="M12 7.5V3M16 10.4l4.3-1.4M14.5 15.1l2.7 3.7M9.5 15.1l-2.7 3.7M8 10.4L3.7 9"/></svg>';
 const BOOT = '<svg class="ico boot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="Assist"><path d="M3 6h6l1 4c3.5 0 7 1 9.5 3.2 1 .9 1.5 2 1.5 3.3V18H3z"/><path d="M5 18v2M9 18v2M13 18v2M17 18v2"/></svg>';
 
-// Goals in the order they went in: home side on the left, away side on the right.
-function goalTimeline(scorers) {
-  const list = scorers.some(s => s.min) ? [...scorers].sort((x, y) => (x.min || 0) - (y.min || 0)) : scorers;
+// Goals and the game's other moments in the order they happened: home side on the left, away side on
+// the right. Bookings, injuries and substitutions are smaller, under the goals' style.
+const CARD = c => `<i class="mcard ${c}"></i>`;
+const SUB_ON = '<svg class="ico subon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-label="On"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
+const SUB_OFF = '<svg class="ico suboff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-label="Off"><path d="M12 5v14M6 13l6 6 6-6"/></svg>';
+const INJ = '<svg class="ico inj" viewBox="0 0 24 24" fill="currentColor" aria-label="Injury"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/></svg>';
+function goalTimeline(scorers, ev = []) {
+  const name = S && S.player && S.player.name;
+  const items = [...scorers.map(s => ({ ...s, t: 'goal' })), ...(ev || [])];
+  const list = items.some(s => s.min) ? items.sort((x, y) => (x.min || 0) - (y.min || 0) || (x.t === 'goal' ? -1 : 1)) : items;
   return list.map(s => {
-    const goal = `<div class="g ${s.home ? '' : 'a'}">
+    let html;
+    if (s.t === 'goal') html = `<div class="g ${s.home ? '' : 'a'}">
       <div class="${s.me ? 'me' : ''}">${BALL}<span>${esc(s.n)}${s.pen ? ' <small class="muted">(pen)</small>' : s.fk ? ' <small class="muted">(FK)</small>' : ''}</span>${s.min ? `<b class="num">${s.min}'</b>` : ''}</div>
       ${s.ast ? `<div class="ast ${s.astMe ? 'me' : ''}">${BOOT}<span>${esc(s.ast)}</span></div>` : ''}</div>`;
-    return s.home ? goal + '<div></div>' : '<div></div>' + goal;
+    else if (s.t === 'sub') html = `<div class="g ev ${s.home ? '' : 'a'}">
+      <div class="${s.on === name && s.me ? 'me' : ''}">${SUB_ON}<span>${esc(s.on)}</span><b class="num">${s.min}'</b></div>
+      <div class="ast ${s.off === name && s.me ? 'me' : ''}">${SUB_OFF}<span>${esc(s.off)}</span></div></div>`;
+    else html = `<div class="g ev ${s.home ? '' : 'a'}"><div class="${s.me ? 'me' : ''}">${s.t === 'inj' ? INJ : s.second ? CARD('y2') : CARD(s.t === 'red' ? 'r' : 'y')}<span>${esc(s.n)}${s.t === 'inj' ? ' <small class="muted">(injured)</small>' : s.second ? ' <small class="muted">(2nd yellow)</small>' : ''}</span><b class="num">${s.min}'</b></div></div>`;
+    return s.home ? html + '<div></div>' : '<div></div>' + html;
   }).join('');
 }
+// Your card(s), beside your minutes.
+const myCards = u => u && u.red === 'second' ? CARD('y') + CARD('r') : u && u.red ? CARD('r') : u && u.yellow ? CARD('y') : '';
 
 function matchBlock(m, title, injured) {
   const u = m.user;
-  const sc = goalTimeline(m.scorers);
+  const sc = goalTimeline(m.scorers, m.ev);
   const mine = m.isHome ? m.gh : m.ga, theirs = m.isHome ? m.ga : m.gh;
   const won = m.winner ? m.winner === (m.isHome ? m.h : m.a) : null;
   const verdict = mine > theirs || (mine === theirs && won) ? '<span class="good">Win</span>' : mine < theirs || won === false ? '<span class="bad">Defeat</span>' : '<span class="muted">Draw</span>';
@@ -2479,7 +2505,7 @@ function matchBlock(m, title, injured) {
     ${m.pens ? `<div class="small muted" style="text-align:center">${esc(teamName(m.pens))} win ${m.pensScore ? pensText(m) + ' ' : ''}on penalties</div>` : ''}
     ${m.agg ? `<div class="small muted" style="text-align:center">Aggregate ${m.agg[0]}–${m.agg[1]}: <b>${esc(teamName(m.winner))}</b> go through</div>` : ''}
     ${sc ? `<div class="scorers">${sc}</div>` : ''}
-    ${u && u.mins ? `<div class="${statGrid(S.player.pos)}"><div><b>${rateBox(u.rating, 1)}</b><small>Rating</small></div><div><b>${u.mins}'</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div>${S.player.pos === 'GK' ? `<div><b>${u.saves || 0}</b><small>Saves</small></div><div><b>${u.clean ? 'Yes' : 'No'}</b><small>Clean sheet</small></div>` : ''}</div>${u.tackles ? `<div class="small muted" style="text-align:center">${u.tackles} tackle${u.tackles !== 1 ? 's' : ''}</div>` : ''}`
+    ${u && u.mins ? `<div class="${statGrid(S.player.pos)}"><div><b>${rateBox(u.rating, 1)}</b><small>Rating</small></div><div><b>${u.mins}'${myCards(u)}</b><small>${u.start ? 'Started' : 'Sub'}</small></div><div><b>${u.goals}</b><small>Goals</small></div><div><b>${u.assists}</b><small>Assists</small></div>${S.player.pos === 'GK' ? `<div><b>${u.saves || 0}</b><small>Saves</small></div><div><b>${u.clean ? 'Yes' : 'No'}</b><small>Clean sheet</small></div>` : ''}</div>${u.tackles ? `<div class="small muted" style="text-align:center">${u.tackles} tackle${u.tackles !== 1 ? 's' : ''}</div>` : ''}`
       : `<p class="muted" style="margin:0">${injured ? 'You were out injured.' : u && u.free ? 'Your contract has run out, so you are not part of the squad. Re-sign to play again.' : u && u.rested ? `Rested: you need ${TWO_GAME_ENERGY}+ energy to play twice in a week.` : 'You stayed on the bench.'}</p>`}`;
 }
 
@@ -2493,7 +2519,13 @@ function showMatchReport(rep) {
   if (rep.cup) html += matchBlock(rep.cup, `${rep.cup.comp} · ${rep.cup.stage}`, injured);
   html += rep.events.map(e => `<div class="award">${esc(e)}</div>`).join('');
   if (rep.net != null) html += `<div class="row small"><span class="muted">Weekly income</span><b class="num ${rep.net >= 0 ? 'good' : 'bad'}">${rep.net >= 0 ? '+' : ''}${money(rep.net)}</b></div>`;
-  else if (leagueDone()) { const e = midweekFixture(); html += `<div class="award">Next: ${esc(e.t.name.replace(/ \d{4}$/, ''))} ${e.isHome ? 'vs' : 'at'} ${esc(club(e.opp).name)} on ${dayLabel(dayAfter(midweekOffset(e)))}</div>`; }
+  else {
+    // The week goes on: the next game, club or country, whichever comes first.
+    const e = midweekFixture(), g = nextIntlGame(), me = 'N:' + p.nat;
+    const eDay = e ? midweekOffset(e) : Infinity;
+    if (g && g.day < eDay) html += `<div class="award">Next: ${esc(natName(p.nat))} ${g.h === me ? 'vs' : 'at'} ${esc(teamName(g.h === me ? g.a : g.h))} on ${dayLabel(dayAfter(g.day))}</div>`;
+    else if (e) html += `<div class="award">Next: ${esc(e.t.name.replace(/ \d{4}$/, ''))} ${e.isHome ? 'vs' : 'at'} ${esc(club(e.opp).name)} on ${dayLabel(dayAfter(midweekOffset(e)))}</div>`;
+  }
   html += `<button class="btn primary block" data-act="close">${S.phase === 'offseason' ? 'See season review' : 'Continue'}</button>`;
   openModal(html);
 }

@@ -2203,6 +2203,37 @@ const leagueDone = () => !!((S.weekHalf && S.weekHalf.key === weekKey()) || (S.w
 // The minutes you were on the pitch: from kick-off as a starter, the closing spell as a sub.
 const userMinutes = u => !u || !u.mins ? [1, 90] : u.start ? [1, Math.min(90, u.mins)] : [Math.max(1, 91 - u.mins), 90];
 
+// The rest of a game's story beside the goals, for the full-time box and the results: bookings,
+// injuries and substitutions for both sides, kept with the result. Yours are where they happened:
+// coming on or going off at your minutes, your own cards (bookUser), going off hurt.
+function sidePlayers(id) {
+  if (S.clubs[id]) return S.clubs[id].players;
+  const s = S.natSnap;
+  if (s && id === 'N:' + S.player.nat && s.nat === S.player.nat) return s.list.filter(x => !x.me);
+  return tourSide(id).players;
+}
+function matchEvents(res, user, mine) {
+  const p = S.player, ev = [], me = user && user.mins ? mine : null;
+  [res.h, res.a].forEach(id => {
+    const home = id === res.h, pool = sidePlayers(id).filter(x => x.pos !== 'GK').map(x => x.n), used = new Set();
+    const any = () => { let n = pick(pool); for (let k = 0; k < 10 && used.has(n); k++) n = pick(pool); used.add(n); return n; };
+    let subs = randi(3, 5);
+    if (id === me) {
+      const [from, to] = userMinutes(user);
+      if (!user.start) { ev.push({ min: from, home, t: 'sub', on: p.name, off: any(), me: true }); subs--; }
+      if (user.yellow) ev.push({ min: randi(from, Math.max(from, user.red === 'second' ? to - 3 : to)), home, t: 'yellow', n: p.name, me: true });
+      if (user.red) ev.push({ min: to, home, t: 'red', second: user.red === 'second', n: p.name, me: true });
+      else if (user.offInjured) { ev.push({ min: to, home, t: 'inj', n: p.name, me: true }); ev.push({ min: to, home, t: 'sub', on: any(), off: p.name, me: true }); subs--; }
+      else if (user.start && to < 90) { ev.push({ min: to, home, t: 'sub', on: any(), off: p.name, me: true }); subs--; }
+    }
+    for (let i = poisson(1.7); i > 0; i--) ev.push({ min: randi(8, 90), home, t: 'yellow', n: any() });
+    if (Math.random() < .04) ev.push({ min: randi(30, 90), home, t: 'red', n: any() });
+    if (Math.random() < .12) { const n = any(), m = randi(10, 80); ev.push({ min: m, home, t: 'inj', n }, { min: m, home, t: 'sub', on: any(), off: n }); subs--; }
+    for (; subs > 0; subs--) ev.push({ min: randi(55, 88), home, t: 'sub', on: any(), off: any() });
+  });
+  return ev.sort((a, b) => a.min - b.min);
+}
+
 // The manager rotates reserve and rotation players in: they start most domestic cup games (75%,
 // or 90% against a side at least 3 rating points weaker), and most games of any kind against a side
 // 18+ points weaker (80%, 92% in a domestic cup). Europe is otherwise picked like the league.
@@ -2473,6 +2504,7 @@ function resultRow(res, isHome, user, comp, kind, stage = '') {
     scorers: (res.scorers || []).map(s => ({ ...s })), opp: isHome ? res.a : res.h, isHome,
     gf: isHome ? res.gh : res.ga, ga: isHome ? res.ga : res.gh,
     rating: user.rating || null, goals: user.goals, assists: user.assists, mins: user.mins, start: !!user.start, rested: !!user.rested,
+    ev: res.ev, yellow: user.yellow || undefined, red: user.red || undefined,
   };
 }
 
@@ -2692,7 +2724,7 @@ function potmWeek(force = false) {
     if (!S.potm || S.potm.season !== S.season) S.potm = { season: S.season, list: [] };
     S.potm.list.push({ month: mName, n: w.n, club: w.club, pos: w.pos, me: !!w.me, lid });
     if (w.me) {
-      p.awards.push({ name: `${L.name} Player of the Month`, season: S.season });
+      p.awards.push({ name: `${L.name} Player of the Month`, season: S.season, month: S.potmMonth, year: baseYear() + S.season + (S.potmMonth < 7 ? 1 : 0) });
       addRep(1);
       msg(`You are the ${L.name} Player of the Month for ${mName}!`, 'good');
       notify('good', 'Player of the Month!', `You were the best player in the ${L.name} in ${mName}.`);
@@ -3096,8 +3128,9 @@ function playIntlGame(g, withUser) {
     notifyHaul(user, natName(p.nat));
     checkMilestones();
   }
+  r.ev = matchEvents(r, user, me);
   g.res = { gh: r.gh, ga: r.ga };
-  addNatGame({ comp: label, stage: `${INTL_MONTH[S.week]} window`, h: g.h, a: g.a, gh: r.gh, ga: r.ga, scorers: r.scorers, mins: user ? user.mins || 0 : 0, start: !!(user && user.start), goals: user ? user.goals : 0, assists: user ? user.assists : 0, rating, saves: user ? user.saves : undefined });
+  addNatGame({ comp: label, stage: `${INTL_MONTH[S.week]} window`, h: g.h, a: g.a, gh: r.gh, ga: r.ga, scorers: r.scorers, ev: r.ev, mins: user ? user.mins || 0 : 0, start: !!(user && user.start), goals: user ? user.goals : 0, assists: user ? user.assists : 0, rating, saves: user ? user.saves : undefined });
   save();
   return { comp: `${natName(p.nat)} · ${label}`, stage: `${INTL_MONTH[S.week]} window`, match: { ...r, user: user || { mins: 0, goals: 0, assists: 0 }, isHome } };
 }
@@ -3403,6 +3436,7 @@ function advanceWeek() {
     if (p.promise > 0) p.promise--;
     if (p.chance > 0) p.chance--;
     pressAfterMatch(res, fx.isHome, user, report);
+    res.ev = matchEvents(res, user, p.club);
     S.results.unshift(resultRow(res, fx.isHome, user, league(myClub().league).name, 'league'));
   }
   p.order = null;
@@ -3428,6 +3462,7 @@ function advanceWeek() {
       my.apps++; my.goals += cupUser.goals; my.assists += cupUser.assists; my.rsum += cupUser.rating;
     }
     pressAfterMatch(cupRes, efx.isHome, cupUser, report);
+    cupRes.ev = report.cup.ev = matchEvents(cupRes, cupUser, p.club);
     S.results.unshift(resultRow(cupRes, efx.isHome, cupUser, efx.t.name.replace(/ \d{4}$/, ''), efx.euro ? 'euro' : 'cup', efx.stage));
   }
 
