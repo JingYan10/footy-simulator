@@ -29,6 +29,7 @@ const ICONS = {
   nation: '<path d="M5 21V4M5 4h12l-2.5 4L17 12H5"/>',
   agent: '<path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 7h18v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM3 12h18"/>',
   career: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',
+  back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
   contract: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>`;
@@ -901,14 +902,14 @@ const gkSpans = (pos, saves, clean) => pos === 'GK' ? `<span><b>${saves || 0}</b
 const statGrid = pos => `bigstat${pos === 'GK' ? ' six' : ''}`;
 
 // Summary of a finished career: the current save after retiring, or one from the past-careers list.
-function retiredHtml(rec, newAct = 'menu') {
+function retiredHtml(rec, newAct = 'menu', tables = true) {
   const t = careerTotals(rec);
   return `<section class="card hero"><h2>Career over</h2>
     <b style="font:800 28px var(--display)">${esc(rec.name)}</b>
     <div class="small muted">${POS_NAMES[rec.pos]} · ${esc(natName(rec.nat))} · Last club ${esc(rec.lastClub)} · Retired at ${rec.retiredAge}</div>
     <div class="${statGrid(rec.pos)}"><div><b>${t.apps}</b><small>Apps</small></div><div><b>${t.goals}</b><small>Goals</small></div><div><b>${t.assists}</b><small>Assists</small></div>${gkCells(rec.pos, t.saves, t.cleanAll)}<div><b>${rec.trophies.length}</b><small>Titles</small></div></div>
     <div class="small muted">Peak OVR ${rec.peak} · ${rec.caps} international caps · Earned ${money(rec.money)} in the bank</div>
-    <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + iconCardHtml(rec) + legacyCard(rec) + clubStints(rec) + careerTables(rec);
+    <button class="btn primary block" data-act="${newAct}">Start a new career</button></section>` + iconCardHtml(rec) + legacyCard(rec) + clubStints(rec) + (tables ? careerTables(rec) : '');
 }
 
 // The Icon card's art: a gold-rimmed card with curled top corners and a pointed base, white marble
@@ -1201,8 +1202,38 @@ function clubStints(rec) {
 
 function viewRetired() { return retiredHtml(retiredRecord()); }
 
+// A past career's Career tab, laid out like a live one: Profile (with your nickname), Nationality and Milestones, and History.
+let pastSub = 'profile';
+function pastCareerHtml(rec) {
+  const seg = `<div class="seg">${[['profile', 'Career'], ['history', 'History']].map(([k, l]) => `<button class="${pastSub === k ? 'on' : ''}" data-act="pastSub" data-v="${k}">${l}</button>`).join('')}</div>`;
+  if (pastSub === 'history') return seg + careerTables(rec);
+  const t = careerTotals(rec), seasons = (rec.career || []).length;
+  const clubs = [...new Set((rec.career || []).map(r => r.club.replace(' (loan)', '')))];
+  const prev = rec.capsBy ? Object.entries(rec.capsBy).map(([n, c]) => `${natName(n)} ${c.caps} caps`).join(', ') : '';
+  const ms = (rec.milestones || []).slice().reverse();
+  const flags = list => list.map(n => `<span class="natchip">${natFlag(n)}${esc(natName(n))}</span>`).join('');
+  const born =rec.birthNat || rec.nat, pass = rec.passports && rec.passports.length ? rec.passports : [rec.nat];
+  const natLines = [
+    `${rec.caps || 0} cap${rec.caps === 1 ? '' : 's'} and ${rec.intlGoals || 0} goal${rec.intlGoals === 1 ? '' : 's'} for ${esc(natName(rec.nat))}.`,
+    prev ? `Before switching: ${esc(prev)}.` : '',
+    rec.switched != null ? `Switched national team in ${seasonLabel(rec.switched)}.` : '',
+    rec.intlRetiredSeason != null ? `Retired from international football in ${seasonLabel(rec.intlRetiredSeason)}.` : '',
+  ].filter(Boolean).join(' ');
+  const natCard = `<section class="card"><h2>Nationality</h2>
+      <div class="kv"><div><small>Born</small><b>${flags([born])}</b></div><div><small>Passports</small><b>${flags(pass)}</b></div><div><small>National team</small><b>${flags([rec.nat])}</b></div></div>
+      <div class="small muted">${natLines}</div></section>`;
+  return seg + `<section class="card hero"><h2>Profile</h2>${rec.nickname ? `<div class="nick">“${esc(rec.nickname.n)}”</div>` : ''}
+      <div class="kv"><div><small>Position</small><b>${POS_NAMES[rec.pos]}</b></div><div><small>Nation</small><b>${natFlag(rec.nat)} ${esc(natName(rec.nat))}</b></div>
+      <div><small>Caps</small><b>${rec.caps || 0} · ${rec.intlGoals || 0} goals</b></div><div><small>Peak OVR</small><b>${rec.peak}</b></div>
+      <div><small>Reputation</small><b>${rec.rep != null ? rec.rep : '–'}/100</b></div><div><small>Retired at</small><b>${rec.retiredAge}</b></div></div>
+      <div class="small muted">${seasons} season${seasons !== 1 ? 's' : ''} · ${clubs.length} club${clubs.length !== 1 ? 's' : ''} · ${t.apps} apps · ${t.goals} goals · ${t.assists} assists · last club ${esc(rec.lastClub)}</div></section>
+    ${natCard}
+    <section class="card"><details class="mdrop" style="padding:0"><summary><h2>Milestones</h2><span class="small muted">${ms.length}</span></summary><div class="mbody">
+      ${ms.length ? ms.map(m => `<div class="msrow"><b>${esc(m.t)}</b><span class="small muted">${seasonLabel(m.season)}${m.club ? ` · ${esc(m.club)}` : ''}</span></div>`).join('') : `<span class="small muted">${rec.milestones ? 'None.' : 'This career finished before milestones were kept with it.'}</span>`}
+      </div></details></section>`;
+}
 // A past career has a small bar at the bottom: its story, what you owned, and the way back.
-let pastTab = 'career';
+let pastTab = 'summary';
 function pastAssetsHtml(rec) {
   const a = rec.assets;
   if (!a) return `<section class="card"><h2>Assets</h2><p class="small muted" style="margin:0">This career finished before what you owned was kept with it, so there is nothing to show here. Careers you finish from now on keep their homes, collection and shares.</p><div class="kv" style="margin-top:8px"><div><small>Bank at retirement</small><b class="num">${money(rec.money || 0)}</b></div></div></section>`;
@@ -1226,8 +1257,8 @@ function pastAssetsHtml(rec) {
     <section class="card"><div class="row"><h2>Collection</h2><span class="small muted">${items.length} item${items.length !== 1 ? 's' : ''} · ${money(itemsWorth)}</span></div>${items.length ? `<div class="commits">${items.map(x => `<div class="commit"><div class="row" style="justify-content:flex-start;gap:10px"><div style="width:84px;flex:none">${luxPic(x.it)}</div><div><b>${esc(luxName(x.it))}</b> <span class="chip">${LUX_CATS[x.it.cat]}</span><div class="small muted">Bought ${seasonLabel(x.season)} · ${money(x.it.price)}</div></div></div></div>`).join('')}</div>` : '<p class="small muted" style="margin:0">No luxuries.</p>'}</section>`;
 }
 function pastNav() {
-  const tabs = [['career', 'Career', 'career'], ['assets', 'Assets', 'shop'], ['back', 'Back', 'home']];
-  return `<nav class="tabs"><div class="in" style="grid-template-columns:repeat(3,1fr)">${tabs.map(([k, l, ic]) => `
+  const tabs = [['summary', 'Summary', 'home'], ['career', 'Career', 'career'], ['assets', 'Assets', 'shop'], ['back', 'Back', 'back']];
+  return `<nav class="tabs"><div class="in" style="grid-template-columns:repeat(4,1fr)">${tabs.map(([k, l, ic]) => `
     <button class="${pastTab === k ? 'on' : ''}" data-act="${k === 'back' ? 'pastBack' : 'pastTab'}" data-v="${k}" aria-label="${l}">${icon(ic)}<span>${l}</span></button>`).join('')}</div></nav>`;
 }
 // A past career opened from the landing page.
@@ -1236,7 +1267,7 @@ function renderPast() {
   if (!rec) { pastView = null; landing = true; render(); return; }
   // Seasons are labelled from the year that career started.
   labelBase = rec.startYear || START_YEAR;
-  try { app.innerHTML = `<div class="create wrap">${pastTab === 'assets' ? pastAssetsHtml(rec) : `${retiredHtml(rec, 'freshStart')}<button class="btn block" data-act="pastExport" data-v="${rec.id}">Export this career</button><button class="btn block" data-act="pastBack">Back</button>`}</div>` + pastNav(); } finally { labelBase = null; }
+  try { app.innerHTML = `<div class="create wrap">${pastTab === 'assets' ? pastAssetsHtml(rec) : pastTab === 'career' ? pastCareerHtml(rec) : `${retiredHtml(rec, 'freshStart', false)}<button class="btn block" data-act="pastExport" data-v="${rec.id}">Export this career</button><button class="btn block" data-act="pastBack">Back</button>`}</div>` + pastNav(); } finally { labelBase = null; }
 }
 // A finished career as a file or text, to keep or share. It holds only that career's record (seasons,
 // trophies, awards, card), not a save to carry on playing.
@@ -2679,8 +2710,9 @@ document.addEventListener('click', e => {
     case 'importGo': { const ok = importSave(document.getElementById('importText').value.trim()); if (ok) { closeModal(); landing = false; tab = 'home'; toast('Career imported'); render(); } else toast('That is not a valid save'); return; }
     case 'continue': landing = false; tab = 'home'; render(); window.scrollTo(0, 0); return;
     // The career you just finished, while its save is still here: back into it, with every tab.
-    case 'viewPast': if (S && S.phase === 'retired' && S.player.careerId === +v) { landing = false; pastView = null; tab = 'home'; } else { pastView = +v; pastTab = 'career'; } render(); window.scrollTo(0, 0); return;
+    case 'viewPast': if (S && S.phase === 'retired' && S.player.careerId === +v) { landing = false; pastView = null; tab = 'home'; } else { pastView = +v; pastTab = 'summary'; pastSub = 'profile'; } render(); window.scrollTo(0, 0); return;
     case 'pastTab': pastTab = v; render(); window.scrollTo(0, 0); return;
+    case 'pastSub': pastSub = v; render(); window.scrollTo(0, 0); return;
     case 'pastSell': { const [id, sym, f] = v.split('|'); const back = sellPastShares(+id, sym, +f); if (back) toast(`Sold for ${money(back)}`); render(); return; }
     case 'pastBack': pastView = null; landing = true; render(); window.scrollTo(0, 0); return;
     case 'pastDelAsk': { const r = loadArchive().find(x => x.id === +v); if (r) confirmSheet(`Delete ${esc(r.name)}?`, `This career (${r.career.length} season${r.career.length !== 1 ? 's' : ''}, ${esc(r.lastClub)}) will be gone for good. This cannot be undone.`, 'pastDel', 'Delete', v); return; }

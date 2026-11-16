@@ -6391,6 +6391,8 @@ function retiredRecord() {
     id: p.careerId || (p.careerId = Date.now()), name: p.name, nat: p.nat, pos: p.pos, career: p.career, trophies: p.trophies, awards: p.awards,
     caps: p.caps, intlGoals: p.intlGoals || 0, attrs: roundAttrs(p.attrs), money: p.money, by: p.by, lastClub: p.club ? myClub().name : '–', retiredAge: ageOf(p.by),
     peak: Math.max(calcOVR(), ...p.career.map(r => r.ovr)), rep: Math.round(p.rep), media: p.media || 0,
+    nickname: p.nickname || null, milestones: p.milestones || [], capsBy: p.capsBy || null, birthNat: p.birthNat || null, passports: passports(), switched: p.switched ?? null,
+    intlRetiredSeason: p.intlRetired ? (p.intlRetired.season ?? p.intlRetired) : null,
     // What you owned when you retired, to look back on: homes, the luxury collection and your shares (their value then).
     assets: { homes: { ...(p.homes || {}) }, collection: collection().map(c => ({ id: c.id, season: c.season })), shares: Math.round(portfolioValue()), stocks: Object.keys(portfolio()).length,
       portfolio: Object.fromEntries(Object.entries(portfolio()).map(([sym, h]) => [sym, { shares: h.shares, cost: h.cost, price: sharePrice(sym) }])) },
