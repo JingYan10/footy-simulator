@@ -546,7 +546,7 @@ function simTeams(h, a, user, home = 2) {
     for (let i = 0; i < goals; i++) {
       let goal = null;
       if (mine && user.mins) {
-        const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / str, 3) * user.mins / 90 * matchForm(), 0, .7);
+        const pGoal = clamp(GOAL_SHARE[p.pos] * Math.pow(ovr / str, 3) * user.mins / 90 * matchForm() * seasonBrake('goals'), 0, .7);
         if (Math.random() < pGoal) {
           user.goals++;
           goal = { n: p.name, me: true, home: id === h, min: randi(...onPitch) };
@@ -554,7 +554,7 @@ function simTeams(h, a, user, home = 2) {
           scorers.push(goal);
           continue;
         }
-        const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / str, 2) * user.mins / 90 * 1.3 * matchForm(), 0, .7);
+        const pAst = clamp(ASSIST_SHARE[p.pos] * Math.pow(ovr / str, 2) * user.mins / 90 * ASSIST_RATE * matchForm() * seasonBrake('assists'), 0, .7);
         if (Math.random() < pAst) { user.assists++; goal = { n: scorerName(id), home: id === h, min: randi(...onPitch), ast: p.name, astMe: true }; }
       }
       if (!goal) {

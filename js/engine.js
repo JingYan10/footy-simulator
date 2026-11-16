@@ -632,6 +632,13 @@ function statFactor(mix, exp, lo, hi) {
 const SCORE_MIX = { SHO: .45, PAC: .35, DRI: .2 }, ASSIST_MIX = { PAS: .45, DRI: .3, PAC: .25 }, TACKLE_MIX = { DEF: .75, PAC: .25 };
 const scoreFactor = () => statFactor(SCORE_MIX, 2.5, .45, 1.6);
 const assistFactor = () => statFactor(ASSIST_MIX, 2, .5, 1.5);
+// A big season gets harder to add to: past about 30 goals or 15 assists in a season each one more
+// is less likely, down to a third. Record seasons stay possible; 70 goals or 40 assists do not.
+const ASSIST_RATE = .75;
+function seasonBrake(kind) {
+  const st = S.player.st || {}, n = (st[kind] || 0) + ((st.cup && st.cup[kind]) || 0);
+  return kind === 'goals' ? clamp(1 - Math.max(0, n - 30) / 30, .33, 1) : clamp(1 - Math.max(0, n - 15) / 20, .33, 1);
+}
 const tackleFactor = () => statFactor(TACKLE_MIX, 1.5, .6, 1.4);
 // Strong foot: cutting inside on your weaker side (a right-footer on the left) means more shots and
 // fewer crosses; playing on your strong side means more crosses and fewer goals.
@@ -2329,13 +2336,13 @@ function playFixture(h, a, user) {
       let s = null, myAssist = false, goal = null;
       if (mine && user.mins) {
         const teamStr = teamStrength(c), sp = mySetPieces(c), share = user.mins / 90;
-        const pGoal = clamp(GOAL_SHARE[matchRole()] * Math.pow(ovr / teamStr, 3) * user.mins / 90 * (user.own ? 1.3 : 1) * matchForm() * scoreFactor() * footGoal() * edge, 0, .7);
+        const pGoal = clamp(GOAL_SHARE[matchRole()] * Math.pow(ovr / teamStr, 3) * user.mins / 90 * (user.own ? 1.3 : 1) * matchForm() * scoreFactor() * footGoal() * edge * seasonBrake('goals'), 0, .7);
         // On set-piece duty: some of the team's goals are your penalties and free kicks.
         if (sp && sp.pen && Math.random() < PEN_SHARE * share) { user.goals++; user.pens = (user.pens || 0) + 1; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch), pen: true }; }
         else if (sp && sp.fk && Math.random() < FK_SHARE * share) { user.goals++; user.fks = (user.fks || 0) + 1; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch), fk: true }; }
         else if (Math.random() < pGoal) { user.goals++; goal = { n: p.name, me: true, home: c.id === h, min: randi(...onPitch) }; }
         else {
-          const pAst = clamp(ASSIST_SHARE[matchRole()] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * 1.3 * (user.own ? 1.3 : 1) * matchForm() * assistFactor() * footAssist() * edge, 0, .7) + (sp && sp.fk ? CORNER_ASSIST * share : 0);
+          const pAst = clamp(ASSIST_SHARE[matchRole()] * Math.pow(ovr / teamStr, 2) * user.mins / 90 * ASSIST_RATE * (user.own ? 1.3 : 1) * matchForm() * assistFactor() * footAssist() * edge * seasonBrake('assists'), 0, .7) + (sp && sp.fk ? CORNER_ASSIST * share : 0);
           if (Math.random() < pAst) { user.assists++; myAssist = true; }
           s = aiScorer(c);
         }
