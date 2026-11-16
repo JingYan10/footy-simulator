@@ -144,6 +144,17 @@ const NAME_POOLS = {
   ARG: [['Santiago','Nicolás','Matías','Facundo','Thiago','Valentín','Agustín','Franco'],['González','Rodríguez','Fernández','Gómez','Díaz','Pérez','Álvarez','Acosta']],
   SEN: [['Ousmane','Mamadou','Cheikh','Ismaïla','Sadio','Amadou','Pape','Moussa'],['Ndiaye','Sarr','Diop','Fofana','Cissé','Mendy','Faye','Gueye']],
   CIV: [['Yves','Serge','Jean','Franck','Wilfried','Seko','Hamed','Ibrahim'],['Bamba','Touré','Koné','Kouassi','Zaha','Doumbia','Traoré','Kessié']],
+  CRO: [['Luka','Ivan','Josip','Mateo','Marko','Ante','Mario','Nikola','Domagoj','Andrej'],['Kovačić','Perišić','Brozović','Vlašić','Majer','Stanišić','Gvardiol','Pašalić','Budimir','Sučić']],
+  SRB: [['Aleksandar','Dušan','Nemanja','Sergej','Filip','Luka','Strahinja','Lazar','Nikola','Veljko'],['Mitrović','Vlahović','Tadić','Milinković','Kostić','Pavlović','Živković','Lukić','Gudelj','Samardžić']],
+  BIH: [['Edin','Ermedin','Amar','Haris','Miralem','Sead','Benjamin','Kenan','Ivan','Nikola'],['Džeko','Demirović','Kolašinac','Hadžikadunić','Pjanić','Tahirović','Bajraktarević','Hajradinović','Bašić','Gojak']],
+  SVN: [['Jan','Benjamin','Žan','Timi','Adam','Luka','Jaka','Miha','Petar','Erik'],['Oblak','Šeško','Elšnik','Gnezda','Karničnik','Bijol','Stojanović','Zajc','Čerin','Mlakar']],
+  MKD: [['Eljif','Enis','Ezgjan','Bojan','Darko','Jani','Visar','Stefan','Egzon','Milan'],['Elmas','Bardhi','Alioski','Ristovski','Velkovski','Atanasov','Musliu','Miovski','Trajkovski','Nikolov']],
+  MNE: [['Stevan','Nikola','Marko','Milutin','Stefan','Driton','Igor','Andrija','Vladimir','Luka'],['Jovetić','Vukčević','Savićević','Osmajić','Krstović','Camaj','Marušić','Radunović','Bakić','Vujačić']],
+  ALB: [['Armando','Kristjan','Nedim','Myrto','Ylber','Elseid','Berat','Arlind','Mario','Rey'],['Broja','Asllani','Bajrami','Uzuni','Ramadani','Hysaj','Gjimshiti','Laçi','Mitaj','Manaj']],
+  KOS: [['Vedat','Milot','Edon','Arijanet','Florent','Amir','Lumbardh','Fisnik','Mergim','Leart'],['Muriqi','Rashica','Zhegrova','Muslija','Hadergjonaj','Rrahmani','Vojvoda','Asllani','Dellova','Paqarada']],
+  GRE: [['Giorgos','Konstantinos','Dimitris','Anastasios','Christos','Vangelis','Petros','Kostas','Fotis','Tasos'],['Papadopoulos','Mavropanos','Bakasetas','Tsimikas','Pavlidis','Masouras','Kourbelis','Douvikas','Vlachodimos','Ioannidis']],
+  ROU: [['Andrei','Ianis','Radu','Răzvan','Nicolae','Denis','Florin','Valentin','Alexandru','Darius'],['Hagi','Drăguşin','Stanciu','Marin','Mihăilă','Man','Rațiu','Popescu','Ionescu','Olaru']],
+  BUL: [['Ivan','Georgi','Dimitar','Kiril','Martin','Nikolay','Radoslav','Stefan','Atanas','Petar'],['Petrov','Ivanov','Georgiev','Dimitrov','Despodov','Kirilov','Chochev','Iliev','Nedelev','Krastev']],
 };
 
 // Nations offered at player creation, and display names for codes.

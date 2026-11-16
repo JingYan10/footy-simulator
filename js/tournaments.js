@@ -8,6 +8,7 @@ const EXTRA_NATIONS = {
   IRN: 'Iran', KSA: 'Saudi Arabia', QAT: 'Qatar', IRQ: 'Iraq', UAE: 'UAE', UZB: 'Uzbekistan', JOR: 'Jordan',
   ALG: 'Algeria', TUN: 'Tunisia', RSA: 'South Africa',
   MLI: 'Mali', BFA: 'Burkina Faso', COD: 'DR Congo', GUI: 'Guinea', CPV: 'Cape Verde', GAB: 'Gabon', ANG: 'Angola', ZAM: 'Zambia',
+  BIH: 'Bosnia and Herzegovina', SVN: 'Slovenia', MKD: 'North Macedonia', MNE: 'Montenegro', ALB: 'Albania', KOS: 'Kosovo', GRE: 'Greece', ROU: 'Romania', BUL: 'Bulgaria',
 };
 const natName = k => NATIONS[k] || EXTRA_NATIONS[k] || k;
 
@@ -37,10 +38,11 @@ const NATION_STR = {
   TUN: 72, PER: 72, KSA: 71, VEN: 71, PAN: 71, RSA: 70, UZB: 70, CRC: 70, QAT: 69, IRQ: 68, JOR: 68, JAM: 68,
   UAE: 67, BOL: 67, CHN: 64, IDN: 64, THA: 63, VIE: 62, MAS: 61, SGP: 55,
   MLI: 73, COD: 73, BFA: 72, GUI: 70, CPV: 69, GAB: 69, ANG: 68, ZAM: 67,
+  GRE: 74, SVN: 72, ROU: 72, ALB: 71, BIH: 70, KOS: 69, MKD: 68, MNE: 67, BUL: 65,
 };
 
 const CONFED = {
-  UEFA: ['ENG', 'ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED', 'BEL', 'SCO', 'WAL', 'IRL', 'NOR', 'SWE', 'DEN', 'SUI', 'AUT', 'CRO', 'SRB', 'POL', 'TUR', 'UKR'],
+  UEFA: ['ENG', 'ESP', 'ITA', 'GER', 'FRA', 'POR', 'NED', 'BEL', 'SCO', 'WAL', 'IRL', 'NOR', 'SWE', 'DEN', 'SUI', 'AUT', 'CRO', 'SRB', 'POL', 'TUR', 'UKR', 'GRE', 'SVN', 'ROU', 'ALB', 'BIH', 'KOS', 'MKD', 'MNE', 'BUL'],
   CONMEBOL: ['BRA', 'ARG', 'URU', 'COL', 'ECU', 'CHI', 'PER', 'PAR', 'VEN', 'BOL'],
   CONCACAF: ['USA', 'MEX', 'CAN', 'PAN', 'CRC', 'JAM'],
   AFC: ['JPN', 'KOR', 'CHN', 'MAS', 'SGP', 'IDN', 'THA', 'VIE', 'AUS', 'IRN', 'KSA', 'QAT', 'IRQ', 'UAE', 'UZB', 'JOR'],
@@ -799,9 +801,13 @@ function summerTeams(ev) {
   }
   if (ev.key === 'WC') {
     const quota = { UEFA: 13, CONMEBOL: 5, CONCACAF: 3, AFC: 5, CAF: 6 };
-    return Object.entries(quota).flatMap(([k, n]) => noisy(CONFED[k]).slice(0, n)).map(n => 'N:' + n);
+    // Each confederation's places go to its qualifying results (see natComps), or by strength without them.
+    const comps = S.natComps && S.natComps.season === S.season ? S.natComps.list : [];
+    return Object.entries(quota).flatMap(([k, n]) => { const c = comps.find(x => x.ev === 'WC' && x.confed === k && x.played.length); return c ? compQualified(c) : noisy(CONFED[k]).slice(0, n); }).map(n => 'N:' + n);
   }
   const pool = ev.confed.flatMap(k => CONFED[k]);
+  const qc = S.natComps && S.natComps.season === S.season && S.natComps.list.find(x => x.ev === ev.key && x.played.length);
+  if (qc) return compQualified(qc).map(n => 'N:' + n);
   return noisy(pool).slice(0, 16).map(n => 'N:' + n);
 }
 
@@ -834,6 +840,11 @@ function buildSummer() {
     } else {
       while (!t.winner) playStage(t, () => null);
       finishTournament(t);
+    }
+    // Your confederation's finals, for the Nation tab's table: yours live, or a finished copy.
+    if (NAT_EVENTS.some(e => e.key === ev.key) && natEventFor(ev, p.nat)) {
+      S.natFinals = t.mine && isNation(t.mine) ? { season: S.season, live: t.key }
+        : { season: S.season, name: t.name, groups: t.groups, table: t.table, winner: t.winner, ko: t.ko.map(k => ({ name: k.name, res: k.res.map(r => ({ h: r.h, a: r.a, gh: r.gh, ga: r.ga, winner: r.winner, pens: r.pens || null, pensScore: r.pensScore || null })) })) };
     }
   });
 }
@@ -1218,4 +1229,108 @@ function stepDownNatCaptain() {
   msg(`You gave up the ${natName(p.nat)} captaincy. The coach is disappointed (−8).`, 'bad');
   save();
   return true;
+}
+
+// ---------- qualifying and Nations League ----------
+// Each season's September, October and November windows (six matchdays) belong to a competition for
+// every confederation, after the real formats, fitted to the nations in the game:
+// - a finals next summer that has more nations than places: qualifying, and its results decide who
+//   goes (World Cup: UEFA 13 places, CONMEBOL 5, AFC 5, CAF 6, CONCACAF 3; Euro and AFCON: 16).
+//   UEFA, AFC and CAF play groups of 3 or 4, home and away; CONMEBOL plays one league of all ten, as
+//   it really does (six of the nine rounds here); CONCACAF plays two groups of three. The group
+//   winners go, then the best runners-up, then the best thirds, until the places are filled.
+// - no qualifying needed (the Copa América and Asian Cup take every nation in the game): UEFA and
+//   CONCACAF play their Nations League (groups of nations of similar strength, for the table only);
+//   everyone else plays friendlies. The same in a summer with no finals for that confederation.
+// March is always friendlies.
+const COMP_MD = { 6: [0, 1], 10: [2, 3], 14: [4, 5] };
+const WC_PLACES = { UEFA: 13, CONMEBOL: 5, CONCACAF: 3, AFC: 5, CAF: 6 };
+const QUAL_GROUPS = { UEFA: 8, CONMEBOL: 1, CONCACAF: 2, AFC: 4, CAF: 6 };
+// Home and away for groups of 3 or 4 (a group of 3 has a team resting each matchday): six matchdays.
+function compRounds(ids, league) {
+  const t = ids.slice();
+  if (t.length % 2) t.push(null);
+  const n = t.length, first = [];
+  for (let r = 0; r < n - 1; r++) {
+    const md = [];
+    for (let i = 0; i < n / 2; i++) { const a = t[i], b = t[n - 1 - i]; if (a && b) md.push(r % 2 ? [a, b] : [b, a]); }
+    first.push(md);
+    t.splice(1, 0, t.pop());
+  }
+  return league ? first.slice(0, 6) : [...first, ...first.map(md => md.map(([h, a]) => [a, h]))];
+}
+// Seeded like a draw: the strongest spread over the groups, one from each pot.
+function compGroups(nats, g) {
+  const sorted = nats.slice().sort((a, b) => (NATION_STR[b] || 60) - (NATION_STR[a] || 60)), groups = Array.from({ length: g }, () => []);
+  for (let i = 0; i < sorted.length; i += g) shuffle(sorted.slice(i, i + g)).forEach((n, k) => groups[k].push(n));
+  return groups;
+}
+function makeComp(confed, ev, year) {
+  const nats = CONFED[confed], qual = !!ev, league = qual && confed === 'CONMEBOL';
+  const g = qual ? QUAL_GROUPS[confed] : Math.ceil(nats.length / 4);
+  // The Nations League groups nations of similar strength together (League A, B...).
+  const groups = qual ? compGroups(nats, g) : (() => { const s = nats.slice().sort((a, b) => (NATION_STR[b] || 60) - (NATION_STR[a] || 60)), out = []; for (let i = 0; i < g; i++) out.push(s.slice(Math.round(i * s.length / g), Math.round((i + 1) * s.length / g))); return out; })();
+  const places = !qual ? 0 : ev.key === 'WC' ? WC_PLACES[confed] : 16;
+  const evName = ev ? `${ev.name} ${year}` : null;
+  const table = {};
+  nats.forEach(n => { table[n] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }; });
+  const fix = Array.from({ length: 6 }, () => []);
+  groups.forEach((gr, gi) => compRounds(gr, league).slice(0, 6).forEach((md, k) => md.forEach(([h, a]) => fix[k].push([h, a, gi]))));
+  const short = !qual ? 'Nations League' : ev.key === 'WC' ? 'WC qualifier' : ev.key === 'EURO' ? 'Euro qualifier' : 'AFCON qualifier';
+  const name = !qual ? `${confed} Nations League` : `${evName} qualifying (${confed})`;
+  const format = !qual
+    ? `${groups.length} groups of nations of similar strength, home and away in September, October and November. For the table only.`
+    : league ? `One league of all ${nats.length}, as in real CONMEBOL qualifying (6 of its rounds). The top ${places} go to the ${evName}.`
+    : `${groups.length} group${groups.length > 1 ? 's' : ''} of ${[...new Set(groups.map(x => x.length))].sort().join(' or ')}, home and away. ${places} places at the ${evName}: the group winners, then the best runners-up${places > groups.length * 2 ? ', then the best third-placed sides' : ''}.`;
+  return { confed, ev: ev ? ev.key : null, name, short, format, groups, fix, table, places, league, played: [] };
+}
+// This season's competitions, made the first time they are needed.
+function natComps() {
+  if (S.natComps && S.natComps.season === S.season) return S.natComps.list;
+  const year = baseYear() + S.season + 1, list = [];
+  Object.keys(CONFED).forEach(confed => {
+    const ev = NAT_EVENTS.find(e => eventOn(e, year) && natEventFor(e, CONFED[confed][0]));
+    const pool = ev ? (ev.key === 'WC' ? CONFED[confed] : ev.confed.flatMap(k => CONFED[k])) : [];
+    const needQual = ev && (ev.key === 'WC' ? CONFED[confed].length > WC_PLACES[confed] : pool.length > 16);
+    if (needQual) list.push(makeComp(confed, ev, year));
+    else if (confed === 'UEFA' || confed === 'CONCACAF') list.push(makeComp(confed, null, year));
+  });
+  S.natComps = { season: S.season, list };
+  return list;
+}
+const natCompOf = nat => natComps().find(c => c.table[nat]) || null;
+function compRecord(c, h, a, gh, ga) {
+  const th = c.table[h], ta = c.table[a];
+  if (!th || !ta) return;
+  th.p++; ta.p++; th.gf += gh; th.ga += ga; ta.gf += ga; ta.ga += gh;
+  if (gh > ga) { th.w++; ta.l++; th.pts += 3; } else if (gh < ga) { ta.w++; th.l++; ta.pts += 3; } else { th.d++; ta.d++; th.pts++; ta.pts++; }
+}
+const compSort = c => (x, y) => c.table[y].pts - c.table[x].pts || (c.table[y].gf - c.table[y].ga) - (c.table[x].gf - c.table[x].ga) || c.table[y].gf - c.table[x].gf || (NATION_STR[y] || 0) - (NATION_STR[x] || 0);
+const compGroupTable = (c, gi) => c.groups[gi].slice().sort(compSort(c));
+// Who goes: the group winners, then the best runners-up (points per game, goal difference), then
+// the best thirds, until the places are filled. A league: its top places.
+function compQualified(c) {
+  if (!c.places) return [];
+  const tables = c.groups.map((g, gi) => compGroupTable(c, gi));
+  if (c.league) return tables[0].slice(0, c.places);
+  const out = [], ppg = n => { const r = c.table[n]; return r.p ? r.pts / r.p : 0; }, gdpg = n => { const r = c.table[n]; return r.p ? (r.gf - r.ga) / r.p : 0; };
+  for (let pos = 0; out.length < c.places && pos < 4; pos++) {
+    const level = tables.map(t => t[pos]).filter(Boolean).sort((x, y) => ppg(y) - ppg(x) || gdpg(y) - gdpg(x) || (NATION_STR[y] || 0) - (NATION_STR[x] || 0));
+    out.push(...level.slice(0, c.places - out.length));
+  }
+  return out;
+}
+// The other games of a window's matchdays (yours are played on their days).
+function compWindowSim(week) {
+  const mds = COMP_MD[week], mine = S.player.nat;
+  if (!mds) return;
+  natComps().forEach(c => mds.forEach(md => {
+    if (c.played.includes(md)) return;
+    c.fix[md].forEach(([h, a]) => {
+      if (h === mine || a === mine) return;
+      const sh = teamStr('N:' + h), sa = teamStr('N:' + a);
+      compRecord(c, h, a, poisson(1.35 * Math.exp((sh - sa + 2) / 13)), poisson(1.15 * Math.exp((sa - sh - 2) / 13)));
+    });
+    c.played.push(md);
+  }));
 }

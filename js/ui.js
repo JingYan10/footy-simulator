@@ -1511,7 +1511,8 @@ function natStatus() {
 // The next international window, or the next finals your country can play in.
 function natNext() {
   const w = Object.keys(INTL_WINDOWS).map(Number).find(x => S.phase === 'season' && x > S.week);
-  const window = w ? `${INTL_MONTH[w]} window in ${w - S.week} week${w - S.week > 1 ? 's' : ''} (${INTL_WINDOWS[w] === 'qualifier' ? 'qualifiers' : 'friendlies'})` : null;
+  const wk = w && intlKind(w), cmp = wk === 'qualifier' && natCompOf(S.player.nat);
+  const window = w ? `${INTL_MONTH[w]} window in ${w - S.week} week${w - S.week > 1 ? 's' : ''} (${cmp ? (cmp.ev ? 'qualifiers' : 'Nations League') : 'friendlies'})` : null;
   const from = baseYear() + S.season + 1;
   const ev = NAT_EVENTS.filter(e => natEventFor(e, S.player.nat)).map(e => ({ e, y: nextEventYear(e, from) })).sort((a, b) => a.y - b.y)[0];
   return [window, ev ? `${ev.e.name} ${ev.y}${ev.y === from ? ' (next summer)' : ''}` : null].filter(Boolean).join(' · ');
@@ -1563,6 +1564,38 @@ function shirtAskCard(nation) {
   return `<section class="card"><div class="row"><div><b>Your number: #${mine}</b><div class="small muted">${left} of 3 shirt request${left === 1 ? '' : 's'} left ${where}${wait.length ? ` · waiting on ${wait.map(w => `#${w.no} (${esc(w.name)})`).join(', ')}` : ''}</div></div>
     ${can ? `<button class="btn sm" style="white-space:nowrap" data-act="${nation ? 'natShirtAskList' : 'shirtAskList'}">Ask for a shirt</button>` : ''}</div></section>`;
 }
+// The Nation tab's table: this summer's finals (group tables, then the knockouts), or this season's
+// qualifying group or Nations League group, your group first. Places that would go through now are marked.
+function natGroupTable(title, rows, go, meId) {
+  return `<div class="small" style="margin:8px 0 2px"><b>${esc(title)}</b></div><div class="tablewrap"><table class="lgt"><thead><tr><th>#</th><th>Team</th><th class="r">P</th><th class="r wdl">W</th><th class="r wdl">D</th><th class="r wdl">L</th><th class="r">GD</th><th class="r pts">Pts</th></tr></thead><tbody>
+    ${rows.map((r, i) => `<tr class="${r.id === meId ? 'me' : ''} ${go(r.id, i) ? 'zone-cl' : ''}"><td>${i + 1}</td><td class="clubname"><span class="clubcell">${crest(r.id, 'mini')}${esc(teamName(r.id))}</span></td><td class="r">${r.p}</td><td class="r wdl">${r.w}</td><td class="r wdl">${r.d}</td><td class="r wdl">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r pts"><b>${r.pts}</b></td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+const GROUP_LETTER = i => String.fromCharCode(65 + i);
+function natTableView() {
+  const p = S.player, nat = p.nat, me = 'N:' + nat;
+  const nf = S.natFinals && S.natFinals.season === S.season && S.phase !== 'season' ? S.natFinals : null;
+  const t = nf ? (nf.live ? (S.summer || []).find(x => x.key === nf.live) : nf) : null;
+  let finals = '';
+  if (t) {
+    const order = t.groups.map((g, gi) => gi).sort((a, b) => (t.groups[b].includes(me) ? 1 : 0) - (t.groups[a].includes(me) ? 1 : 0));
+    const ko = (t.ko || []).slice().reverse().map(k => `<div class="round"><div class="roundhead"><b>${esc(k.name)}</b></div>${k.res.map(r => tieRow(r.h, r.a, r)).join('')}</div>`).join('');
+    finals = `<section class="card"><h2>${esc(t.name)}</h2><p class="small muted" style="margin:0">${t.groups.length} groups of 4; the top two go through to the knockouts.${t.winner ? ` Won by <b>${esc(teamName(t.winner))}</b>.` : ''}${t.groups.flat().includes(me) ? '' : ` ${esc(natName(nat))} did not qualify.`}</p>
+      ${ko ? `<div class="lgcrest">${ko}</div>` : ''}
+      <div class="lgcrest">${order.map(gi => natGroupTable(`Group ${GROUP_LETTER(gi)}`, t.groups[gi].map(id => ({ id, ...t.table[id] })).sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf), (id, i) => i < 2, me)).join('')}</div></section>`;
+  }
+  const c = natCompOf(nat);
+  if (!c) {
+    const year = baseYear() + S.season + 1, ev = NAT_EVENTS.find(e => eventOn(e, year) && natEventFor(e, nat));
+    const why = ev ? `every nation of the ${confedOf(nat)} in the game goes to the ${ev.name} ${year}, so there is no qualifying` : `there is no finals for the ${confedOf(nat) || 'nation'} next summer`;
+    return finals + `<section class="card"><h2>${seasonLabel()}</h2><p class="small muted" style="margin:0">${esc(natName(nat))} play friendlies this season: ${why}.</p></section>`;
+  }
+  const go = new Set(compQualified(c)), mine = c.groups.findIndex(g => g.includes(nat));
+  const order = c.groups.map((g, gi) => gi).sort((a, b) => (b === mine ? 1 : 0) - (a === mine ? 1 : 0));
+  const done = c.played.length >= 6;
+  return finals + `<section class="card"><h2>${esc(c.name)}</h2><p class="small muted" style="margin:0">${esc(c.format)} ${c.played.length ? `${c.played.length} of 6 matchdays played.` : 'Starts in September.'}${c.places ? ` Marked: ${done ? 'qualified' : 'in a qualifying place now'}.` : ''}</p>
+    <div class="lgcrest">${order.map(gi => natGroupTable(c.league ? 'Table' : `Group ${GROUP_LETTER(gi)}`, compGroupTable(c, gi).map(n => ({ id: 'N:' + n, ...c.table[n] })), id => go.has(id.slice(2)), me)).join('')}</div></section>`;
+}
 function viewNation() {
   const p = S.player, nat = p.nat, id = 'N:' + nat, [cls, status] = natStatus(), since = natCoachSince(nat);
   const fav = Math.round(natFavor()), favCls = fav >= 60 ? 'good' : fav >= 40 ? '' : 'bad';
@@ -1570,7 +1603,7 @@ function viewNation() {
     <div class="small muted">Your status: <b class="${cls}" style="${cls === 'muted' ? 'color:var(--chalk)' : ''}">${status}</b>${natCaptain() ? ' · <b class="good">Captain</b>' : ''} · ${p.caps || 0} cap${p.caps === 1 ? '' : 's'}, ${p.intlGoals || 0} goal${p.intlGoals === 1 ? '' : 's'}</div>
     ${holdsTeamNat() && !p.intlRetired ? `<div class="energy" style="margin-top:6px"><span>Coach</span><div class="bar"><i class="${favCls}" style="width:${fav}%"></i></div><b class="num">${fav}</b></div>` : ''}
     <div class="small muted">Next: ${esc(natNext() || '–')}</div>${natCaptain() ? '<button class="btn sm block" data-act="natCapQuitAsk">Step down as captain</button>' : ''}</section>`;
-  const seg = `<div class="seg">${[['squad', 'Squad'], ['results', 'Results'], ['rivals', 'Rivals'], ['tours', 'Cups'], ['coaches', 'Coaches']].map(([k, l]) => `<button class="${natView === k ? 'on' : ''}" data-act="natView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="seg">${[['squad', 'Squad'], ['table', 'Table'], ['results', 'Results'], ['rivals', 'Rivals'], ['tours', 'Cups'], ['coaches', 'Coaches']].map(([k, l]) => `<button class="${natView === k ? 'on' : ''}" data-act="natView" data-v="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (natView === 'squad') {
     const snap = S.natSnap && S.natSnap.nat === nat && S.natSnap.list.some(x => x.no) ? S.natSnap : null;
@@ -1578,6 +1611,8 @@ function viewNation() {
     body = natMovesCard() + shirtAskCard(true) + `<div class="lgcrest"><section class="card"><p class="small muted" style="margin:0 0 6px">${snap ? `The squad ${esc(natCoach(nat))} named for ${esc(snap.when || 'the last games')}` : `The squad ${esc(natCoach(nat))} would pick today`}: the best two in each position, three goalkeepers. Players from leagues outside the game show no club.</p><div class="tablewrap"><table><thead><tr><th class="r">#</th><th>Pos</th><th>Player</th><th class="clubcrest">Club</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td class="r num">${r.no || '–'}</td><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.me ? p.name : r.n)}</td><td class="clubcrest">${r.club && S.clubs[r.club] ? `<span title="${esc(club(r.club).name)}">${crest(r.club, 'mini')}</span>` : '<span class="muted">–</span>'}</td><td class="r">${ageOf(r.by)}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
       </tbody></table></div></section></div>`;
+  } else if (natView === 'table') {
+    body = natTableView();
   } else if (natView === 'results') {
     body = `<div class="lgcrest">${natResultsView()}</div>`;
   } else if (natView === 'rivals') {

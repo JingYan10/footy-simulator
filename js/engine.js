@@ -3059,10 +3059,13 @@ function switchNation(nat) {
 // Turning your country down costs the coach's goodwill; fall low enough and he stops calling.
 const INTL_WINDOWS = { 6: 'qualifier', 10: 'qualifier', 14: 'qualifier', 31: 'friendly' };
 const INTL_MONTH = { 6: 'September', 10: 'October', 14: 'November', 31: 'March' };
+// What a window is for your country: qualifiers or Nations League (competitive) in the autumn when it
+// has one this season (see natComps), friendlies otherwise and every March.
+const intlKind = w => !INTL_WINDOWS[w] ? null : COMP_MD[w] && S.player.nat && natCompOf(S.player.nat) ? 'qualifier' : 'friendly';
 const natFavor = () => S.player.natFavor ?? 60;
 function changeFavor(d) { const p = S.player; p.natFavor = clamp(natFavor() + d, 0, 100); if (p.natFavor < 25) { p.natSnub = absWeek() + 20; p.natFavor = 45; msg(`${natName(p.nat)}'s coach is tired of being turned down: no call-ups for about 20 weeks.`, 'bad'); } }
 function intlWeek(report) {
-  const p = S.player, kind = INTL_WINDOWS[S.week + 1];
+  const p = S.player, kind = intlKind(S.week + 1);
   // A week ahead the coach names his squad, with or without you.
   if (kind) natSquadUpdate(`${INTL_MONTH[S.week + 1]} ${new Date(todayDate().getTime() + 7 * 864e5).getUTCFullYear()}`);
   // A week ahead: the call-up.
@@ -3072,32 +3075,40 @@ function intlWeek(report) {
     if (risky) {
       p.intlPick = { week: S.week + 1, choice: null };
       const t = capTie(), note = ` You have ${t.comp} competitive cap${t.comp === 1 ? '' : 's'}.${t.comp >= 3 ? ' One more would tie you to ' + natName(p.nat) + ' for good.' : ageOf(p.by) >= 21 ? ` You are over 21: any competitive game now ties you to ${natName(p.nat)} for good.` : ' Playing more than 3, or any after you turn 21, ties you for good.'}`;
-      queueDecision({ type: 'callup', week: S.week + 1, kind, text: `${natName(p.nat)} have called you up for two World Cup qualifiers.${note}` });
+      queueDecision({ type: 'callup', week: S.week + 1, kind, text: `${natName(p.nat)} have called you up for the ${natCompOf(p.nat).name}.${note}` });
     } else p.intlPick = { week: S.week + 1, choice: p.intlAvail || 'all' };
   }
   // This week: the games.
-  if (INTL_WINDOWS[S.week]) playWindow(INTL_WINDOWS[S.week], report);
+  if (INTL_WINDOWS[S.week]) playWindow(intlKind(S.week), report);
 }
 // The window's two games, fixed when the week begins: opponents (your confederation for qualifiers,
 // anyone for friendlies) and days around your club's games (Saturday league, midweek cup).
 // Picked for them, you play each from the Home screen on its day, through the matchday like a club
 // game; the week does not end until you have. Not picked, they are played at the end of the week.
 function intlGames() {
-  const p = S.player, kind = INTL_WINDOWS[S.week];
+  const p = S.player, kind = intlKind(S.week);
   if (!kind || S.phase !== 'season' || !p.nat) return [];
   if (S.intl && S.intl.key === weekKey() && S.intl.nat === p.nat) return S.intl.games;
-  const me = 'N:' + p.nat, all = Object.keys(NATION_STR).filter(n => n !== p.nat), conf = (CONFED[confedOf(p.nat)] || []).filter(n => n !== p.nat);
-  const pool = kind === 'qualifier' && conf.length > 1 ? conf : all;
-  const o1 = pick(pool), o2 = pick(pool.filter(n => n !== o1));
+  const me = 'N:' + p.nat, all = Object.keys(NATION_STR).filter(n => n !== p.nat);
   const e = midweekFixture(), mo = e && typeof midweekOffset === 'function' ? midweekOffset(e) : -1;
   const days = mo < 0 ? [3, 6] : mo === 5 ? [2, 6] : [1, 6];
-  const games = [{ h: me, a: 'N:' + o1, day: days[0], kind }, { h: 'N:' + o2, a: me, day: days[1], kind }];
+  // Competitive: this window's two matchdays of your group. A rest matchday (a group of three) is
+  // filled with a friendly.
+  const c = kind === 'qualifier' ? natCompOf(p.nat) : null, games = [];
+  if (c) COMP_MD[S.week].forEach(md => { const f = c.fix[md].find(([h, a]) => h === p.nat || a === p.nat); if (f) games.push({ h: 'N:' + f[0], a: 'N:' + f[1], kind, md, label: c.short }); });
+  const used = games.map(g => g.h === me ? g.a : g.h);
+  while (games.length < 2) {
+    const o = pick(all.filter(n => !used.includes('N:' + n)));
+    used.push('N:' + o);
+    games.push(games.length % 2 ? { h: 'N:' + o, a: me, kind: 'friendly', label: 'Friendly' } : { h: me, a: 'N:' + o, kind: 'friendly', label: 'Friendly' });
+  }
+  games.forEach((g, i) => { g.day = days[i]; });
   S.intl = { key: weekKey(), nat: p.nat, games, cup: e ? { day: mo, opp: e.opp, tag: e.euro ? null : 'Cup', name: e.t.name } : null };
   return games;
 }
 // Picked and available for this week's games.
 function intlUserPicked() {
-  const p = S.player, k = INTL_WINDOWS[S.week], c = p.intlPick && p.intlPick.week === S.week ? p.intlPick.choice : null;
+  const p = S.player, k = intlKind(S.week), c = p.intlPick && p.intlPick.week === S.week ? p.intlPick.choice : null;
   return !!k && !!c && S.phase === 'season' && !p.needsContract && !p.injured && c !== 'none' && !(c === 'friendly' && k === 'qualifier');
 }
 const intlPending = () => intlUserPicked() && intlGames().some(g => !g.res);
@@ -3112,7 +3123,7 @@ function intlSel(g) {
   return g.sel;
 }
 function playIntlGame(g, withUser) {
-  const p = S.player, me = 'N:' + p.nat, isHome = g.h === me, label = g.kind === 'qualifier' ? 'Qualifier' : 'Friendly';
+  const p = S.player, me = 'N:' + p.nat, isHome = g.h === me, label = g.label || (g.kind === 'qualifier' ? 'Qualifier' : 'Friendly');
   const user = withUser ? { ...intlSel(g), goals: 0, assists: 0, team: me } : null;
   const r = simTeams(g.h, g.a, user, 2);
   let rating = null;
@@ -3122,7 +3133,7 @@ function playIntlGame(g, withUser) {
     p.caps = (p.caps || 0) + 1;
     p.intlGoals = (p.intlGoals || 0) + user.goals;
     if (g.kind === 'qualifier') { const t = capTie(); t.comp++; t.last = S.season; if (ageOf(p.by) >= 21) t.adult = true; }
-    addComp(p.st.comps = p.st.comps || {}, `${natName(p.nat)} ${g.kind === 'qualifier' ? 'qualifiers' : 'friendlies'}`, 'nat', 1, user.goals, user.assists, rating, user.mins);
+    addComp(p.st.comps = p.st.comps || {}, `${natName(p.nat)} ${g.kind !== 'qualifier' ? 'friendlies' : g.label === 'Nations League' ? 'Nations League' : 'qualifiers'}`, 'nat', 1, user.goals, user.assists, rating, user.mins);
     addRep((rating - 6.4) * .4 + user.goals * .4 + .2);
     p.energy = Math.max(0, p.energy - 12);
     notifyHaul(user, natName(p.nat));
@@ -3130,13 +3141,14 @@ function playIntlGame(g, withUser) {
   }
   r.ev = matchEvents(r, user, me);
   g.res = { gh: r.gh, ga: r.ga };
+  if (g.md != null) { const c = natCompOf(p.nat); if (c) compRecord(c, g.h.slice(2), g.a.slice(2), r.gh, r.ga); }
   addNatGame({ comp: label, stage: `${INTL_MONTH[S.week]} window`, h: g.h, a: g.a, gh: r.gh, ga: r.ga, scorers: r.scorers, ev: r.ev, mins: user ? user.mins || 0 : 0, start: !!(user && user.start), goals: user ? user.goals : 0, assists: user ? user.assists : 0, rating, saves: user ? user.saves : undefined });
   save();
   return { comp: `${natName(p.nat)} · ${label}`, stage: `${INTL_MONTH[S.week]} window`, match: { ...r, user: user || { mins: 0, goals: 0, assists: 0 }, isHome } };
 }
 // The week begins: the break is announced, with your part in it.
 function intlWeekStart() {
-  const p = S.player, kind = INTL_WINDOWS[S.week];
+  const p = S.player, kind = intlKind(S.week);
   if (!kind || !holdsTeamNat()) return;
   const games = intlGames(), me = 'N:' + p.nat, c = p.intlPick && p.intlPick.week === S.week ? p.intlPick.choice : undefined;
   const list = games.map(g => `${natName((g.h === me ? g.a : g.h).slice(2))} (${DAY_NAMES_E[(6 + g.day) % 7]})`).join(' and ');
@@ -3158,6 +3170,7 @@ function playWindow(kind, report) {
   // Games you were not part of are played now; yours were played on their days.
   const me = 'N:' + p.nat, games = intlGames();
   games.filter(g => !g.res).forEach(g => playIntlGame(g, false));
+  compWindowSim(S.week);
   const lines = games.map(g => `${teamName(g.h)} ${g.res.gh}–${g.res.ga} ${teamName(g.a)}`);
   report.events.push(`${natName(p.nat)} ${kind === 'qualifier' ? 'qualifiers' : 'friendlies'}: ${lines.join(', ')}`);
   if (!picked) msg(`International break: ${lines.join('; ')}.`);
