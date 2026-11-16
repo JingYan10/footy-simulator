@@ -2856,7 +2856,6 @@ const ACHIEVEMENTS = [
   ['wonderkid', 'Wonderkid', 'Make your debut at 16'],
   ['veteran', 'Still going', 'Play a game at 38 or older'],
   ['ovr90', 'World class', 'Reach 90 OVR'],
-  ['ovr95', 'Living legend', 'Reach 95 OVR'],
   ['captain', 'Armband', 'Be named club captain'],
   ['nickname', 'Fan favourite', 'Earn a nickname from the fans'],
   ['potm', 'Month to remember', 'Win Player of the Month'],
@@ -2874,7 +2873,8 @@ const ACHIEVEMENTS = [
   ['legend', 'Club legend', 'Retire as a legend of a club'],
   ['icon', 'Icon', 'Retire with an Icon card'],
 ];
-function achvList() { try { return JSON.parse(localStorage.getItem(ACHV_KEY)) || {}; } catch (e) { return {}; } }
+// Unlocked ones still on the list (one that was removed, like 95 OVR, no longer counts).
+function achvList() { let all; try { all = JSON.parse(localStorage.getItem(ACHV_KEY)) || {}; } catch (e) { return {}; } const ids = new Set(ACHIEVEMENTS.map(a => a[0])); return Object.fromEntries(Object.entries(all).filter(([k]) => ids.has(k))); }
 function achv(id) {
   const got = achvList();
   if (got[id] || !S || !S.player) return;
@@ -2888,7 +2888,6 @@ function achv(id) {
 function achvSweep() {
   const p = S.player, ovr = calcOVR();
   if (ovr >= 90) achv('ovr90');
-  if (ovr >= 95) achv('ovr95');
   const titles = (p.trophies || []).filter(t => (p.career || []).some(r => r.season === t.season && r.league === t.name));
   if (titles.length) achv('title');
   const countries = new Set(titles.map(t => (DB.leagues.find(l => l.name === t.name) || {}).country).filter(Boolean));
@@ -3578,7 +3577,6 @@ function weekTail(report, user, cupUser, fx) {
   shirtRequestWeek();
   shirtFreeWeek();
   if (calcOVR() >= 90) achv('ovr90');
-  if (calcOVR() >= 95) achv('ovr95');
   const card = cardTier(calcOVR());
   if (card !== 'Bronze' && !(p.cards || []).includes(card)) {
     p.cards = [...(p.cards || []), card];
@@ -5699,8 +5697,10 @@ function ageWorld() {
         gaps.push([c, pl.pos]);
         return false;
       }
-      const d = age <= 21 ? rand(0, 4) : age <= 24 ? rand(-.5, 2.5) : age <= 28 ? rand(-1, 1) : age <= 31 ? rand(-2, .5) : rand(-4, -1);
-      pl.r = Math.round(clamp(pl.r + d, 40, 94));
+      let d = age <= 21 ? rand(0, 4) : age <= 24 ? rand(-.5, 2.5) : age <= 28 ? rand(-1, 1) : age <= 31 ? rand(-2, .5) : rand(-4, -1);
+      // The very top is hard to reach: gains shrink from 85 and almost stop from 89, so 90+ stays rare.
+      if (d > 0) d *= pl.r >= 89 ? .15 : pl.r >= 87 ? .45 : pl.r >= 85 ? .8 : 1;
+      pl.r = Math.round(clamp(pl.r + d, 40, MAX_OVR)); // nobody passes 91, the same ceiling as you
       pl.inj = 0;
       return true;
     });
@@ -6103,6 +6103,8 @@ function migrate() {
   // Nationality: born with the one you play for. Caps from before the international windows were not
   // split into friendlies and qualifiers: most are counted as competitive, and any tournament ties you.
   if (!p.birthNat) p.birthNat = p.nat;
+  // Players rated above the 91 ceiling in older saves come back down to it.
+  Object.values(S.clubs || {}).forEach(c => (c.players || []).forEach(pl => { if (pl.r > MAX_OVR) pl.r = MAX_OVR; }));
   // Player of the Month awards from before they kept their month: this season's are matched with the
   // months you won (S.potm); older ones get a month of their season at random (August to May, no
   // month twice in a season), saved so it stays the same.

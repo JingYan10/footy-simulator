@@ -2649,7 +2649,8 @@ document.addEventListener('click', e => {
     case 'importAsk': showImport(); return;
     case 'importGo': { const ok = importSave(document.getElementById('importText').value.trim()); if (ok) { closeModal(); landing = false; tab = 'home'; toast('Career imported'); render(); } else toast('That is not a valid save'); return; }
     case 'continue': landing = false; tab = 'home'; render(); window.scrollTo(0, 0); return;
-    case 'viewPast': pastView = +v; render(); window.scrollTo(0, 0); return;
+    // The career you just finished, while its save is still here: back into it, with every tab.
+    case 'viewPast': if (S && S.phase === 'retired' && S.player.careerId === +v) { landing = false; pastView = null; tab = 'home'; } else pastView = +v; render(); window.scrollTo(0, 0); return;
     case 'pastBack': pastView = null; landing = true; render(); window.scrollTo(0, 0); return;
     case 'pastDelAsk': { const r = loadArchive().find(x => x.id === +v); if (r) confirmSheet(`Delete ${esc(r.name)}?`, `This career (${r.career.length} season${r.career.length !== 1 ? 's' : ''}, ${esc(r.lastClub)}) will be gone for good. This cannot be undone.`, 'pastDel', 'Delete', v); return; }
     case 'pastDel': deleteArchived(+v); closeModal(); toast('Career deleted'); pastView = null; landing = true; render(); return;
