@@ -647,8 +647,8 @@ const oppEdge = (mine, opp) => (clubTier(opp) === 1 ? .9 : 1) * clamp(Math.exp((
 function declineFactor(age = ageOf(S.player.by)) { return age > VET_AGE ? 1.1 + (age - VET_AGE - 1) * .1 : 1; }
 // Saudi and MLS football is gentler on an old body: veterans decline about 30% slower there.
 // Saudi Arabia and the MLS are kinder on ageing legs: ageing and bad games cost 60% less there.
-// OVR lost at each birthday from 34 (before kit and league): a steady fade that quickens a little each year.
-const BIRTHDAY_DROP = { 34: .4, 35: .7, 36: .9, 37: 1.2, 38: 1.5, 39: 2 };
+// OVR lost at each birthday from 34 (before kit and form): gentle at first, steep from 36.
+const BIRTHDAY_DROP = { 34: .5, 35: .9, 36: 1.5, 37: 2.2, 38: 2.8, 39: 3, 40: 3.4 };
 
 // The card stats a player of this position and OVR typically has (initAttrs without the random
 // spread). Used for Icon cards of old careers that were saved without any stats.
@@ -2804,7 +2804,7 @@ const canRetireIntl = () => { const p = S.player; return !p.intlRetired && S.pha
 function retireIntl() {
   const p = S.player;
   if (!canRetireIntl()) return false;
-  p.intlRetired = S.season;
+  p.intlRetired = { season: S.season }; // an object, so a first-season retirement (season 0) still counts
   callUpCache = null;
   addMilestone(`Retired from international football (${p.caps} caps, ${p.intlGoals || 0} goals)`);
   notify('good', 'International retirement', `You have played your last game for ${natName(p.nat)}: ${p.caps} caps and ${p.intlGoals || 0} goals. Fewer games means your body ages a little slower.`);
@@ -5341,7 +5341,12 @@ function endSeason() {
   if (nextAge > VET_AGE) {
     // A strong season keeps you sharp: up to 60% less fade after a great one.
     sum.formShield = clamp((review.form || 0) * .25, 0, .6);
-    const rate = (BIRTHDAY_DROP[nextAge] || 2 + (nextAge - 39) * .4) * (1 - .06 * p.equip) * (1 - sum.formShield) * (p.intlRetired ? INTL_RETIRE_FADE : 1);
+    // Kit, form and a rest from international football soften it, but from 36 by 30% at most between them.
+    const soft = 1 - (1 - .06 * p.equip) * (1 - sum.formShield) * (p.intlRetired ? INTL_RETIRE_FADE : 1);
+    const rate = (BIRTHDAY_DROP[nextAge] || 3.4 + (nextAge - 40) * .6) * (1 - Math.min(soft, nextAge >= 36 ? .3 : .7));
+    // Stats above what the 91 ceiling shows are no cushion: they come down to it first.
+    const extra = rawOVR() - MAX_OVR;
+    if (extra > 0) attrKeys(p.pos).forEach(k => { p.attrs[k] = clamp(p.attrs[k] - extra, 20, 99); });
     attrKeys(p.pos).forEach(k => {
       const fast = ['PAC', 'REF'].includes(k) ? 1.3 : 1;
       p.attrs[k] = clamp(p.attrs[k] - rand(.8, 1.2) * rate * fast, 20, 99);
@@ -5351,7 +5356,7 @@ function endSeason() {
   sum.ovrPreAge = ovr;
   sum.ovrEnd = calcOVR();
   sum.ageTo = nextAge;
-  sum.ageLoss = Math.round((rawBefore - rawOVR()) * 10) / 10;
+  sum.ageLoss = Math.round((Math.min(rawBefore, MAX_OVR) - rawOVR()) * 10) / 10;
   sum.rawEnd = Math.round(rawOVR() * 10) / 10;
   sum.seasonGain = ovr - (S.ovrSeasonStart || ovr) - Math.round(review.change);
   // First season in Saudi Arabia or the MLS from 30: the step down in level costs 3 to 4 OVR in all
@@ -5990,7 +5995,7 @@ function sellPastShares(id, sym, fraction) {
   if (left > 0) rec.assets.portfolio[sym] = { ...h, shares: left, cost: Math.round(h.cost * left / h.shares) }; else delete rec.assets.portfolio[sym];
   rec.assets.shares = Math.round(Object.values(rec.assets.portfolio).reduce((s, x) => s + x.shares * x.price, 0));
   rec.assets.stocks = Object.keys(rec.assets.portfolio).length;
-  try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(list)); } catch (e) { return 0; }
+  setArchive(list);
   return back;
 }
 
@@ -6101,12 +6106,12 @@ async function deletePaused(id) {
 }
 
 // ---------- save ----------
-// Saving. A long career outgrows localStorage (about 5 MB per site, which a career passes after ten
-// or so seasons), and a failed write there used to be silent: refresh, and you were back where the
-// last save that fitted left you. So the career is kept in IndexedDB (far roomier) as well, and
-// localStorage holds a copy only while it fits; when it no longer does, that stale copy is removed
-// so it can never be loaded instead. Each save is stamped, and loading takes the newest of the two.
-// If neither store takes it, you are told.
+// Saving. A career outgrows localStorage (about 5 MB per site; a save is over 2 million characters
+// from the first season and grows from there), and a failed write there used to be silent: refresh,
+// and you were back where the last save that fitted left you. So the career is kept in IndexedDB (far
+// roomier). localStorage holds a copy only for a small save (LOCAL_SAVE_MAX), which in practice means
+// older, smaller ones; otherwise any copy there is removed so a stale one can never be loaded. Each
+// save is stamped, and loading takes the newest copy. If no store takes it, you are told.
 const IDB_CURRENT = 'current';
 let idbLatest = null, idbWriting = false, saveWarned = false;
 function saveWarn() {
@@ -6129,11 +6134,13 @@ function saveIDB(raw) {
   })();
 }
 let localOk = true;
+const LOCAL_SAVE_MAX = 1500000;
 function save() {
   if (!S) return;
   S.savedAt = Date.now();
   const raw = JSON.stringify(S);
-  try { localStorage.setItem(SAVE_KEY, raw); localOk = true; }
+  // A big career skips localStorage altogether, leaving its room for the rest (see setArchive).
+  try { if (raw.length > LOCAL_SAVE_MAX) throw new Error('too big'); localStorage.setItem(SAVE_KEY, raw); localOk = true; }
   catch (e) { localOk = false; try { localStorage.removeItem(SAVE_KEY); } catch (e2) { /* ignore */ } }
   saveIDB(raw);
 }
@@ -6294,7 +6301,34 @@ function addNewLeagues() {
 // Retired careers are kept in a small list of their own (just the player's story, not the
 // whole world), so starting a new career never deletes them.
 const ARCHIVE_KEY = 'ptl_careers_v1';
-function loadArchive() { try { return JSON.parse(localStorage.getItem(ARCHIVE_KEY)) || []; } catch (e) { return []; } }
+// Finished careers live in IndexedDB too (key 'archive'), read once at start-up into archiveCache, so
+// they never compete with a long career for localStorage's 5 MB. localStorage keeps a copy only while
+// the list is small (as a backup, and for saves from before this); a write that does not fit removes
+// it rather than leaving an older list behind.
+const IDB_ARCHIVE = 'archive', ARCHIVE_LOCAL_MAX = 500000;
+let archiveCache = null;
+function localArchive() { try { return JSON.parse(localStorage.getItem(ARCHIVE_KEY)) || null; } catch (e) { return null; } }
+function loadArchive() { return archiveCache ? archiveCache.slice() : localArchive() || []; }
+function setArchive(list) {
+  archiveCache = list;
+  const raw = JSON.stringify(list);
+  if (typeof indexedDB !== 'undefined') idbDo('readwrite', st => st.put(raw, IDB_ARCHIVE)).catch(() => saveWarn());
+  try { if (raw.length <= ARCHIVE_LOCAL_MAX) localStorage.setItem(ARCHIVE_KEY, raw); else localStorage.removeItem(ARCHIVE_KEY); }
+  catch (e) { try { localStorage.removeItem(ARCHIVE_KEY); } catch (e2) { /* ignore */ } }
+}
+async function loadArchiveStore() {
+  let raw = null;
+  try { raw = await idbDo('readonly', st => st.get(IDB_ARCHIVE)); } catch (e) { return; }
+  const local = localArchive();
+  let list = null;
+  try { list = raw ? JSON.parse(raw) : null; } catch (e) { list = null; }
+  // First run after this update: the list moves over from localStorage.
+  if (!list) { if (local) setArchive(local); return; }
+  // Careers only localStorage knows about (finished on an older version in between) are kept too.
+  if (local) { const ids = new Set(list.map(r => r.id)), extra = local.filter(r => !ids.has(r.id)); if (extra.length) { setArchive([...extra, ...list]); return; } }
+  archiveCache = list;
+}
+
 // ---------- legacy ----------
 // Per club across a whole career (loans left out): seasons, apps, G/A and league titles. A club
 // names you a legend after more than 5 seasons, 100+ goals and assists and more than 150 games.
@@ -6462,12 +6496,12 @@ function iconStats(rec, rows, ageAt) {
 function archiveCurrent() {
   if (!S || S.phase !== 'retired') return;
   const rec = retiredRecord(), list = loadArchive().filter(r => r.id !== rec.id);
-  try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify([rec, ...list])); } catch (e) { /* storage full or unavailable */ }
+  setArchive([rec, ...list]);
 }
 // Delete a past career for good. If it is the retired save still on this device, that goes
 // too, or it would be put straight back on the list.
 function deleteArchived(id) {
-  try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(loadArchive().filter(r => r.id !== id))); } catch (e) { /* storage unavailable */ }
+  setArchive(loadArchive().filter(r => r.id !== id));
   if (S && S.phase === 'retired' && S.player.careerId === id) wipe();
 }
 

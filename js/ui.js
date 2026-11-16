@@ -1631,7 +1631,7 @@ function viewNation() {
   const head = `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${esc(natName(nat))}</b><div class="small muted">Coach: ${esc(natCoach(nat))} (rating ${natCoachR(nat)}${since != null ? `, since ${seasonLabel(since)}` : ''}) · ${confedOf(nat) || 'Independent'} · Team rating ${NATION_STR[nat] || 60}</div></div>${crest(id)}</div>
     <div class="small muted">Your status: <b class="${cls}" style="${cls === 'muted' ? 'color:var(--chalk)' : ''}">${status}</b>${natCaptain() ? ' · <b class="good">Captain</b>' : ''} · ${p.caps || 0} cap${p.caps === 1 ? '' : 's'}, ${p.intlGoals || 0} goal${p.intlGoals === 1 ? '' : 's'}</div>
     ${holdsTeamNat() && !p.intlRetired ? `<div class="energy" style="margin-top:6px"><span>Coach</span><div class="bar"><i class="${favCls}" style="width:${fav}%"></i></div><b class="num">${fav}</b></div>` : ''}
-    <div class="small muted">Next: ${esc(natNext() || '–')}</div>${natCaptain() ? '<button class="btn sm block" data-act="natCapQuitAsk">Step down as captain</button>' : ''}</section>`;
+    <div class="small muted">Next: ${esc(natNext() || '–')}</div>${natCaptain() ? '<button class="btn sm block" data-act="natCapQuitAsk">Step down as captain</button>' : ''}${canRetireIntl() ? '<button class="btn sm block" data-act="intlRetireAsk">Retire from international football</button>' : ''}</section>`;
   const seg = `<div class="seg">${[['squad', 'Squad'], ['table', 'Table'], ['results', 'Results'], ['rivals', 'Rivals'], ['tours', 'Cups'], ['coaches', 'Coaches']].map(([k, l]) => `<button class="${natView === k ? 'on' : ''}" data-act="natView" data-v="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (natView === 'squad') {
@@ -2058,7 +2058,7 @@ function nationalityCard() {
 // Why you are (or aren't) in your national team.
 function nationNote() {
   const p = S.player, nat = esc(natName(p.nat)), floor = callUpFloor(p.nat), ahead = natRivals();
-  if (p.intlRetired) return `You retired from international football in ${seasonLabel(p.intlRetired)} after ${p.caps} caps and ${p.intlGoals || 0} goals.`;
+  if (p.intlRetired) return `You retired from international football in ${seasonLabel(p.intlRetired.season ?? p.intlRetired)} after ${p.caps} caps and ${p.intlGoals || 0} goals.`;
   if (u21Pick()) return `Not in the senior squad yet, but you are in the ${nat} U21s.`;
   if (calledUp()) return ahead.length ? `You are in the ${nat} squad, with ${esc(ahead[0].n)} (${ahead[0].r}) ahead of you at ${p.pos}.` : `You are ${nat}'s first-choice ${p.pos}.`;
   if (calcOVR() < floor) return `${nat} only look at players rated ${floor}+.`;
@@ -2752,5 +2752,5 @@ load();
 // The IndexedDB copy may be newer than localStorage's (see save): wait a moment for it before the first screen.
 let booted = false;
 const boot = () => { if (!booted) { booted = true; render(); } };
-loadNewest().catch(() => false).then(changed => { if (booted && changed) render(); boot(); });
+Promise.all([loadNewest().catch(() => false), loadArchiveStore().catch(() => {})]).then(() => { if (booted) render(); boot(); });
 setTimeout(boot, 1500);
