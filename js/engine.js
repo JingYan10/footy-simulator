@@ -6101,10 +6101,60 @@ async function deletePaused(id) {
 }
 
 // ---------- save ----------
-function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* storage unavailable */ } }
-function load() { try { const raw = localStorage.getItem(SAVE_KEY); if (raw) S = JSON.parse(raw); } catch (e) { S = null; } if (S && S.v !== 3) S = null;
+// Saving. A long career outgrows localStorage (about 5 MB per site, which a career passes after ten
+// or so seasons), and a failed write there used to be silent: refresh, and you were back where the
+// last save that fitted left you. So the career is kept in IndexedDB (far roomier) as well, and
+// localStorage holds a copy only while it fits; when it no longer does, that stale copy is removed
+// so it can never be loaded instead. Each save is stamped, and loading takes the newest of the two.
+// If neither store takes it, you are told.
+const IDB_CURRENT = 'current';
+let idbLatest = null, idbWriting = false, saveWarned = false;
+function saveWarn() {
+  if (saveWarned || typeof toast !== 'function') return;
+  saveWarned = true;
+  toast('Could not save your career on this device. Export a save from the Career tab to keep it safe.');
+}
+function saveIDB(raw) {
+  idbLatest = raw;
+  if (idbWriting || typeof indexedDB === 'undefined') return;
+  idbWriting = true;
+  (async () => {
+    while (idbLatest) {
+      const r = idbLatest;
+      idbLatest = null;
+      try { await idbDo('readwrite', st => st.put(r, IDB_CURRENT)); saveWarned = false; }
+      catch (e) { if (!localOk) saveWarn(); }
+    }
+    idbWriting = false;
+  })();
+}
+let localOk = true;
+function save() {
+  if (!S) return;
+  S.savedAt = Date.now();
+  const raw = JSON.stringify(S);
+  try { localStorage.setItem(SAVE_KEY, raw); localOk = true; }
+  catch (e) { localOk = false; try { localStorage.removeItem(SAVE_KEY); } catch (e2) { /* ignore */ } }
+  saveIDB(raw);
+}
+function load() {
+  try { const raw = localStorage.getItem(SAVE_KEY); if (raw) S = JSON.parse(raw); } catch (e) { S = null; }
+  if (S && S.v !== 3) S = null;
   if (S) migrate();
-  return S; }
+  return S;
+}
+// At start-up, after load(): the IndexedDB copy, if it is newer than what localStorage had.
+async function loadNewest() {
+  let raw = null;
+  try { raw = await idbDo('readonly', st => st.get(IDB_CURRENT)); } catch (e) { return false; }
+  if (!raw) return false;
+  let s;
+  try { s = JSON.parse(raw); } catch (e) { return false; }
+  if (!s || s.v !== 3 || (S && (S.savedAt || 0) >= (s.savedAt || 0))) return false;
+  S = s;
+  migrate();
+  return true;
+}
 
 // Bring older saves up to date without losing anything.
 function migrate() {
@@ -6432,4 +6482,4 @@ function importSave(text) {
   save();
   return true;
 }
-function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } S = null; }
+function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } idbLatest = null; if (typeof indexedDB !== 'undefined') idbDo('readwrite', st => st.delete(IDB_CURRENT)).catch(() => {}); S = null; }

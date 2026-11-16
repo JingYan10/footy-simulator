@@ -2749,4 +2749,8 @@ modal.addEventListener('click', e => { if (e.target === modal && !modal.querySel
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 load();
-render();
+// The IndexedDB copy may be newer than localStorage's (see save): wait a moment for it before the first screen.
+let booted = false;
+const boot = () => { if (!booted) { booted = true; render(); } };
+loadNewest().catch(() => false).then(changed => { if (booted && changed) render(); boot(); });
+setTimeout(boot, 1500);
