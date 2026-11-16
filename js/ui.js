@@ -1201,13 +1201,42 @@ function clubStints(rec) {
 
 function viewRetired() { return retiredHtml(retiredRecord()); }
 
+// A past career has a small bar at the bottom: its story, what you owned, and the way back.
+let pastTab = 'career';
+function pastAssetsHtml(rec) {
+  const a = rec.assets;
+  if (!a) return `<section class="card"><h2>Assets</h2><p class="small muted" style="margin:0">This career finished before what you owned was kept with it, so there is nothing to show here. Careers you finish from now on keep their homes, collection and shares.</p><div class="kv" style="margin-top:8px"><div><small>Bank at retirement</small><b class="num">${money(rec.money || 0)}</b></div></div></section>`;
+  const homes = Object.entries(a.homes || {}).filter(([, i]) => i > 0 && HOUSING[i]);
+  const items = (a.collection || []).map(c => ({ ...c, it: luxItem(c.id) })).filter(x => x.it);
+  const homesWorth = homes.reduce((s, [nat, i]) => s + housePrice(nat, i), 0), itemsWorth = items.reduce((s, x) => s + x.it.price, 0);
+  const total = (rec.money || 0) + (a.shares || 0) + homesWorth + itemsWorth;
+  // Shares still held: priced as they were at retirement, and still yours to sell.
+  const port = Object.entries(a.portfolio || {});
+  const inv = `<section class="card"><div class="row"><h2>Investments</h2><span class="small muted">${money(a.shares || 0)}</span></div>${a.portfolio
+    ? (port.length ? `<p class="small muted" style="margin:0">Prices as they were when you retired. Selling pays into this career's bank, less the ${Math.round(TRADE_FEE * 1000) / 10}% trading fee.</p><div class="commits">${port.map(([sym, h]) => {
+      const v = h.shares * h.price, pl = h.cost ? v / h.cost - 1 : 0;
+      return `<div class="commit"><div><b>${sym}</b> <span class="small muted">${esc(stock(sym) ? stock(sym).name : sym)}</span>
+        <div class="small muted">${h.shares.toLocaleString()} shares · worth ${money(Math.round(v))} · <span class="${pl >= 0 ? 'good' : 'bad'}">${pctTxt(pl)}</span></div>
+        <div class="btns"><button class="btn sm" data-act="pastSell" data-v="${rec.id}|${sym}|.25">Sell 25%</button><button class="btn sm" data-act="pastSell" data-v="${rec.id}|${sym}|1">Sell all</button></div></div></div>`;
+    }).join('')}</div>` : '<p class="small muted" style="margin:0">No shares left: all sold.</p>')
+    : `<p class="small muted" style="margin:0">${a.shares ? `Worth ${money(a.shares)} at retirement. This career finished before each holding was kept, so they can't be sold here.` : 'You held no shares.'}</p>`}</section>`;
+  return `<section class="card hero"><h2>Assets at retirement</h2>
+    <div class="kv"><div><small>Total worth</small><b class="num">${money(total)}</b></div><div><small>Bank</small><b class="num">${money(rec.money || 0)}</b></div><div><small>Shares</small><b class="num">${money(a.shares || 0)}</b></div></div></section>${inv}
+    <section class="card"><div class="row"><h2>Homes</h2><span class="small muted">${money(homesWorth)}</span></div>${homes.length ? `<div class="commits">${homes.map(([nat, i]) => `<div class="commit"><div><b>${natFlag(nat)} ${esc(HOUSING[i].name)}</b><div class="small muted">${esc(natName(nat))} · bought for about ${money(housePrice(nat, i))}</div></div></div>`).join('')}</div>` : '<p class="small muted" style="margin:0">You never bought a home.</p>'}</section>
+    <section class="card"><div class="row"><h2>Collection</h2><span class="small muted">${items.length} item${items.length !== 1 ? 's' : ''} · ${money(itemsWorth)}</span></div>${items.length ? `<div class="commits">${items.map(x => `<div class="commit"><div class="row" style="justify-content:flex-start;gap:10px"><div style="width:84px;flex:none">${luxPic(x.it)}</div><div><b>${esc(luxName(x.it))}</b> <span class="chip">${LUX_CATS[x.it.cat]}</span><div class="small muted">Bought ${seasonLabel(x.season)} · ${money(x.it.price)}</div></div></div></div>`).join('')}</div>` : '<p class="small muted" style="margin:0">No luxuries.</p>'}</section>`;
+}
+function pastNav() {
+  const tabs = [['career', 'Career', 'career'], ['assets', 'Assets', 'shop'], ['back', 'Back', 'home']];
+  return `<nav class="tabs"><div class="in" style="grid-template-columns:repeat(3,1fr)">${tabs.map(([k, l, ic]) => `
+    <button class="${pastTab === k ? 'on' : ''}" data-act="${k === 'back' ? 'pastBack' : 'pastTab'}" data-v="${k}" aria-label="${l}">${icon(ic)}<span>${l}</span></button>`).join('')}</div></nav>`;
+}
 // A past career opened from the landing page.
 function renderPast() {
   const rec = loadArchive().find(r => r.id === pastView);
   if (!rec) { pastView = null; landing = true; render(); return; }
   // Seasons are labelled from the year that career started.
   labelBase = rec.startYear || START_YEAR;
-  try { app.innerHTML = `<div class="create wrap">${retiredHtml(rec, 'freshStart')}<button class="btn block" data-act="pastExport" data-v="${rec.id}">Export this career</button><button class="btn block" data-act="pastBack">Back</button></div>`; } finally { labelBase = null; }
+  try { app.innerHTML = `<div class="create wrap">${pastTab === 'assets' ? pastAssetsHtml(rec) : `${retiredHtml(rec, 'freshStart')}<button class="btn block" data-act="pastExport" data-v="${rec.id}">Export this career</button><button class="btn block" data-act="pastBack">Back</button>`}</div>` + pastNav(); } finally { labelBase = null; }
 }
 // A finished career as a file or text, to keep or share. It holds only that career's record (seasons,
 // trophies, awards, card), not a save to carry on playing.
@@ -2650,7 +2679,9 @@ document.addEventListener('click', e => {
     case 'importGo': { const ok = importSave(document.getElementById('importText').value.trim()); if (ok) { closeModal(); landing = false; tab = 'home'; toast('Career imported'); render(); } else toast('That is not a valid save'); return; }
     case 'continue': landing = false; tab = 'home'; render(); window.scrollTo(0, 0); return;
     // The career you just finished, while its save is still here: back into it, with every tab.
-    case 'viewPast': if (S && S.phase === 'retired' && S.player.careerId === +v) { landing = false; pastView = null; tab = 'home'; } else pastView = +v; render(); window.scrollTo(0, 0); return;
+    case 'viewPast': if (S && S.phase === 'retired' && S.player.careerId === +v) { landing = false; pastView = null; tab = 'home'; } else { pastView = +v; pastTab = 'career'; } render(); window.scrollTo(0, 0); return;
+    case 'pastTab': pastTab = v; render(); window.scrollTo(0, 0); return;
+    case 'pastSell': { const [id, sym, f] = v.split('|'); const back = sellPastShares(+id, sym, +f); if (back) toast(`Sold for ${money(back)}`); render(); return; }
     case 'pastBack': pastView = null; landing = true; render(); window.scrollTo(0, 0); return;
     case 'pastDelAsk': { const r = loadArchive().find(x => x.id === +v); if (r) confirmSheet(`Delete ${esc(r.name)}?`, `This career (${r.career.length} season${r.career.length !== 1 ? 's' : ''}, ${esc(r.lastClub)}) will be gone for good. This cannot be undone.`, 'pastDel', 'Delete', v); return; }
     case 'pastDel': deleteArchived(+v); closeModal(); toast('Career deleted'); pastView = null; landing = true; render(); return;

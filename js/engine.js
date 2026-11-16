@@ -5978,6 +5978,21 @@ function sellShares(sym, fraction) {
   return back;
 }
 const netWorth = () => S.player.money + portfolioValue() + collectionValue();
+// Selling shares a finished career still holds: at their price when you retired (the market stopped
+// with your career), less the usual trading fee, into that career's bank.
+function sellPastShares(id, sym, fraction) {
+  const list = loadArchive(), rec = list.find(r => r.id === id), h = rec && rec.assets && rec.assets.portfolio && rec.assets.portfolio[sym];
+  if (!h) return 0;
+  const shares = fraction >= 1 ? h.shares : Math.floor(h.shares * fraction);
+  if (shares < 1) return 0;
+  const back = Math.round(shares * h.price * (1 - TRADE_FEE)), left = h.shares - shares;
+  rec.money = (rec.money || 0) + back;
+  if (left > 0) rec.assets.portfolio[sym] = { ...h, shares: left, cost: Math.round(h.cost * left / h.shares) }; else delete rec.assets.portfolio[sym];
+  rec.assets.shares = Math.round(Object.values(rec.assets.portfolio).reduce((s, x) => s + x.shares * x.price, 0));
+  rec.assets.stocks = Object.keys(rec.assets.portfolio).length;
+  try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(list)); } catch (e) { return 0; }
+  return back;
+}
 
 // ---------- transfer value ----------
 // What a club would pay for you: mostly OVR (about €2.7M at 70, €14M at 80, €63M at 89), then your
@@ -6292,6 +6307,9 @@ function retiredRecord() {
     id: p.careerId || (p.careerId = Date.now()), name: p.name, nat: p.nat, pos: p.pos, career: p.career, trophies: p.trophies, awards: p.awards,
     caps: p.caps, intlGoals: p.intlGoals || 0, attrs: roundAttrs(p.attrs), money: p.money, by: p.by, lastClub: p.club ? myClub().name : '–', retiredAge: ageOf(p.by),
     peak: Math.max(calcOVR(), ...p.career.map(r => r.ovr)), rep: Math.round(p.rep), media: p.media || 0,
+    // What you owned when you retired, to look back on: homes, the luxury collection and your shares (their value then).
+    assets: { homes: { ...(p.homes || {}) }, collection: collection().map(c => ({ id: c.id, season: c.season })), shares: Math.round(portfolioValue()), stocks: Object.keys(portfolio()).length,
+      portfolio: Object.fromEntries(Object.entries(portfolio()).map(([sym, h]) => [sym, { shares: h.shares, cost: h.cost, price: sharePrice(sym) }])) },
   };
 }
 // ---------- card status at retirement ----------
