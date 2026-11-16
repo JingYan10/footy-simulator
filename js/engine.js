@@ -6090,6 +6090,22 @@ function migrate() {
   // Nationality: born with the one you play for. Caps from before the international windows were not
   // split into friendlies and qualifiers: most are counted as competitive, and any tournament ties you.
   if (!p.birthNat) p.birthNat = p.nat;
+  // Player of the Month awards from before they kept their month: this season's are matched with the
+  // months you won (S.potm); older ones get a month of their season at random (August to May, no
+  // month twice in a season), saved so it stays the same.
+  if (p.awards.some(a => a.month == null && /Player of the Month/.test(a.name))) {
+    const pm = S.potm, mine = pm ? pm.list.filter(m => m.me) : [], taken = {};
+    let k = 0;
+    p.awards.filter(a => a.month != null && /Player of the Month/.test(a.name)).forEach(a => { (taken[a.season] = taken[a.season] || new Set()).add(a.month); });
+    p.awards.forEach(a => {
+      if (a.month != null || !/Player of the Month/.test(a.name)) return;
+      const used = taken[a.season] = taken[a.season] || new Set();
+      let month = pm && a.season === pm.season && mine[k] ? MONTH_NAMES.indexOf(mine[k++].month) : -1;
+      if (month < 0 || used.has(month)) { const free = [7, 8, 9, 10, 11, 0, 1, 2, 3, 4].filter(m => !used.has(m)); month = free.length ? pick(free) : 4; }
+      used.add(month);
+      a.month = month; a.year = baseYear() + a.season + (month < 7 ? 1 : 0);
+    });
+  }
   if (!p.tie && p.caps) p.tie = { comp: Math.ceil(p.caps * .6), adult: ageOf(p.by) > 21, finals: (p.career || []).some(r => Object.entries(r.comps || {}).some(([k, c]) => c.kind === 'nat' && !/qualifiers|friendlies|U21/.test(k))), last: S.season };
   if (p.st && !p.st.comps) {
     // Games played before the split by competition existed: league and one line for all cups.
