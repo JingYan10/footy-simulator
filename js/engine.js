@@ -748,7 +748,7 @@ function startingClubs() {
 const CALLUP_GAP = 8, CALLUP_FORM = 7, CALLUP_WAIT = 10, CALLUP_LAPSE = 4;
 function callUpWeek() {
   const p = S.player;
-  if (p.loan || p.needsContract) return;
+  if (p.loan || p.needsContract || p.preContract) return;
   const par = parentOf(myClub());
   if (!par) return;
   const open = S.offers.find(o => o.callup);
@@ -1212,13 +1212,31 @@ const VET_LEAGUES = ['KSA', 'USA'];
 // Portuguese, Dutch and Belgian clubs keep wanting a veteran at any age, like the lower leagues.
 const VET_FRIENDLY = ['POR', 'NED', 'BEL'];
 // After 33 the big top-flight clubs lose interest fast: 15% as keen at 34, 5% at 35, gone at 36.
-// Saudi, MLS, Portuguese, Dutch and Belgian clubs don't count here.
+// Saudi, MLS, Portuguese, Dutch and Belgian clubs don't count here. (A lower-half club may still
+// gamble on a top veteran up to 36: see vetLowerHalfChance.)
 const bigTopFlight = c => clubTier(c) === 1 && ![...VET_LEAGUES, ...VET_FRIENDLY].includes(league(c.league).nat);
 function vetTopFlight(c) {
   if (!bigTopFlight(c)) return 1;
   return [1, .15, .05][vetYears()] ?? 0;
 }
 const primeWage = () => Math.max(S.player.peakWage || 0, S.player.wage || 0);
+// How you are playing, 0 to about 1.2: your average rating (6.5 counts for nothing, 7.5 full marks)
+// and goals + assists against your position's par (a striker's 40), the better of last season and this one.
+function vetFormScore() {
+  const p = S.player, last = (p.career || []).at(-1), st = p.st;
+  const avg = Math.max(last && last.apps >= 8 ? last.avg : 0, st && st.apps >= 8 ? st.rsum / st.apps : 0);
+  return clamp(avg - 6.5, 0, 1.2) * .6 + clamp(clauseGA() / 40, 0, 1.2) * .4;
+}
+// The odds, each window, that a lower-half top-flight club in a big league comes for you at 34-36.
+// Nothing under 80 OVR; then OVR sets the ceiling and form most of the rest. At 36 with 87+ and a
+// solid season it is about a one-in-three shot, closer to one-in-two after a great one.
+function vetLowerHalfChance() {
+  const ovr = calcOVR(), age = ageOf(S.player.by);
+  if (age < 34 || age > 36 || ovr < 80) return 0;
+  const base = clamp((ovr - 80) / 7, 0, 1.3) * .4;
+  const ageMult = { 34: 1.25, 35: 1.1, 36: 1 }[age];
+  return Math.min(.5, base * ageMult * (.2 + vetFormScore()));
+}
 
 // Clubs you turned down stay away for six months. About one in eight is eager and is allowed
 // one more try; after that it waits like the rest. A dream club that said no stays away a season.
@@ -1645,6 +1663,7 @@ function checkTermination() {
   p.freeSince = absWeek();
   p.netAt = null;
   msg(`${c.mgr} has had enough. ${c.name} have terminated your contract. You are a free agent.`, 'bad');
+  if (p.preContract) { msg(`${club(p.preContract.offer.club).name} still want you: your pre-contract starts now.`, 'good'); completePreContract(); return; }
   notify('bad', 'Contract terminated', `Manager affection fell to ${SACK_AFF}. ${c.name} have released you. Sign for a new club to keep playing.`);
   generateOffers(randi(2, 4), true);
 }
@@ -3579,6 +3598,7 @@ function weekTail(report, user, cupUser, fx) {
   veteranRenewal();
   loyaltyOffer();
   inquiryWeek();
+  preContractWeek();
   renewTaskWeek();
   noteRenewal();
   shirtRequestWeek();
@@ -3998,7 +4018,7 @@ function renewTaskGame(user, clean) {
   t.progress += t.kind === 'ga' ? user.goals + user.assists : t.kind === 'tackles' ? user.tackles || 0 : clean ? 1 : 0;
   if (t.progress < t.target) return;
   p.renewTask = null;
-  if (p.loan || p.needsContract) return;
+  if (p.loan || p.needsContract || p.preContract) return;
   const o = askedOffer();
   S.offers.push(o);
   const what = o.raise ? 'a pay rise' : 'a new contract';
@@ -4024,6 +4044,34 @@ function seasonGA() {
   const p = S.player, last = (p.career || []).at(-1), st = p.st;
   const now = st ? st.goals + st.assists + (st.cup ? st.cup.goals + st.cup.assists : 0) : 0;
   return Math.max(now, last ? last.goals + last.assists : 0);
+}
+
+// ---------- pre-contracts ----------
+// In the last season of your deal, about three weeks before it runs out, other clubs come for you
+// on a free (a pre-contract). Sign one and you finish the season where you are, then join them the
+// day your contract expires: their summer (a Club World Cup included) is yours, your old club's is not.
+const PRE_WEEK = SEASON_WEEKS - 3;
+const preContractOpen = () => { const p = S.player; return S.phase === 'season' && !!p.club && !p.loan && !p.needsContract && !p.preContract && lastYear() && p.years >= 1; };
+function preContractWeek() {
+  const p = S.player;
+  if (!preContractOpen() || (S.week !== PRE_WEEK && S.week !== PRE_WEEK + 1) || p.preAsked === S.season * 100 + S.week) return;
+  if (S.week === PRE_WEEK + 1 && Math.random() >= .4) return;
+  p.preAsked = S.season * 100 + S.week;
+  const before = S.offers.length;
+  generateOffers(S.week === PRE_WEEK ? randi(1, 3) : 1, S.week === PRE_WEEK);
+  const got = S.offers.slice(before).filter(o => o.type === 'transfer' && !o.callup);
+  got.forEach(o => { o.pre = true; o.blockJudged = true; });
+  if (got.length) msg(`Your contract runs out at the end of the season, so ${got.map(o => club(o.club).name).join(', ')} ${got.length > 1 ? 'have' : 'has'} offered you a pre-contract. Sign now and you join them on a free when your deal expires; you finish this season at ${myClub().name}.`, 'good');
+}
+// The day your old deal runs out (or your club tears it up): the pre-contract you signed takes effect.
+function completePreContract() {
+  const p = S.player, pc = p.preContract;
+  p.preContract = null;
+  if (!pc || !S.clubs[pc.offer.club]) return false;
+  const o = { ...pc.offer, pre: false, bosman: true, blockJudged: true };
+  S.offers = [o];
+  acceptOffer(o.id);
+  return true;
 }
 
 function generateOffers(count, guarantee = false) {
@@ -4088,6 +4136,18 @@ function generateOffers(count, guarantee = false) {
       .sort((a, b) => teamStrength(b) - teamStrength(a));
     if (better.length && Math.random() < interest) add(pick(better.slice(0, 6)));
   }
+  // From 34 to 36 a lower-half top-flight club in a big league may still take a chance on you,
+  // once per window at most, if your OVR and form say you can still do it.
+  if (vetYears() && vetYears() <= 3 && !p.loan) {
+    const wk2 = windowKey() + (S.phase === 'season' && S.week > JAN_WINDOW[1] ? 'p' : '');
+    if (!p.vetGate || p.vetGate.key !== wk2) p.vetGate = { key: wk2, ok: Math.random() < vetLowerHalfChance() };
+    if (p.vetGate.ok) {
+      const open = c => c.id !== p.club && c.id !== home && !isBanned(c.id) && !S.offers.some(o => o.club === c.id) && !coolingOff(c.id) && !inquiries().some(q => q.club === c.id);
+      const lower = Object.values(S.clubs).filter(c => open(c) && bigTopFlight(c) && smallTopFlight(c) && teamStrength(c) <= ovr + 2)
+        .sort((a, b) => teamStrength(b) - teamStrength(a));
+      if (lower.length) { p.vetGate.ok = false; add(pick(lower.slice(0, 6))); }
+    }
+  }
   if (vetYears() && !p.loan) {
     const nat = c => league(c.league).nat;
     // Saudi and MLS clubs keep calling, offering about what you earned in your prime.
@@ -4107,7 +4167,7 @@ function generateOffers(count, guarantee = false) {
       .sort((a, b) => teamStrength(b) - teamStrength(a)).slice(0, 15));
     modest.slice(0, Math.random() < .5 ? 2 : 1).filter(() => Math.random() < interest).forEach(add);
   }
-  if (guarantee && added === 0 && Math.random() < interest) {
+  if (guarantee && added === 0 && freeAgent() && Math.random() < interest) {
     const weakest = Object.values(S.clubs).filter(free).sort((a, b) => teamStrength(a) - teamStrength(b));
     add(pick(weakest.slice(0, 20)));
   }
@@ -4366,6 +4426,19 @@ function acceptOffer(id) {
   const o = S.offers.find(x => x.id === id);
   if (!o) return;
   const p = S.player;
+  // A pre-contract: signed now, the move happens when your contract runs out.
+  if (o.pre) {
+    p.preContract = { offer: { ...o }, at: absWeek() };
+    S.offers = [];
+    p.inquiries = [];
+    const until = (S.season + 1) * SEASON_WEEKS + 1;
+    p.offerLock = Math.max(p.offerLock || 0, until);
+    p.negLock = Math.max(p.negLock || 0, until);
+    msg(`Pre-contract signed with ${club(o.club).name}: ${money(o.wage)}/week until the end of ${seasonLabel(offerEnds(o))}. You finish the season at ${myClub().name} and join them on a free when your contract expires.`, 'good');
+    notify('good', `Joining ${club(o.club).name} in the summer`, `You signed a ${o.years}-year pre-contract. You move on a free once this season ends.`);
+    save();
+    return 'pre';
+  }
   if (tryBlockMove(o)) return 'blocked';
   // Signing the club's new deal after a blocked move: no hard feelings, just a better wage.
   if (o.keep) p.blockedMove = null;
@@ -4408,8 +4481,8 @@ function acceptOffer(id) {
     if (o.boss) p.bosses = (p.bosses || []).filter(b => b.n !== o.boss.n);
     // Shown among your new club's signings for the season you join: the fee they paid (your value),
     // free if you had no club, or up from the academy.
-    const freeMove = freeAgent();
-    p.arrival = { club: o.club, season: S.phase === 'offseason' ? S.season + 1 : S.season, from: o.callup || freeMove ? null : p.loan ? p.loan.parent : p.club, fee: o.callup ? null : freeMove ? 0 : playerValue(), free: freeMove };
+    const freeMove = freeAgent() || !!o.bosman;
+    p.arrival = { club: o.club, season: S.phase === 'offseason' ? S.season + 1 : S.season, from: o.callup || (freeMove && !o.bosman) ? null : p.loan ? p.loan.parent : p.club, fee: o.callup ? null : freeMove ? 0 : playerValue(), free: freeMove };
     // Your stats so far this season stay with your old club as their own career row.
     closeSpell();
     p.club = o.club;
@@ -5404,7 +5477,14 @@ function endSeason() {
   p.order = null;
   expireOffers('transfer');
   S.offerRerolls = 3;
-  if (p.years <= 0) {
+  if (p.years <= 0 && p.preContract && !p.loan) {
+    // A pre-contract signed this season: you leave on a free now, before the summer tournaments.
+    p.inquiries = [];
+    p.clauseUntil = 0;
+    S.seasonSummary.loanNext = false;
+    msg(`Your contract with ${myClub().name} has expired. Your pre-contract with ${club(p.preContract.offer.club).name} begins.`, 'good');
+    completePreContract();
+  } else if (p.years <= 0) {
     noteRenewal();
     // On loan all season, your own club had no chance to talk to you, so the old rule stands.
     const silent = !p.loan && p.renewSeen !== S.season;

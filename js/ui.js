@@ -387,8 +387,9 @@ function offersHtml() {
       : negLocked() ? `<div class="small muted">Salary talks are locked until about week ${lockWeekLabel()}. You can still sign.</div>` : '';
     return `<div class="offer">
       <div class="row"><div class="clubcell">${crest(c.id, "small")}<div style="min-width:0"><div class="club">${c.name}</div><div class="small muted">${league(c.league).name} · Team rating ${Math.round(teamStrength(c))}</div></div></div>
-      <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.raise ? 'Pay rise' : o.callup ? 'Call-up' : o.type === 'renew' ? 'Renewal' : 'Transfer'}</span></div>
+      <span class="chip ${o.clause ? 'good' : o.type === 'renew' ? '' : 'flood'}">${o.clause ? 'Loyalty deal' : o.raise ? 'Pay rise' : o.callup ? 'Call-up' : o.type === 'renew' ? 'Renewal' : o.pre ? 'Pre-contract' : 'Transfer'}</span></div>
       <div class="kv"><div><small>Wage</small><b class="num">${money(o.wage)}/wk</b></div><div><small>Years</small><b>${o.years}</b><small>until end of ${seasonLabel(offerEnds(o))}</small></div><div><small>Role</small><b class="${o.promised ? 'good' : dropped ? 'bad' : ''}">${role}${o.promised ? ' (promised)' : ''}</b></div></div>
+      ${o.pre ? `<div class="small good"><b>Pre-contract:</b> your deal runs out this season, so ${esc(c.name)} want you on a free. Sign now and you finish the season at ${esc(myClub().name)}, then join them when your contract expires (their summer tournaments, a Club World Cup included, are yours; ${esc(myClub().name)}'s are not). The offer goes when the season ends.</div>` : ''}
       ${o.keep && S.clubs[o.keep] ? `<div class="small flood"><b>Move blocked:</b> ${esc(c.name)} refused to sell you to ${esc(club(o.keep).name)}. This is their offer to keep you happy: sign it and you carry on, no hard feelings.</div>${buyoutHtml()}` : ''}
       ${o.callup ? `<div class="small good"><b>First-team call-up:</b> ${esc(c.name)} want to promote you from their second team. No fee, no transfer window needed. Answer within ${Math.max(1, CALLUP_LAPSE - (absWeek() - (o.at || 0)))} week${CALLUP_LAPSE - (absWeek() - (o.at || 0)) === 1 ? '' : 's'}.</div>` : ''}
       ${o.boss ? `<div class="small good"><b>Your old boss:</b> ${o.boss.back ? `${esc(o.boss.n)} never forgot what you did for him and wants you back.` : `${esc(o.boss.n)} managed you at ${esc(S.clubs[o.boss.was] ? club(o.boss.was).name : 'your old club')} and wants you with him again.`}</div>` : ''}
@@ -638,6 +639,8 @@ function contractDetails() {
     <div class="kv"><div><small>Wage</small><b class="num">${money(p.wage)}/wk</b>${p.nextWage ? `<small class="good">${money(p.nextWage)}/wk from ${seasonLabel(S.season + 1)}</small>` : ''}</div><div><small>Per year</small><b class="num">${money(p.wage * 52)}</b></div><div><small>Expires</small><b>End of ${seasonLabel(ends)}</b></div></div>
     <div class="kv"><div><small>Role</small><b class="${p.promise > 0 ? 'good' : ''}">${squadStatus()}${p.promise > 0 ? ' (promised)' : ''}</b></div><div><small>Market value</small><b class="num">${money(mkt)}/wk</b></div><div><small>vs market</small><b class="${pct >= 0 ? 'good' : 'bad'}">${pct >= 0 ? '+' : ''}${pct}%</b></div></div>
     ${p.loan ? `<div class="small flood">On loan at ${myClub().name} until the end of the season. ${home.name} still pay your wage.</div>` : ''}
+    ${p.preContract && S.clubs[p.preContract.offer.club] ? (() => { const po = p.preContract.offer, pc = club(po.club); return `<div class="offer"><div class="row"><div class="clubcell">${crest(pc.id, 'small')}<div style="min-width:0"><div class="club">${esc(pc.name)}</div><div class="small muted">${league(pc.league).name}</div></div></div><span class="chip good">Pre-contract signed</span></div>
+      <div class="small good">You join ${esc(pc.name)} on a free when this season ends: ${money(po.wage)}/wk as ${esc(po.status.toLowerCase())}, until the end of ${seasonLabel(S.season + po.years)}. No other offers until then.</div></div>`; })() : ''}
     <div class="small muted">Agent: ${a.name}${agentCut() ? ` · takes ${money(agentCut())}/wk` : ''}</div>
   </section>`;
 }
@@ -672,6 +675,8 @@ function inquiriesHtml() {
 function contractCard() {
   const p = S.player;
   if (p.loan) return '';
+  // Signed elsewhere for next season: nothing to ask for here any more.
+  if (p.preContract) return `<section class="card"><h2>Your options</h2><div class="small muted">You have agreed to leave for ${esc(S.clubs[p.preContract.offer.club] ? club(p.preContract.offer.club).name : 'another club')} when the season ends: no contract talks or transfer requests at ${esc(myClub().name)} until then.</div></section>`;
   const { breakout, rising } = scoutBuzz();
   return `<section class="card"><h2>Your options</h2>
     ${breakout ? '<div class="small flood">Breakout season (+8 OVR): top-flight scouts are watching.</div>' : rising ? '<div class="small flood">Rising season (+6 OVR): smaller top-flight and second-division clubs are watching.</div>' : ''}
@@ -2736,12 +2741,12 @@ document.addEventListener('click', e => {
     case 'accept': {
       const o = S.offers.find(x => x.id === v), burned = o && o.type === 'transfer' ? rivalBetrayal(o.club) : [];
       if (burned.length) { const names = burned.map(id => esc(club(id).name)).join(' and '); confirmSheet(`Join ${esc(club(o.club).name)}?`, `They are rivals of ${names}. If you join them, ${names} fans and board will hate you, and they will never approach you again.`, 'acceptGo', 'Sign anyway', v); return; }
-      { const r = acceptOffer(v); toast(r === 'blocked' ? 'Move blocked by your club' : 'Contract signed'); render(); nextPopup(); } return;
+      { const r = acceptOffer(v); toast(r === 'blocked' ? 'Move blocked by your club' : r === 'pre' ? 'Pre-contract signed' : 'Contract signed'); render(); nextPopup(); } return;
     }
     case 'refusePlay': confirmSheet('Refuse to play?', `${esc(myClub().mgr)} will freeze you out at once (affection −30) and the board will be furious (−25). You will not play, not even from the bench, until the next transfer window opens. Then the club puts you on the transfer list.`, 'refuseGo', 'Refuse to play'); return;
     case 'refuseGo': refusePlay(); closeModal(); render(); nextPopup(); return;
     case 'payRelease': { const r = payRelease(v === 'half'); toast(r === 'moved' ? 'You are on your way' : r === 'no' ? 'They said no' : 'Not enough money'); render(); nextPopup(); } return;
-    case 'acceptGo': { const r = acceptOffer(v); closeModal(); toast(r === 'blocked' ? 'Move blocked by your club' : 'Contract signed'); render(); nextPopup(); } return;
+    case 'acceptGo': { const r = acceptOffer(v); closeModal(); toast(r === 'blocked' ? 'Move blocked by your club' : r === 'pre' ? 'Pre-contract signed' : 'Contract signed'); render(); nextPopup(); } return;
     case 'negAsk': showNegotiate(v); return;
     case 'neg': { const [id, i] = v.split(':'); const r = negotiate(id, +i); closeModal(); toast(r === 'accepted' ? 'They agreed!' : r === 'withdrawn' ? 'Offer withdrawn' : 'They said no'); render(); return; }
     case 'decline': declineOffer(v); render(); return;
