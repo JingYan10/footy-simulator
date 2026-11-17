@@ -533,7 +533,7 @@ function buyoutHtml() {
 
 // Under the matchday button while your club is blocking a move: refuse to play in protest.
 const refuseBtn = () => canRefusePlay() ? `<button class="btn danger block" data-act="refusePlay">Refuse to play</button>
-  <div class="small muted" style="text-align:center">${esc(myClub().name)} blocked your move to ${esc(club(S.player.blockedMove.club).name)}. Refuse and you are frozen out until the next window.</div>` : '';
+  <div class="small muted" style="text-align:center">${esc(myClub().name)} blocked your move to ${esc(club(S.player.blockedMove.club).name)}. Refuse and you are frozen out until the next window. You can only protest for ${Math.max(1, S.player.blockedMove.at != null ? S.player.blockedMove.at + REFUSE_WEEKS - absWeek() : 1)} more week${(S.player.blockedMove.at != null ? S.player.blockedMove.at + REFUSE_WEEKS - absWeek() : 1) === 1 ? '' : 's'}.</div>` : '';
 
 const mgrOpen = { board: false, mgr: true };
 function managerCard() {
@@ -1998,7 +1998,7 @@ function viewCareer() {
   return seg + `<section class="card hero"><h2>Profile</h2>${p.nickname ? `<div class="nick" title="Since ${seasonLabel(p.nickname.season)}, for ${esc(p.nickname.why)}">“${esc(p.nickname.n)}”</div>` : ""}
       <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div>${p.shirt && p.shirt.club === p.club && !p.shirt.repick ? `<div><small>Shirt</small><b>#${p.shirt.no}</b></div>` : ''}<div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${p.intlRetired ? 'Retired' : calledUp() ? 'In squad' : u21Pick() ? 'U21s' : 'Not picked'}</b></div>${isCaptain() || natCaptain() ? `<div><small>Armband</small><b class="good">${[isCaptain() ? 'Club' : '', natCaptain() ? 'Country' : ''].filter(Boolean).join(' & ')} captain</b></div>` : ''}${spLabel() ? `<div><small>Set pieces</small><b>${spLabel()}</b></div>` : ''}
       <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div title="Transfer value: OVR, position, age, reputation, contract, league and this season's form"><small>Value</small><b>${value ? money(value) : 'Free agent'}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b>${p.u21Caps ? `<small>U21: ${p.u21Caps}${p.u21Goals ? ` (${p.u21Goals}g)` : ''}</small>` : ''}</div></div>
-      <div class="small muted">${nationNote()}</div>${canRetireIntl() ? '<button class="btn sm block" data-act="intlRetireAsk">Retire from international football</button>' : ''}</section>
+      <div class="small muted">${nationNote()}</div></section>
     ${nationalityCard()}
     <section class="card"><h2>This season</h2><div class="${statGrid(p.pos)}"><div><b>${p.st.apps}</b><small>Apps</small></div><div><b>${p.st.goals}</b><small>Goals</small></div><div><b>${p.st.assists}</b><small>Assists</small></div>${gkCells(p.pos, p.st.saves, p.st.cleanAll)}<div><b>${avgRating(p.st)}</b><small>Rating</small></div></div>
       ${p.st.cup && p.st.cup.apps ? `<div class="small muted">Cups: ${p.st.cup.apps} apps · ${p.st.cup.goals} goals · ${p.st.cup.assists} assists</div>` : ''}

@@ -4280,7 +4280,7 @@ function tryBlockMove(o) {
   S.offers = S.offers.filter(x => !(x.type === 'renew' && x.club === c.id)).concat(r);
   // Until you sign their new deal (or the next window opens), you can refuse to play in protest.
   // The buyer's bid is kept: you can still force the move by paying your release fee yourself.
-  p.blockedMove = { club: buyer.id, offer: r.id, until: nextWindowAbs(), bid: { ...o }, fee: breachFee(c, Math.max(1, p.years || 1)), triedHalf: false };
+  p.blockedMove = { club: buyer.id, from: c.id, at: absWeek(), offer: r.id, until: nextWindowAbs(), bid: { ...o }, fee: breachFee(c, Math.max(1, p.years || 1)), triedHalf: false };
   changeAff(3);
   msg(`${c.name} have blocked your move to ${buyer.name}: ${c.mgr} and the board say you are too important to sell. They have offered you a new ${r.years}-year deal at ${money(r.wage)}/week, starting now.`, 'bad');
   notify('bad', 'Move blocked', `${c.name} refused to sell you to ${buyer.name}, whatever they pay. You are too important. To keep you happy they offer a new contract: ${money(r.wage)} a week (${raisePct(r)}% more), starting now. Check the Contract tab.`);
@@ -4291,7 +4291,10 @@ function tryBlockMove(o) {
 // The absolute week the next transfer window opens: January, or the summer after this season.
 const nextWindowAbs = () => S.phase === 'offseason' ? (S.season + 1) * SEASON_WEEKS + JAN_WINDOW[0]
   : S.week < JAN_WINDOW[0] ? S.season * SEASON_WEEKS + JAN_WINDOW[0] : (S.season + 1) * SEASON_WEEKS + 1;
-const canRefusePlay = () => { const p = S.player; return S.phase === 'season' && !!p.blockedMove && p.blockedMove.until > absWeek() && !strikeOn() && !p.loan && !p.needsContract; };
+// Refusing to play is a protest against the club that blocked you: only while you are still there,
+// and only in the 5 weeks after the block.
+const REFUSE_WEEKS = 5;
+const canRefusePlay = () => { const p = S.player, b = p.blockedMove; return S.phase === 'season' && !!b && b.until > absWeek() && (b.from == null || b.from === p.club) && (b.at == null || absWeek() < b.at + REFUSE_WEEKS) && !strikeOn() && !p.loan && !p.needsContract; };
 // Refuse to play: one press is enough. The manager freezes you out (affection −30, never below the
 // point where he would tear up your contract) and the board is furious (−25). You sit out every game
 // until the next window opens; then the club gives up and puts you on the transfer list.
