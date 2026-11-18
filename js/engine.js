@@ -1662,6 +1662,8 @@ function checkTermination() {
   S.offers = [];
   p.freeSince = absWeek();
   p.netAt = null;
+  p.faDry = 0;
+  p.faAsk = false;
   msg(`${c.mgr} has had enough. ${c.name} have terminated your contract. You are a free agent.`, 'bad');
   if (p.preContract) { msg(`${club(p.preContract.offer.club).name} still want you: your pre-contract starts now.`, 'good'); completePreContract(); return; }
   notify('bad', 'Contract terminated', `Manager affection fell to ${SACK_AFF}. ${c.name} have released you. Sign for a new club to keep playing.`);
@@ -1724,6 +1726,8 @@ function safetyNet() {
   if (!pool.length) pool = Object.values(S.clubs).filter(open).sort((a, b) => teamStrength(a) - teamStrength(b));
   const c = pick(pool.slice(0, 8));
   if (!c) return;
+  // From 37 even the lower leagues think twice, like every other club (85%, 50%, then 20% at 39+).
+  if (Math.random() >= freeAgentInterest()[0]) { p.netAt = absWeek(); return; }
   const o = makeOffer(c, 'transfer');
   o.wage = freeValue(c, marketWage(ovr, c));
   o.years = 1;
@@ -1740,7 +1744,10 @@ function faWeekInterest() {
   const p = S.player, a = agent().offers, before = S.offers.length;
   p.faRefused = [];
   const top = a >= 1.3 ? 3 : a >= 1.1 ? 2 : 1, low = a >= 1.3 ? 1 : 0;
-  const n = Math.max(0, randi(low, top) - Math.floor(idleWeeks() / 4));
+  // Each call your agent could get fades the longer you go unsigned (down to 30%), but never dries up.
+  const keep = Math.max(.3, 1 - idleWeeks() * .05);
+  let n = 0;
+  for (let i = randi(low, top); i > 0; i--) if (Math.random() < keep) n++;
   if (n) generateOffers(n, true);
   const got = S.offers.slice(before), counters = got.filter(o => o.counter).length, refused = p.faRefused.length;
   if (!S.offers.length && idleWeeks() >= FA_NET_WEEKS && (p.netAt == null || absWeek() - p.netAt >= FA_NET_WEEKS)) safetyNet();
@@ -1750,7 +1757,7 @@ function faWeekInterest() {
 // One week without a club: the world plays on, you train, pay your bills and wait for calls.
 function freeAgentWeek() {
   const p = S.player;
-  if (S.phase !== 'season' || !p.needsContract) return null;
+  if (S.phase !== 'season' || !p.needsContract || p.faAsk) return null;
   if (p.freeSince == null) p.freeSince = absWeek();
   S.weekHalf = null;
   const report = { week: S.week, season: S.season, match: null, events: [], free: true };
@@ -1793,9 +1800,16 @@ function freeAgentWeek() {
   if (r.refused) bits.push(`${r.refused} club${r.refused > 1 ? 's' : ''} said your asking wage is too high (${p.faRefused.slice(0, 3).join(', ')}${r.refused > 3 ? ` and ${r.refused - 3} more` : ''})`);
   msg(`Week ${idleWeeks()} as a free agent: ${bits.join('; ')}.`, r.offers ? 'good' : 'info');
   report.events.push(...bits);
+  // Ten weeks in a row without a single new offer: time to ask whether to keep trying.
+  const fresh = S.offers.some(o => o.faWeek === absWeek());
+  p.faDry = fresh ? 0 : (p.faDry || 0) + 1;
+  if (p.faDry >= FA_DRY_WEEKS && !S.offers.length) p.faAsk = true;
   save();
   return report;
 }
+const FA_DRY_WEEKS = 10;
+// Your answer to "no offers seem to be coming": keep waiting (the count starts again) or retire (the UI asks).
+function keepTrying() { const p = S.player; p.faAsk = false; p.faDry = 0; msg('You keep training on your own and tell your agent to keep the phone on.'); save(); }
 
 // ---------- training ----------
 function equipMult() { return EQUIP_TIERS[S.player.equip].mult; }
@@ -2180,12 +2194,15 @@ function syncHousing() {
 const imageRights = () => Math.round(S.player.rep * 15);
 const sponsorGross = () => sponsorDeals().reduce((s, d) => s + d.weekly, 0) + imageRights();
 const sponsorIncome = sponsorGross;
-const agentCut = () => Math.round(S.player.wage * agent().cut);
+// Without a club no wage comes in (the old figure is kept for reference); rent, upkeep, kit and the
+// car still have to be paid.
+const paidWage = () => S.player.needsContract ? 0 : S.player.wage;
+const agentCut = () => Math.round(paidWage() * agent().cut);
 // Kit running costs: the best kit you trained with this week, or the kit you have now if that is better.
 const kitTier = () => Math.max(S.player.equip, S.player.weekEquip || 0);
 const kitFee = () => EQUIP_TIERS[kitTier()].fee;
 function weeklyCosts() { return rentNow() + upkeepNow() + kitFee() + agentCut() + carUpkeep(); }
-function weeklyNet() { return S.player.wage + sponsorIncome() - weeklyCosts(); }
+function weeklyNet() { return paidWage() + sponsorIncome() - weeklyCosts(); }
 // Physicality protects you: a strong body gets injured less often, and less badly.
 // 50 PHY is about normal risk; 90 is roughly half the injuries and a third of the serious ones.
 const physOf = () => S.player.attrs.PHY || 50;
@@ -3768,7 +3785,9 @@ const RICH_FREE = {
 function saudiFreeRange(c) {
   const age = ageOf(S.player.by), table = RICH_FREE[league(c.league).nat];
   if (!freeAgent() || age < 37 || !table) return null;
-  return table[Math.min(age, 39)];
+  // Past 39 the money shrinks by a fifth each year too.
+  const k = Math.pow(.8, Math.max(0, age - 39));
+  return table[Math.min(age, 39)].map(v => v * k);
 }
 // What a free agent from 37 would be offered by this club, or null for the normal market price.
 function freeAgentWage(c) {
@@ -3778,8 +3797,15 @@ function freeAgentWage(c) {
 }
 // From 37, fewer clubs want a free agent at all. Each search either draws interest or doesn't
 // (85% at 37, 50% at 38, 20% at 39), and even then only a few clubs call (3, 2, then 1).
+// Every year past 39 is a little worse again: a fifth fewer than the year before (16% at 40,
+// 13% at 41, 10% at 42, 8% at 43...), never below 3%, and still one club at most.
 const FREE_AGENT_INTEREST = { 37: [.85, 3], 38: [.5, 2], 39: [.2, 1] };
-const freeAgentInterest = () => !freeAgent() || ageOf(S.player.by) < 37 ? [1, Infinity] : FREE_AGENT_INTEREST[Math.min(ageOf(S.player.by), 39)];
+function freeAgentInterest() {
+  const age = ageOf(S.player.by);
+  if (!freeAgent() || age < 37) return [1, Infinity];
+  if (age <= 39) return FREE_AGENT_INTEREST[age];
+  return [Math.max(.03, .2 * Math.pow(.8, age - 39)), 1];
+}
 const wageCeiling = (c, room = MAX_OVER_MARKET) => richLeague(c) && !freeAgent()
   ? marketWage(calcOVR(), c) * (1 + Math.min(room, RICH_OVER_MARKET))
   : Math.min(marketWage(calcOVR(), c) * (1 + Math.min(room, MAX_OVER_MARKET)), WAGE_MAX[POS_GROUP[S.player.pos]]);
@@ -4574,6 +4600,8 @@ function acceptOffer(id) {
   p.free = false;
   p.freeSince = null;
   p.netAt = null;
+  p.faDry = 0;
+  p.faAsk = false;
   // Signing anything closes this transfer window for you: no more bids, no waiting for more offers.
   p.offerLock = Math.max(p.offerLock || 0, windowEndAbs());
   if (S.phase === 'offseason') S.offerRerolls = 0;
@@ -5411,11 +5439,13 @@ function endSeason() {
   changeBoard((pos === 1 ? 10 : 0) + (myMove ? (myMove.up ? 8 : -8) : 0) + (st.apps >= 10 ? (avg >= 7 ? 5 : avg < 6.2 ? -4 : 1) : 0));
 
   // This club's row; earlier clubs this season already have theirs.
-  if (st.apps + st.cup.apps > 0 || !(p.seasonSpells || []).length) p.career.push(careerRow(st, c));
+  // A whole season without a club leaves no row at all.
+  const idleSeason = gone && st.apps + st.cup.apps === 0 && !(p.seasonSpells || []).length;
+  if (!idleSeason && (st.apps + st.cup.apps > 0 || !(p.seasonSpells || []).length)) p.career.push(careerRow(st, c));
   // Long enough in one country: you may apply for its citizenship.
   citizenshipCheck();
-  const clubs = [...(p.seasonSpells || []).map(s => club(s.club).name), c.name].filter((n, i, a) => a.indexOf(n) === i);
-  S.seasonSummary = { season: S.season, club: c.name, clubs, pos, apps: tot.apps, goals: tot.goals, assists: tot.assists, avg, awards, ovrStart: S.ovrSeasonStart || ovr, ovrEnd: ovr, clean: tot.clean, cleanAll: tot.cleanAll || 0, saves: tot.saves || 0, starts: st.starts, missed: tot.missed, loanNext: false, returning: false, cup: tot.cup, review, honours: acc.honours };
+  const clubs = idleSeason ? [] : [...(p.seasonSpells || []).map(s => club(s.club).name), c.name].filter((n, i, a) => a.indexOf(n) === i);
+  S.seasonSummary = { season: S.season, club: idleSeason ? 'Without a club' : c.name, free: idleSeason, clubs, pos, apps: tot.apps, goals: tot.goals, assists: tot.assists, avg, awards, ovrStart: S.ovrSeasonStart || ovr, ovrEnd: ovr, clean: tot.clean, cleanAll: tot.cleanAll || 0, saves: tot.saves || 0, starts: st.starts, missed: tot.missed, loanNext: false, returning: false, cup: tot.cup, review, honours: acc.honours };
 
   // Ageing for the player (applied at the birthday that comes with the new season).
   // Nothing until 33; from the 34th birthday a gradual fade that steepens from 38 (slower with good
@@ -5462,7 +5492,7 @@ function endSeason() {
   if (p.loan) {
     S.seasonSummary.returning = true;
     p.loan.result = avg;
-  } else if (clubTier(c) === 1 && st.starts < 10 && nextAge <= 23) {
+  } else if (!gone && clubTier(c) === 1 && st.starts < 10 && nextAge <= 23) {
     S.seasonSummary.loanNext = true;
     msg(`${c.mgr} wants you to get first-team football. You will go out on loan next season.`);
   }
@@ -5477,7 +5507,18 @@ function endSeason() {
   p.order = null;
   expireOffers('transfer');
   S.offerRerolls = 3;
-  if (p.years <= 0 && p.preContract && !p.loan) {
+  if (gone) {
+    // Without a club already (released, or unsigned all season): no old deal to run out, just the
+    // summer market. Offers on the table stay until they lapse.
+    p.years = 0;
+    p.inquiries = [];
+    p.clauseUntil = 0;
+    p.faDry = 0;
+    p.faAsk = false;
+    S.seasonSummary.loanNext = false;
+    msg('Still without a club. The summer transfer window is open.', 'info');
+    generateOffers(randi(1, 3), true);
+  } else if (p.years <= 0 && p.preContract && !p.loan) {
     // A pre-contract signed this season: you leave on a free now, before the summer tournaments.
     p.inquiries = [];
     p.clauseUntil = 0;
@@ -5494,6 +5535,8 @@ function endSeason() {
     p.needsContract = true;
     p.freeSince = absWeek();
     p.netAt = null;
+    p.faDry = 0;
+    p.faAsk = false;
     p.clauseUntil = 0;
     p.inquiries = [];
     const home = myClub();
@@ -5804,8 +5847,8 @@ function ageWorld() {
 }
 
 function startNextSeason() {
-  if (S.phase !== 'offseason' || S.player.needsContract || summerPending()) return false;
-  const p = S.player, sum = S.seasonSummary;
+  if (S.phase !== 'offseason' || summerPending()) return false;
+  const p = S.player, sum = S.seasonSummary, free = !!p.needsContract;
   applyMoves(S.moves || []);
   S.moves = [];
   S.season++;
@@ -5816,7 +5859,8 @@ function startNextSeason() {
   applyNextPosition();
   planPositionAsk();
   S.player.seasonPos = S.player.pos;
-  if (p.loan) {
+  if (free) { /* no club: no loans, the season starts with you still looking */ }
+  else if (p.loan) {
     endLoan();
     // Still not in the manager's plans? Out on loan again.
     const c = myClub(), slots = formationSlots(c, POS_GROUP[p.pos]);
@@ -5824,17 +5868,24 @@ function startNextSeason() {
   } else if (sum.loanNext) startLoan();
   makeSeason();
   // Your club's offer after blocking a move stays until the next window, like the blocked move itself.
-  S.offers = S.offers.filter(o => o.keep && p.blockedMove && p.blockedMove.offer === o.id);
+  // A free agent's offers stay until they lapse.
+  if (!free) S.offers = S.offers.filter(o => o.keep && p.blockedMove && p.blockedMove.offer === o.id);
   S.potmSnap = null;
   checkMilestones();
   achvSweep();
   S.ovrSeasonStart = calcOVR();
   const age = ageOf(p.by);
-  msg(`Season ${seasonLabel()} begins. You are ${age}.`);
-  setObjectives();
-  maybeOrder();
-  announceSquadMoves();
-  if (age >= 40) retire();
+  if (free) {
+    msg(`Season ${seasonLabel()} begins. You are ${age} and still without a club: keep training, and wait for the phone to ring.`);
+    p.objectives = [];
+    p.order = null;
+  } else {
+    msg(`Season ${seasonLabel()} begins. You are ${age}.`);
+    setObjectives();
+    maybeOrder();
+    announceSquadMoves();
+  }
+  // No age limit: you retire when you choose to.
   save();
   return true;
 }

@@ -749,3 +749,12 @@ td.clubcrest .crest { margin: 0; }
 .natchip { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
 .natchip .natflag { width: 20px; }
 summary .natflag { display: inline-block; vertical-align: middle; }
+
+/* Free agent calendar: the month you are in, this game week highlighted. */
+.facal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+.facal span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.facal i { font-style: normal; font: 600 13px/30px var(--body); border-radius: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.facal i.wk { background: var(--surface-2); color: var(--chalk); border: 1px solid var(--line); }
+.facal i.today { background: var(--flood); color: var(--flood-ink); border-color: var(--flood); }
+.facal i.past { opacity: .45; }
+.faprompt { border-color: var(--flood); }

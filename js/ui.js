@@ -593,7 +593,33 @@ function orderBox() {
 }
 
 function freeAgentView() {
-  return faCard(true) + inboxHtml();
+  return faPrompt() + faCalendar() + faCard(true) + inboxHtml();
+}
+
+// Ten weeks without a single offer: keep trying, or call it a day.
+function faPrompt() {
+  const p = S.player;
+  if (!p.faAsk) return '';
+  return `<section class="card hero faprompt"><h2>No offers coming</h2>
+    <p style="margin:0">${p.faDry} weeks have gone by without a single club calling. It does not seem like there will be any offers${ageOf(p.by) >= 37 ? ` for a ${ageOf(p.by)}-year-old` : ''}.</p>
+    <div class="btns"><button class="btn primary" data-act="keepTrying">Keep trying</button><button class="btn danger" data-act="retireAsk">Retire</button></div></section>`;
+}
+
+// Without a club the weeks still go by: the month you are in, this game week marked, and the button
+// that moves time on.
+function faCalendar() {
+  const p = S.player, d = weekDate(), y = d.getUTCFullYear(), m = d.getUTCMonth();
+  const today = Math.floor(d.getTime() / DAY), days = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const lead = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7, net = weeklyNet();
+  const cells = Array.from({ length: lead }, () => '<i></i>').concat(Array.from({ length: days }, (_, k) => {
+    const t = Math.floor(Date.UTC(y, m, k + 1) / DAY);
+    return `<i class="${t === today ? 'today' : t > today && t <= today + 6 ? 'wk' : t < today ? 'past' : ''}">${k + 1}</i>`;
+  })).join('');
+  return `<section class="card"><div class="row"><h2>${MONTHS[m]} ${y}</h2><span class="small muted">${seasonLabel()} · Week ${S.week} of ${SEASON_WEEKS}</span></div>
+    <div class="facal">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<span>${x}</span>`).join('')}${cells}</div>
+    <div class="row small"><span class="muted">No wage · sponsors − rent, upkeep and kit</span><b class="num ${net >= 0 ? 'good' : 'bad'}">${net >= 0 ? '+' : ''}${money(net)}/wk</b></div>
+    <button class="btn primary block" data-act="faWeek" ${p.faAsk ? 'disabled' : ''}>Proceed to next week</button>
+    ${p.faDry ? `<div class="small muted">${p.faDry} week${p.faDry !== 1 ? 's' : ''} in a row without a new offer.</div>` : ''}</section>`;
 }
 
 // Free agency: set an asking wage, wait out the weeks, and let clubs (and your agent) find you.
@@ -606,7 +632,7 @@ function faCard(home = false) {
     <div class="field"><label for="ask-wage">Your asking wage (per week)</label><input id="ask-wage" type="number" min="0" step="100" inputmode="numeric" value="${p.askWage || ''}" placeholder="${guide}"></div>
     <button class="btn block" data-act="setAsk">Set asking wage</button>
     <div class="small muted">Each club judges you on your OVR, position and age against its league's wages, your recent form, and how long you have been without a club. Ask at or under its valuation and it pays what you ask; up to 25% over and it offers its valuation instead; any higher and it walks away. Leave it empty to take what clubs think you are worth.</div>
-    ${season ? '<button class="btn primary block" data-act="faWeek">Wait a week</button>' : ''}
+    ${season && !home ? `<button class="btn primary block" data-act="faWeek" ${p.faAsk ? 'disabled' : ''}>Proceed to next week</button>` : ''}
     <button class="btn block" data-act="findClubs" ${searched ? 'disabled' : ''}>${searched ? 'Your agent has made calls this week' : 'Ask your agent to find clubs'}</button>
     ${home && n ? `<button class="btn block" data-act="tab" data-v="contract">View ${n} offer${n > 1 ? 's' : ''}</button>` : ''}
     ${season ? `<div class="small muted">Offers lapse after ${FA_OFFER_WEEKS} weeks. Training is half as effective without a club. After ${FA_NET_WEEKS} weeks with nothing on the table, a lower-league club offers you a way back.</div>` : ''}
@@ -832,7 +858,7 @@ function viewOffseason() {
   const delta = sum.ovrEnd - sum.ovrStart;
   return `<section class="card hero">
       <h2>Season ${seasonLabel(sum.season)} review</h2>
-      <div class="row"><b style="font:800 24px var(--display)">${sum.club}</b><span>Finished <b>${sum.pos}${ordinal(sum.pos)}</b></span></div>
+      <div class="row"><b style="font:800 24px var(--display)">${sum.club}</b>${sum.free ? '' : `<span>Finished <b>${sum.pos}${ordinal(sum.pos)}</b></span>`}</div>
       ${sum.clubs && sum.clubs.length > 1 ? `<div class="small muted">This season: ${sum.clubs.map(esc).join(' → ')}. Stats cover all of them.</div>` : ''}
       <div class="${statGrid(p.pos)}"><div><b>${sum.apps}</b><small>Apps</small></div><div><b>${sum.goals}</b><small>Goals</small></div><div><b>${sum.assists}</b><small>Assists</small></div>${gkCells(p.pos, sum.saves, sum.cleanAll)}<div><b>${rateBox(sum.apps ? sum.avg : null)}</b><small>Rating</small></div></div>
       ${sum.cup && sum.cup.apps ? `<div class="small muted">Cups: ${sum.cup.apps} apps · ${sum.cup.goals} goals · ${sum.cup.assists} assists</div>` : ''}
@@ -844,14 +870,14 @@ function viewOffseason() {
     ${honoursCard(sum)}
     ${summerCard()}
     <section class="card"><h2>Contract</h2>
-      ${p.needsContract ? '<p class="bad" style="margin:0">Your contract has run out. Sign with a club in the Contract tab to continue.</p>' : `<p style="margin:0">${money(p.wage)}/week · ${p.years} year${p.years !== 1 ? 's' : ''} left at ${club(p.loan ? p.loan.parent : p.club).name}</p>`}
+      ${p.needsContract ? `<p class="bad" style="margin:0">${sum.free ? 'You are still without a club.' : 'Your contract has run out.'} Sign with a club in the Contract tab, or go into ${seasonLabel(S.season + 1)} as a free agent: the weeks go by, the bills keep coming, and clubs can still call.</p>` : `<p style="margin:0">${money(p.wage)}/week · ${p.years} year${p.years !== 1 ? 's' : ''} left at ${club(p.loan ? p.loan.parent : p.club).name}</p>`}
       ${sum.loanNext ? `<p class="small flood" style="margin:0">You made only ${sum.starts} starts, so you will be sent out on loan next season. Sign for another club to avoid it.</p>` : ''}
       ${sum.returning && p.loan ? `<p class="small muted" style="margin:0">Your loan ends. You return to ${club(p.loan.parent).name} for pre-season.</p>` : ''}
       <button class="btn block" data-act="tab" data-v="contract">${S.offers.length ? `View ${S.offers.length} offer${S.offers.length > 1 ? 's' : ''}` : 'Open Contract'}</button>
     </section>
     <section class="card">
       ${summerPending() ? `<p class="small muted" style="margin:0">Finish the ${summerPending().name} first.</p>` : ''}
-      <button class="btn primary block" data-act="nextSeason" ${p.needsContract || summerPending() ? 'disabled' : ''}>Start ${seasonLabel(S.season + 1)}</button>
+      <button class="btn primary block" data-act="nextSeason" ${summerPending() ? 'disabled' : ''}>${p.needsContract ? `Proceed to ${seasonLabel(S.season + 1)} season` : `Start ${seasonLabel(S.season + 1)}`}</button>
       <button class="btn danger block" data-act="retireAsk">Retire${age < 30 ? ' early' : ''}</button>
     </section>` + inboxHtml();
 }
@@ -2677,6 +2703,7 @@ document.addEventListener('click', e => {
     case 'findClubs': toast(findClubs() ? 'Your agent is making calls' : 'Try again next week'); render(); return;
     case 'setAsk': { const el = document.getElementById('ask-wage'); if (el && setAskWage(el.value)) toast(S.player.askWage ? `Asking for ${money(S.player.askWage)}/week` : 'Asking wage cleared'); render(); return; }
     case 'faWeek': { const rep = freeAgentWeek(); render(); if (rep) showMatchReport(rep); return; }
+    case 'keepTrying': keepTrying(); toast('Keep the phone on'); render(); return;
     case "equip": if (setEquip(+v)) toast(`${EQUIP_TIERS[+v].name} equipment`); render(); return;
     case 'agent': if (hireAgent(+v)) toast(+v ? `Signed: ${AGENTS[+v].name}` : 'Agent released'); render(); return;
     case 'wishAsk': showWishSheet(); return;
