@@ -1555,17 +1555,19 @@ function viewClub() {
   const head = free ? `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">Free agent</b><div class="small muted">You have no club. Follow the leagues and cups while you wait for a call.</div></div></div></section>` : `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${c.name}</b><div class="small muted">Manager: ${c.mgr} (${NATIONS[c.mgrNat] || c.mgrNat}) · Rating ${mgrOf(c).r} · ${jobLabel(mgrOf(c).job)}</div></div>${crest(c.id)}</div>
     ${parentOf(c) ? `<div class="small flood">${esc(parentOf(c).name)}'s second team: play well and get called up to their first team (team rating ${Math.round(teamStrength(parentOf(c)))}).</div>` : ''}
     <div class="small muted">${league(c.league).name} (${TIER_LABEL[clubTier(c)].toLowerCase()}) · Team rating ${Math.round(teamStrength(c))} · Your role: <b style="color:var(--chalk)">${squadStatus()}</b>${isCaptain() ? ' · <b class="good">Captain</b>' : ''}</div>${isCaptain() ? '<button class="btn sm block" data-act="capQuitAsk">Step down as captain</button>' : ''}</section>`;
-  const seg = `<div class="seg">${(free ? [['table', 'Table'], ['cups', 'Cups']] : [['table', 'Table'], ['results', 'Results'], ['rivals', 'Rivals'], ['squad', 'Squad'], ['scorers', 'Goals'], ['assists', 'Assists'], ['cups', 'Cups']]).map(([k, l]) => `<button class="${clubView === k ? 'on' : ''}" data-act="clubView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="seg">${(free ? [['table', 'Table'], ['cups', 'Cups']] : [['table', 'Table'], ['results', 'Results'], ['squad', 'Squad'], ['scorers', 'Goals'], ['assists', 'Assists'], ['clean', 'CS'], ['cups', 'Cups']]).map(([k, l]) => `<button class="${clubView === k ? 'on' : ''}" data-act="clubView" data-v="${k}"${k === 'clean' ? ' title="Clean sheets"' : ''}>${l}</button>`).join('')}</div>`;
   const countries = [...new Set(S.leagues.map(l => l.country))];
-  const lgSel = ['table', 'scorers', 'assists'].includes(clubView) ?`<select class="btn block" data-act="league" aria-label="League">${countries.map(ct => `<optgroup label="${ct}">${S.leagues.filter(l => l.country === ct).sort((a, b) => a.tier - b.tier).map(l => `<option value="${l.id}" ${l.id === lid ? 'selected' : ''}>${l.name}</option>`).join('')}</optgroup>`).join('')}</select>` : '';
+  const lgSel = ['table', 'scorers', 'assists', 'clean'].includes(clubView) ?`<select class="btn block" data-act="league" aria-label="League">${countries.map(ct => `<optgroup label="${ct}">${S.leagues.filter(l => l.country === ct).sort((a, b) => a.tier - b.tier).map(l => `<option value="${l.id}" ${l.id === lid ? 'selected' : ''}>${l.name}</option>`).join('')}</optgroup>`).join('')}</select>` : '';
   let body = '';
-  if (clubView === 'rivals') {
+  // Everyone fighting for your place, shown under the squad list.
+  const peckingCard = () => {
     const order = peckingOrder(), slots = formationSlots(myClub(), POS_GROUP[S.player.pos]);
-    body = `<section class="card"><h2>Pecking order</h2><p class="small muted" style="margin:0">Everyone fighting for the ${slots} ${{ GK: 'goalkeeper', DEF: 'defence', MID: 'midfield', FWD: 'attack' }[POS_GROUP[S.player.pos]]} spot${slots > 1 ? 's' : ''} in ${esc(myClub().mgr)}'s <b>${formationOf(myClub())}</b>. The manager picks on ability, affection and form; players whose position the shape has no place for are picked less. Above the line start.</p>
+    return `<section class="card"><h2>Pecking order</h2><p class="small muted" style="margin:0">Everyone fighting for the ${slots} ${{ GK: 'goalkeeper', DEF: 'defence', MID: 'midfield', FWD: 'attack' }[POS_GROUP[S.player.pos]]} spot${slots > 1 ? 's' : ''} in ${esc(myClub().mgr)}'s <b>${formationOf(myClub())}</b>. The manager picks on ability, affection and form; players whose position the shape has no place for are picked less. Above the line start.</p>
       <div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th>Pos</th><th class="r">OVR</th><th class="r">Affection</th></tr></thead><tbody>
       ${order.map((r, i) => `<tr class="${r.me ? 'me' : ''}" ${i === slots - 1 ? 'style="border-bottom:2px solid var(--flood)"' : ''}><td>${i + 1}</td><td class="clubname">${esc(r.n)}${r.inj ? ` <span class="bad small">injured ${r.inj}w</span>` : ''}</td><td><span class="pos-tag ${fitsFormation(r.pos, myClub()) ? '' : 'off'}" title="${fitsFormation(r.pos, myClub()) ? '' : 'No natural place in this formation'}">${r.pos}</span></td><td class="r">${r.r}</td><td class="r">${Math.round(r.a)}</td></tr>`).join('')}
       </tbody></table></div></section>`;
-  } else if (clubView === 'table') {
+  };
+  if (clubView === 'table') {
     const tbl = leagueTable(lid), n = tbl.length, tier = league(lid).tier;
     body = `<section class="card"><div class="tablewrap"><table class="lgt"><thead><tr><th>#</th><th>Club</th><th class="r">P</th><th class="r wdl">W</th><th class="r wdl">D</th><th class="r wdl">L</th><th class="r">GD</th><th class="r pts">Pts</th><th class="l5">Last 5</th></tr></thead><tbody>
       ${tbl.map((r, i) => `<tr class="${r.id === S.player.club && !free ? 'me' : ''} ${i < (tier === 1 ? 4 : PROMOTE) ? 'zone-cl' : i >= n - PROMOTE && tier < 3 ? 'zone-rel' : ''}"><td>${i + 1}</td><td class="clubname"><span class="clubcell">${crest(r.id, "mini")}${club(r.id).name}</span></td><td class="r">${r.p}</td><td class="r wdl">${r.w}</td><td class="r wdl">${r.d}</td><td class="r wdl">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r pts"><b>${r.pts}</b></td><td class="l5">${formDots(r.f)}</td></tr>`).join('')}
@@ -1578,15 +1580,16 @@ function viewClub() {
     rows.sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos) || b.r - a.r);
     body = squadMovesCard() + shirtAskCard(false) + `<section class="card"><div class="tablewrap"><table><thead><tr><th class="r">#</th><th>Pos</th><th>Player</th><th>Nat</th><th class="r">Age</th><th class="r">OVR</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td class="r num">${r.no || '–'}</td><td><span class="pos-tag">${r.pos}</span></td><td class="clubname">${esc(r.n)}</td><td class="natcell">${natFlag(r.nat)}</td><td class="r">${r.age}</td><td class="r"><b>${r.r}</b></td></tr>`).join('')}
-      </tbody></table></div></section>`;
+      </tbody></table></div></section>` + peckingCard();
   } else if (clubView === 'results') {
     body = `<div class="lgcrest">${resultsView()}</div>`;
   } else if (clubView === 'cups') {
     body = `<div class="lgcrest">${cupsView()}</div>`;
   } else {
-    const assists = clubView === 'assists', list = assists ? topAssists(lid, 15) : topScorers(lid, 15);
-    body = `<div class="lgcrest"><section class="card"><div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th class="clubcrest">Club</th><th class="r">${assists ? 'Assists' : 'Goals'}</th></tr></thead><tbody>
-      ${list.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td class="clubname">${esc(r.n)}</td><td class="clubcrest" title="${esc(club(r.club).name)}">${crest(r.club, 'mini')}</td><td class="r"><b>${r.g}</b></td></tr>`).join('') || `<tr><td colspan="4" class="muted">No ${assists ? 'assists' : 'goals'} yet this season.</td></tr>`}
+    if (!['scorers', 'assists', 'clean'].includes(clubView)) clubView = 'scorers'; // an old view (the Rivals tab) falls back here
+    const [list, word] = clubView === 'assists' ? [topAssists(lid, 15), 'assists'] : clubView === 'clean' ? [topCleanSheets(lid, Infinity), 'clean sheets'] : [topScorers(lid, 15), 'goals'];
+    body = `<div class="lgcrest"><section class="card">${clubView === 'clean' ? '<h2>Clean sheets</h2>' : ''}<div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th class="clubcrest">Club</th><th class="r">${word === 'clean sheets' ? 'CS' : word[0].toUpperCase() + word.slice(1)}</th></tr></thead><tbody>
+      ${list.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td class="clubname">${esc(r.n)}</td><td class="clubcrest" title="${esc(club(r.club).name)}">${crest(r.club, 'mini')}</td><td class="r"><b>${r.g}</b></td></tr>`).join('') || `<tr><td colspan="4" class="muted">No ${word} yet this season.</td></tr>`}
       </tbody></table></div></section></div>`;
   }
   return head + seg + lgSel + body;

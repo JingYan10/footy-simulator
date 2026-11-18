@@ -407,7 +407,7 @@ function makeSeason() {
     S.mdMap[l.id] = weekMap(S.fixtures[l.id].length);
     l.clubs.forEach(id => { S.table[id] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }; });
   });
-  Object.values(S.clubs).forEach(c => c.players.forEach(p => { p.g = 0; p.as = 0; }));
+  Object.values(S.clubs).forEach(c => c.players.forEach(p => { p.g = 0; p.as = 0; p.cs = 0; }));
   S.player.st = newStats();
   S.player.seasonSpells = [];
   S.week = 1;
@@ -2393,6 +2393,14 @@ function playFixture(h, a, user) {
   };
   credit(ch, gh, user && h === p.club);
   credit(ca, ga, user && a === p.club);
+  // A clean sheet goes to the side's first-choice keeper, unless you kept goal yourself (yours count in your own stats).
+  const keeperCS = (c, conceded) => {
+    if (conceded) return;
+    if (user && c.id === p.club && user.mins >= 60 && POS_GROUP[matchRole()] === 'GK') return;
+    const gk = c.players.filter(x => x.pos === 'GK').sort((x, y) => y.r - x.r)[0];
+    if (gk) gk.cs = (gk.cs || 0) + 1;
+  };
+  keeperCS(ch, ga); keeperCS(ca, gh);
   scorers.sort((x, y) => x.min - y.min);
   return { h, a, gh, ga, scorers };
 }
@@ -5297,20 +5305,22 @@ function leagueTable(lid) {
 // Goals (or assists) in a league this season. Your goals for every club you played for in
 // that league this season count, like they would in real life.
 function leagueChart(lid, key, n) {
-  const p = S.player, list = [], aiKey = key === 'goals' ? 'g' : 'as';
+  const p = S.player, list = [], aiKey = { goals: 'g', assists: 'as', clean: 'cs' }[key];
   league(lid).clubs.forEach(id => club(id).players.forEach(pl => { if (pl[aiKey]) list.push({ n: pl.n, club: id, g: pl[aiKey] }); }));
-  const mine = S.phase === 'season' || S.phase === 'offseason' ? leagueTally(lid, key) : 0;
+  // Clean sheets are a keepers' chart: yours only count when you are one.
+  const mine = (S.phase === 'season' || S.phase === 'offseason') && (key !== 'clean' || p.pos === 'GK') ? leagueTally(lid, key) : 0;
   if (mine) list.push({ n: p.name, club: p.club, g: mine, me: true });
   return list.sort((a, b) => b.g - a.g).slice(0, n);
 }
 const topScorers = (lid, n = 10) => leagueChart(lid, 'goals', n);
 const topAssists = (lid, n = 10) => leagueChart(lid, 'assists', n);
+const topCleanSheets = (lid, n = 10) => leagueChart(lid, 'clean', n);
 
 // How much each kind of award lifts your OVR in the end-of-season review. Each award counts
 // once, under the first line it matches (so a young player award is never a senior one too).
 const AWARD_OVR = [
   [/Young Player|Kopa|Golden Boy/, .6], [/Ballon d'Or|The Best/, 1], [/Golden Shoe|Golden Boot|Gerd Müller|Top Scorer/, .8],
-  [/Player of the (Season|Year)|Golden Ball/, .8], [/Top Assists/, .6], [/Yashin/, .8], [/World 11|Team of the Season/, .3],
+  [/Player of the (Season|Year)|Golden Ball/, .8], [/Top Assists|Golden Glove/, .6], [/Yashin/, .8], [/World 11|Team of the Season/, .3],
 ];
 const awardValue = a => (AWARD_OVR.find(([re]) => re.test(a)) || [0, 0])[1];
 
@@ -5426,7 +5436,14 @@ function myCandidate(tot, avg) {
   const p = S.player, ovr = calcOVR();
   const won = p.trophies.filter(t => t.season >= S.season - 1);
   const team = won.reduce((s, t) => s + ((BIG_TROPHY.find(([re]) => re.test(t.name)) || [0, 0])[1]), 0);
-  const clean = ['GK', 'DEF'].includes(POS_GROUP[p.pos]) ? tot.clean * .3 : 0;
+  let clean = ['GK', 'DEF'].includes(POS_GROUP[p.pos]) ? tot.clean * .3 : 0;
+  // A keeper's case: only a truly dominant season (well over 15 league clean sheets, a busy and
+  // reliable afternoon most weeks) catches the voters' eye, like Yashin in 1963. With the big
+  // trophies on top it can win; without them it rarely gets close.
+  if (p.pos === 'GK') {
+    const apps = tot.apps + (tot.cup ? tot.cup.apps : 0), svpg = (tot.saves || 0) / Math.max(1, apps);
+    clean += Math.max(0, tot.clean - 15) * .8 + clamp((svpg - 2.5) * 3, 0, 3);
+  }
   const w = leagueWeight(league(myClub().league));
   let base = (ovr - 84) * 2.2 + (tot.goals * .8 + tot.cup.goals * .4 + tot.assists * .45 + tot.cup.assists * .25 + (tot.apps >= 15 ? (avg - 7) * 4 : -10) + clean) * w + team - 4;
   // Voters want a player who was there all season: a few weeks out dents the case a little
@@ -5536,6 +5553,9 @@ function endSeason() {
   if (scorers[0] && scorers[0].me) give('Golden Boot', `${L.name} Golden Boot`, 4);
   const assisters = topAssists(lid, 1);
   if (assisters[0] && assisters[0].me) give('Top Assists', `${L.name} Top Assists`, 3);
+  // The league's keeper with the most clean sheets.
+  const gloves = topCleanSheets(lid, 1);
+  if (gloves[0] && gloves[0].me) give('Golden Glove', `${L.name} Golden Glove`, 3);
   // England's awards are the PFA's; elsewhere the league names its own.
   const pfa = L.nat === 'ENG' && L.tier === 1;
   // Out for a quarter of the league season or more: no Player or Team of the Season, no Ballon d'Or,
@@ -5844,7 +5864,7 @@ function signReplacement(c, vacated, depth = 0) {
     const pl = pick(cands);
     s.players = s.players.filter(x => x !== pl);
     c.players.push(pl);
-    pl.g = 0; pl.as = 0;
+    pl.g = 0; pl.as = 0; pl.cs = 0;
     if (MKT) MKT.moved.add(pl);
     dealt(c); dealt(s);
     const fee = aiFee(pl, s, c);
@@ -5860,7 +5880,7 @@ function signReplacement(c, vacated, depth = 0) {
 // Move pl out of club c: sold to dest, or released when dest is null. Nothing is filled here.
 function movePlayer(pl, c, dest, paid = false) {
   c.players = c.players.filter(x => x !== pl);
-  pl.g = 0; pl.as = 0;
+  pl.g = 0; pl.as = 0; pl.cs = 0;
   if (MKT) MKT.moved.add(pl);
   if (dest) {
     dest.players.push(pl);
@@ -6693,7 +6713,7 @@ function retiredRecord() {
 // played in that season; anything else is a domestic cup.
 const LEGACY_TROPHY = [[/Club World Cup/, 6], [/World Cup( \d{4})?$/, 12], [/Champions League/, 12],
   [/European Championship|Euro|Copa América|Africa Cup|Asian Cup|Gold Cup|Nations League/, 8], [/Europa League|Conference League|Libertadores/, 5]];
-const LEGACY_AWARD = [[/Player of the Month/, .5], [/Ballon d'Or/, 25], [/The Best|Golden Shoe|Yashin/, 8], [/Golden Boot|Player of the (Season|Year)|Golden Ball|Top Scorer/, 4], [/Team of the Season|World 11/, 1]];
+const LEGACY_AWARD = [[/Player of the Month/, .5], [/Ballon d'Or/, 25], [/The Best|Golden Shoe|Yashin/, 8], [/Golden Boot|Golden Glove|Player of the (Season|Year)|Golden Ball|Top Scorer/, 4], [/Team of the Season|World 11/, 1]];
 // Icon: 120+ with 60%+ of the fans behind you, or 180+ whatever they say. Hero: 50+ with 50%+ of
 // the fans, or a legend at any club whatever the score (with a peak OVR of 75 or more).
 const ICON_SCORE = 120, ICON_ANY = 180, ICON_VOTE = 60, HERO_SCORE = 50, HERO_VOTE = 50, HERO_LEGEND_PEAK = 75;
@@ -6718,7 +6738,7 @@ function legacyScore(rec) {
 // the biggest trophies, legend status and a long one-club career lift it; playing for a club's
 // rivals drags it down. Reputation is only a small bonus, so maxing it out decides nothing. A little
 // luck, the same every time for the same career.
-const STANDOUT = /Golden Boot|Golden Shoe|Top Scorer|Top Assists|Player of the (Season|Year)|Golden Ball|Team of the Season|World 11|Ballon d'Or|The Best|Yashin/;
+const STANDOUT = /Golden Boot|Golden Glove|Golden Shoe|Top Scorer|Top Assists|Player of the (Season|Year)|Golden Ball|Team of the Season|World 11|Ballon d'Or|The Best|Yashin/;
 const BIG_ONES = /World Cup( \d{4})?$|Champions League|European Championship|Copa América|Africa Cup|Asian Cup/;
 function fanVote(rec) {
   const clubs = clubLegacy(rec), legends = clubs.filter(c => c.legend).length;
