@@ -190,7 +190,12 @@ function nav() {
 }
 
 function render() {
-  if (pastView) { renderPast(); return; }
+  // A career that has just ended opens like any finished one: Summary, Career, Assets and Back,
+  // not the live game's tabs.
+  if (!pastView && !landing && S && S.phase === 'retired' && loadArchive().some(r => r.id === S.player.careerId)) {
+    pastView = S.player.careerId; pastTab = 'summary'; pastSub = 'profile';
+  }
+  if (pastView) { renderPast(); if (S && S.phase === 'retired' && pastView === S.player.careerId) nextPopup(); return; }
   if (landing) { renderLanding(); return; }
   if (!S) { renderCreate(); return; }
   if (S.phase === 'choose') { renderChoose(); return; }
@@ -1233,6 +1238,8 @@ function clubStints(rec) {
 
 function viewRetired() { return retiredHtml(retiredRecord()); }
 
+// Under a nickname in another language: what it means, e.g. German for "The Bomber".
+const nickMeaning = k => k && k.meaning ? `<div class="small muted" style="margin-top:-6px">${esc(LANG_NAMES[k.lang] || '')} for “${esc(k.meaning)}”</div>` : '';
 // A past career's Career tab, laid out like a live one: Profile (with your nickname), Nationality and Milestones, and History.
 let pastSub = 'profile';
 function pastCareerHtml(rec) {
@@ -1253,7 +1260,7 @@ function pastCareerHtml(rec) {
   const natCard = `<section class="card"><h2>Nationality</h2>
       <div class="kv"><div><small>Born</small><b>${flags([born])}</b></div><div><small>Passports</small><b>${flags(pass)}</b></div><div><small>National team</small><b>${flags([rec.nat])}</b></div></div>
       <div class="small muted">${natLines}</div></section>`;
-  return seg + `<section class="card hero"><h2>Profile</h2>${rec.nickname ? `<div class="nick">“${esc(rec.nickname.n)}”</div>` : ''}
+  return seg + `<section class="card hero"><h2>Profile</h2>${rec.nickname ? `<div class="nick">“${esc(rec.nickname.n)}”</div>${nickMeaning(rec.nickname)}` : ''}
       <div class="kv"><div><small>Position</small><b>${POS_NAMES[rec.pos]}</b></div><div><small>Nation</small><b>${natFlag(rec.nat)} ${esc(natName(rec.nat))}</b></div>
       <div><small>Caps</small><b>${rec.caps || 0} · ${rec.intlGoals || 0} goals</b></div><div><small>Peak OVR</small><b>${rec.peak}</b></div>
       <div><small>Reputation</small><b>${rec.rep != null ? rec.rep : '–'}/100</b></div><div><small>Retired at</small><b>${rec.retiredAge}</b></div></div>
@@ -2030,7 +2037,7 @@ function viewCareer() {
   const seg = `<div class="seg">${[['career', 'Career'], ['history', 'History']].map(([k, l]) => `<button class="${careerSub === k ? 'on' : ''}" data-act="careerSub" data-v="${k}">${l}</button>`).join('')}</div>`;
   // History: every season and every honour, on their own page.
   if (careerSub === 'history') return seg + careerTables();
-  return seg + `<section class="card hero"><h2>Profile</h2>${p.nickname ? `<div class="nick" title="Since ${seasonLabel(p.nickname.season)}, for ${esc(p.nickname.why)}">“${esc(p.nickname.n)}”</div>` : ""}
+  return seg + `<section class="card hero"><h2>Profile</h2>${p.nickname ? `<div class="nick" title="Since ${seasonLabel(p.nickname.season)}, for ${esc(p.nickname.why)}">“${esc(p.nickname.n)}”</div>${nickMeaning(p.nickname)}` : ""}
       <div class="kv"><div><small>Position</small><b>${POS_NAMES[p.pos]}</b></div>${p.shirt && p.shirt.club === p.club && !p.shirt.repick ? `<div><small>Shirt</small><b>#${p.shirt.no}</b></div>` : ''}<div><small>Nation</small><b>${natName(p.nat)}</b></div><div><small>Country</small><b class="${calledUp() ? 'good' : ''}">${p.intlRetired ? 'Retired' : calledUp() ? 'In squad' : u21Pick() ? 'U21s' : 'Not picked'}</b></div>${isCaptain() || natCaptain() ? `<div><small>Armband</small><b class="good">${[isCaptain() ? 'Club' : '', natCaptain() ? 'Country' : ''].filter(Boolean).join(' & ')} captain</b></div>` : ''}${spLabel() ? `<div><small>Set pieces</small><b>${spLabel()}</b></div>` : ''}
       <div><small>Reputation</small><b>${Math.round(p.rep)}/100</b></div><div title="Transfer value: OVR, position, age, reputation, contract, league and this season's form"><small>Value</small><b>${value ? money(value) : 'Free agent'}</b></div><div><small>Caps</small><b>${p.caps}${p.intlGoals ? ` (${p.intlGoals}g)` : ''}</b>${p.u21Caps ? `<small>U21: ${p.u21Caps}${p.u21Goals ? ` (${p.u21Goals}g)` : ''}</small>` : ''}</div></div>
       <div class="small muted">${nationNote()}</div></section>

@@ -2865,24 +2865,164 @@ function earnNickname() {
   const rows = p.career, tk = rows.reduce((s, r) => s + (r.tackles || 0), 0) / apps, cs = rows.reduce((s, r) => s + (r.cleanAll || 0), 0) / apps;
   const clubs = new Set(rows.map(r => r.clubId));
   const opts = [];
-  if (clubs.size === 1 && rows.length >= 6) opts.push([`Mr ${club(p.club).name}`, `a one-club man at ${club(p.club).name}`]);
-  if (p.pos === 'GK' && cs >= .35) opts.push([pick(['The Cat', 'Safe Hands', 'The Wall']), 'all those clean sheets']);
-  if (POS_GROUP[p.pos] === 'DEF' && tk >= 5) opts.push([pick(['The Rock', 'The Wall', 'The Destroyer']), 'winning every tackle']);
-  if (p.pos === 'CDM' && tk >= 4) opts.push([pick(['The Enforcer', 'The Shield']), 'breaking up play']);
-  if (t.goals / apps >= .55) opts.push([pick(['The Goal Machine', 'The Executioner', `El ${last}`]), 'scoring for fun']);
-  if (t.assists / apps >= .3) opts.push([pick(['The Maestro', 'The Magician', 'The Architect']), 'creating chances']);
-  if ((p.spGoals || 0) >= 12) opts.push([pick(['Dead-Ball King', 'The Sniper']), 'your set pieces']);
-  if ((p.attrs.PAC || 0) >= 88 && p.pos !== 'GK') opts.push([pick(['The Flash', 'The Rocket', 'Road Runner']), 'your pace']);
-  if ((p.capSeasons || []).length >= 3) opts.push(['The Skipper', 'leading from the front']);
-  if ((p.media || 0) >= 6) opts.push([pick(['The Mouth', 'Mr Box Office']), 'never holding back in front of the cameras']);
-  if ((p.media || 0) <= -6) opts.push([pick(['Mr Humble', 'The Gentleman']), 'always putting the team first']);
-  if (!opts.length) opts.push([`${last}inho`, 'how much they love you']);
-  const [n, why] = opts[0];
-  p.nickname = { n, why, season: S.season };
-  addMilestone(`The fans call you "${n}"`);
-  notify('good', 'A nickname!', `The fans have started calling you "${n}", for ${why}.`);
+  if (clubs.size === 1 && rows.length >= 6) opts.push(['loyal', `being a one-club man at ${club(p.club).name}`]);
+  if (p.pos === 'GK' && cs >= .35) opts.push(['gk', 'all those clean sheets']);
+  if (POS_GROUP[p.pos] === 'DEF' && tk >= 5) opts.push(['def', 'winning every tackle']);
+  if (p.pos === 'CDM' && tk >= 4) opts.push(['cdm', 'breaking up play']);
+  if (t.goals / apps >= .55) opts.push(['goals', 'scoring for fun']);
+  if (t.assists / apps >= .3) opts.push(['assists', 'creating chances']);
+  if ((p.spGoals || 0) >= 12) opts.push(['sp', 'your set pieces']);
+  if ((p.attrs.PAC || 0) >= 88 && p.pos !== 'GK') opts.push(['pace', 'your pace']);
+  if ((p.capSeasons || []).length >= 3) opts.push(['captain', 'leading from the front']);
+  if ((p.media || 0) >= 6) opts.push(['loud', 'never holding back in front of the cameras']);
+  if ((p.media || 0) <= -6) opts.push(['humble', 'always putting the team first']);
+  if (!opts.length) opts.push(['love', 'how much they love you']);
+  const [cat, why] = opts[0];
+  // The fans speak their own language: the country of the club you play for now.
+  const lang = nickLang(league(myClub().league).nat);
+  const fill = s => s.replace(/\$L/g, last).replace(/\$C/g, myClub().name);
+  const [raw, mean] = pick(NICKNAMES[lang][cat]);
+  const n = fill(raw), meaning = lang === 'en' ? null : fill(mean);
+  p.nickname = { n, why, season: S.season, lang, meaning };
+  addMilestone(`The fans call you "${n}"${meaning ? ` (${LANG_NAMES[lang]} for "${meaning}")` : ''}`);
+  notify('good', 'A nickname!', `The fans have started calling you "${n}"${meaning ? `, ${LANG_NAMES[lang]} for "${meaning}"` : ''}, for ${why}.`);
   achv('nickname');
 }
+
+// Which language the fans of a club in this country use. Belgian fans speak Dutch or French.
+const NICK_LANG = { ENG: 'en', USA: 'en', ESP: 'es', GER: 'de', ITA: 'it', FRA: 'fr', POR: 'pt', NED: 'nl', TUR: 'tr', KSA: 'ar' };
+const nickLang = nat => nat === 'BEL' ? pick(['nl', 'fr']) : NICK_LANG[nat] || 'en';
+const LANG_NAMES = { en: 'English', es: 'Spanish', de: 'German', it: 'Italian', fr: 'French', pt: 'Portuguese', nl: 'Dutch', tr: 'Turkish', ar: 'Arabic' };
+// Nicknames by language and by what earned them: [nickname, what it means in English].
+// $L is your surname, $C your club. Arabic ones are written in Latin letters.
+const NICKNAMES = {
+  en: {
+    loyal: [['Mr $C', ''], ["$C's Own", ''], ['The One-Club Man', ''], ['Heart of $C', ''], ['$C Through and Through', '']],
+    gk: [['The Cat', ''], ['Safe Hands', ''], ['The Wall', ''], ['The Octopus', ''], ['The Last Line', ''], ['The Brick Wall', '']],
+    def: [['The Rock', ''], ['The Wall', ''], ['The Destroyer', ''], ['The Tank', ''], ['The Colossus', ''], ['Iron Man', '']],
+    cdm: [['The Enforcer', ''], ['The Shield', ''], ['The Pitbull', ''], ['The Engine', ''], ['The Bodyguard', '']],
+    goals: [['The Goal Machine', ''], ['The Executioner', ''], ['The Fox', ''], ['The Hitman', ''], ['Mr Goal', ''], ['The Assassin', '']],
+    assists: [['The Maestro', ''], ['The Magician', ''], ['The Architect', ''], ['The Wizard', ''], ['The Conductor', ''], ['The Professor', '']],
+    sp: [['Dead-Ball King', ''], ['The Sniper', ''], ['Free-Kick King', ''], ['The Specialist', '']],
+    pace: [['The Flash', ''], ['The Rocket', ''], ['Road Runner', ''], ['The Bullet', ''], ['Lightning', ''], ['The Express', '']],
+    captain: [['The Skipper', ''], ['The General', ''], ['The Captain', ''], ['The Leader', ''], ['The Commander', '']],
+    loud: [['The Mouth', ''], ['Mr Box Office', ''], ['The Showman', ''], ['The Headline', '']],
+    humble: [['Mr Humble', ''], ['The Gentleman', ''], ['The Quiet Man', ''], ['Mr Nice Guy', '']],
+    love: [['$Linho', ''], ['Our $L', ''], ['King $L', ''], ['Super $L', '']],
+  },
+  es: {
+    loyal: [['Señor $C', 'Mr $C'], ['Hijo del Club', 'Son of the Club'], ['El Corazón del Club', 'The Heart of the Club'], ['El Eterno', 'The Eternal One'], ['La Bandera', 'The Flag']],
+    gk: [['El Gato', 'The Cat'], ['San $L', 'Saint $L'], ['El Muro', 'The Wall'], ['El Pulpo', 'The Octopus'], ['Manos Seguras', 'Safe Hands'], ['La Araña', 'The Spider']],
+    def: [['La Roca', 'The Rock'], ['El Muro', 'The Wall'], ['El Tanque', 'The Tank'], ['El Jefe', 'The Boss'], ['El Mariscal', 'The Marshal'], ['La Muralla', 'The Great Wall']],
+    cdm: [['El Pitbull', 'The Pitbull'], ['El Escudo', 'The Shield'], ['El Pulmón', 'The Lung'], ['El Ancla', 'The Anchor'], ['El Guardaespaldas', 'The Bodyguard']],
+    goals: [['El Matador', 'The Killer'], ['El Pistolero', 'The Gunslinger'], ['El Goleador', 'The Goalscorer'], ['El Verdugo', 'The Executioner'], ['El Bombardero', 'The Bomber'], ['El Killer', 'The Killer']],
+    assists: [['El Mago', 'The Magician'], ['El Maestro', 'The Maestro'], ['El Arquitecto', 'The Architect'], ['El Cerebro', 'The Brain'], ['El Profesor', 'The Professor'], ['El Director', 'The Conductor']],
+    sp: [['El Francotirador', 'The Sniper'], ['Rey del Balón Parado', 'Dead-Ball King'], ['Guante de Seda', 'Silk Glove'], ['El Especialista', 'The Specialist']],
+    pace: [['El Rayo', 'The Lightning'], ['El Cohete', 'The Rocket'], ['La Bala', 'The Bullet'], ['El Correcaminos', 'Road Runner'], ['El Expreso', 'The Express']],
+    captain: [['El Capitán', 'The Captain'], ['El General', 'The General'], ['El Líder', 'The Leader'], ['El Comandante', 'The Commander']],
+    loud: [['El Bocazas', 'The Big Mouth'], ['El Showman', 'The Showman'], ['El Titular', 'The Headline']],
+    humble: [['El Humilde', 'The Humble One'], ['El Caballero', 'The Gentleman'], ['El Callado', 'The Quiet One']],
+    love: [['El $L', 'The $L'], ['$Lito', 'Little $L'], ['El Niño', 'The Kid'], ['Rey $L', 'King $L']],
+  },
+  de: {
+    loyal: [['Herr $C', 'Mr $C'], ['Urgestein', 'The Bedrock'], ['Vereinslegende', 'Club Legend'], ['Herz des Vereins', 'Heart of the Club'], ['Der Treue', 'The Loyal One']],
+    gk: [['Die Katze', 'The Cat'], ['Der Titan', 'The Titan'], ['Die Wand', 'The Wall'], ['Der Krake', 'The Octopus'], ['Sichere Hände', 'Safe Hands'], ['Der Hexer', 'The Sorcerer']],
+    def: [['Der Fels', 'The Rock'], ['Die Wand', 'The Wall'], ['Der Panzer', 'The Tank'], ['Der Kaiser', 'The Emperor'], ['Eisenfuß', 'Iron Foot'], ['Der Terrier', 'The Terrier']],
+    cdm: [['Der Abräumer', 'The Ball-Winner'], ['Der Staubsauger', 'The Hoover'], ['Das Schild', 'The Shield'], ['Der Motor', 'The Engine'], ['Die Lunge', 'The Lung']],
+    goals: [['Der Bomber', 'The Bomber'], ['Der Torjäger', 'The Goal Hunter'], ['Der Vollstrecker', 'The Executioner'], ['Der Knipser', 'The Finisher'], ['Die Torfabrik', 'The Goal Factory'], ['Kopfballungeheuer', 'The Heading Monster']],
+    assists: [['Der Zauberer', 'The Wizard'], ['Der Regisseur', 'The Director'], ['Der Architekt', 'The Architect'], ['Der Dirigent', 'The Conductor'], ['Der Professor', 'The Professor'], ['Der Spielmacher', 'The Playmaker']],
+    sp: [['Der Scharfschütze', 'The Sniper'], ['Freistoßkönig', 'Free-Kick King'], ['Der Spezialist', 'The Specialist'], ['Zauberfuß', 'Magic Foot']],
+    pace: [['Der Blitz', 'The Lightning'], ['Die Rakete', 'The Rocket'], ['Der Pfeil', 'The Arrow'], ['Turbo-$L', 'Turbo $L'], ['Der Sprinter', 'The Sprinter']],
+    captain: [['Der Kapitän', 'The Captain'], ['Der General', 'The General'], ['Der Anführer', 'The Leader'], ['Der Boss', 'The Boss']],
+    loud: [['Die große Klappe', 'The Big Mouth'], ['Der Showmaster', 'The Showman'], ['Die Schlagzeile', 'The Headline']],
+    humble: [['Der Bescheidene', 'The Modest One'], ['Der Gentleman', 'The Gentleman'], ['Der Stille', 'The Quiet One']],
+    love: [['Fußballgott', 'Football God'], ['Unser $L', 'Our $L'], ['Kaiser $L', 'Emperor $L'], ['$L-Gott', '$L the God']],
+  },
+  it: {
+    loyal: [['Il Signor $C', 'Mr $C'], ['La Bandiera', 'The Flag'], ['Il Cuore della Squadra', 'The Heart of the Team'], ['Il Fedele', 'The Loyal One'], ['Il Simbolo', 'The Symbol']],
+    gk: [['Il Gatto', 'The Cat'], ['Il Muro', 'The Wall'], ['Saracinesca', 'The Shutter'], ['San $L', 'Saint $L'], ['Mani Sicure', 'Safe Hands'], ['Il Ragno', 'The Spider']],
+    def: [['La Roccia', 'The Rock'], ['Il Muro', 'The Wall'], ['Il Carro Armato', 'The Tank'], ['Il Muraglione', 'The Great Wall'], ['Lo Sceriffo', 'The Sheriff'], ['Il Gladiatore', 'The Gladiator']],
+    cdm: [['Il Mastino', 'The Mastiff'], ['Lo Scudo', 'The Shield'], ['Il Polmone', 'The Lung'], ['Il Guerriero', 'The Warrior'], ['La Diga', 'The Dam']],
+    goals: [['Il Bomber', 'The Bomber'], ['Il Killer', 'The Killer'], ["L'Implacabile", 'The Relentless One'], ['Re del Gol', 'King of Goals'], ['Il Falco', 'The Hawk'], ['Il Matador', 'The Matador']],
+    assists: [['Il Mago', 'The Magician'], ['Il Maestro', 'The Maestro'], ["L'Architetto", 'The Architect'], ['Il Regista', 'The Director'], ['Il Professore', 'The Professor'], ['Il Genio', 'The Genius']],
+    sp: [['Il Cecchino', 'The Sniper'], ['Re delle Punizioni', 'Free-Kick King'], ['Piede Fatato', 'Fairy Foot'], ['Lo Specialista', 'The Specialist']],
+    pace: [['Il Fulmine', 'The Lightning'], ['Il Razzo', 'The Rocket'], ['La Freccia', 'The Arrow'], ['La Saetta', 'The Bolt'], ['Il Treno', 'The Train']],
+    captain: [['Il Capitano', 'The Captain'], ['Il Generale', 'The General'], ['Il Condottiero', 'The Commander'], ['Il Leader', 'The Leader']],
+    loud: [['Il Chiacchierone', 'The Chatterbox'], ['Lo Showman', 'The Showman'], ['Il Personaggio', 'The Character']],
+    humble: [["L'Umile", 'The Humble One'], ['Il Gentiluomo', 'The Gentleman'], ['Il Silenzioso', 'The Quiet One']],
+    love: [['Il Re', 'The King'], ['Il Principe', 'The Prince'], ['$Lino', 'Little $L'], ['Il Fenomeno', 'The Phenomenon']],
+  },
+  fr: {
+    loyal: [['Monsieur $C', 'Mr $C'], ["L'Enfant du Club", 'Child of the Club'], ['Le Cœur du Club', 'The Heart of the Club'], ['Le Fidèle', 'The Loyal One'], ['Le Symbole', 'The Symbol']],
+    gk: [['Le Chat', 'The Cat'], ['Le Mur', 'The Wall'], ['La Pieuvre', 'The Octopus'], ['Mains Sûres', 'Safe Hands'], ['Le Rempart', 'The Rampart'], ['Saint $L', 'Saint $L']],
+    def: [['Le Roc', 'The Rock'], ['Le Mur', 'The Wall'], ['Le Tank', 'The Tank'], ['Le Patron', 'The Boss'], ['Le Colosse', 'The Colossus'], ['Le Shérif', 'The Sheriff']],
+    cdm: [['Le Pitbull', 'The Pitbull'], ['Le Bouclier', 'The Shield'], ['Le Poumon', 'The Lung'], ['Le Chien de Garde', 'The Guard Dog'], ["L'Aspirateur", 'The Hoover']],
+    goals: [['Le Buteur', 'The Goalscorer'], ['Le Bourreau', 'The Executioner'], ['Le Renard', 'The Fox'], ['La Machine', 'The Machine'], ['Le Tueur', 'The Killer'], ['Le Canonnier', 'The Gunner']],
+    assists: [['Le Magicien', 'The Magician'], ['Le Maestro', 'The Maestro'], ["L'Architecte", 'The Architect'], ["Le Chef d'Orchestre", 'The Conductor'], ['Le Professeur', 'The Professor'], ['Le Génie', 'The Genius']],
+    sp: [['Le Sniper', 'The Sniper'], ['Roi des Coups Francs', 'Free-Kick King'], ["Pied d'Or", 'Golden Foot'], ['Le Spécialiste', 'The Specialist']],
+    pace: [["L'Éclair", 'The Lightning'], ['La Fusée', 'The Rocket'], ['La Flèche', 'The Arrow'], ['Le TGV', 'The Bullet Train'], ['La Balle', 'The Bullet']],
+    captain: [['Le Capitaine', 'The Captain'], ['Le Général', 'The General'], ['Le Chef', 'The Chief'], ['Le Commandant', 'The Commander']],
+    loud: [['La Grande Gueule', 'The Big Mouth'], ['Le Showman', 'The Showman'], ['La Star', 'The Star']],
+    humble: [["L'Humble", 'The Humble One'], ['Le Gentleman', 'The Gentleman'], ['Le Discret', 'The Quiet One']],
+    love: [['Le Roi', 'The King'], ['Le Prince', 'The Prince'], ['Petit $L', 'Little $L'], ['Le Phénomène', 'The Phenomenon']],
+  },
+  pt: {
+    loyal: [['Senhor $C', 'Mr $C'], ['Filho do Clube', 'Son of the Club'], ['O Coração do Clube', 'The Heart of the Club'], ['O Eterno', 'The Eternal One'], ['O Bandeira', 'The Flag']],
+    gk: [['O Gato', 'The Cat'], ['A Muralha', 'The Great Wall'], ['O Polvo', 'The Octopus'], ['Mãos Seguras', 'Safe Hands'], ['São $L', 'Saint $L'], ['O Paredão', 'The Big Wall']],
+    def: [['A Rocha', 'The Rock'], ['O Muro', 'The Wall'], ['O Tanque', 'The Tank'], ['O Xerife', 'The Sheriff'], ['O Patrão', 'The Boss'], ['O Colosso', 'The Colossus']],
+    cdm: [['O Pitbull', 'The Pitbull'], ['O Escudo', 'The Shield'], ['O Pulmão', 'The Lung'], ['O Cão de Guarda', 'The Guard Dog'], ['O Trinco', 'The Latch']],
+    goals: [['O Matador', 'The Killer'], ['O Artilheiro', 'The Gunner'], ['O Goleador', 'The Goalscorer'], ['O Carrasco', 'The Executioner'], ['A Máquina', 'The Machine'], ['O Bombardeiro', 'The Bomber']],
+    assists: [['O Mágico', 'The Magician'], ['O Maestro', 'The Maestro'], ['O Arquiteto', 'The Architect'], ['O Professor', 'The Professor'], ['O Cérebro', 'The Brain'], ['O Génio', 'The Genius']],
+    sp: [['O Atirador', 'The Sniper'], ['Rei das Bolas Paradas', 'Dead-Ball King'], ['Pé de Ouro', 'Golden Foot'], ['O Especialista', 'The Specialist']],
+    pace: [['O Relâmpago', 'The Lightning'], ['O Foguete', 'The Rocket'], ['A Bala', 'The Bullet'], ['O Papa-Léguas', 'Road Runner'], ['A Flecha', 'The Arrow']],
+    captain: [['O Capitão', 'The Captain'], ['O General', 'The General'], ['O Líder', 'The Leader'], ['O Comandante', 'The Commander']],
+    loud: [['O Fala-Barato', 'The Big Talker'], ['O Showman', 'The Showman'], ['A Estrela', 'The Star']],
+    humble: [['O Humilde', 'The Humble One'], ['O Cavalheiro', 'The Gentleman'], ['O Calado', 'The Quiet One']],
+    love: [['$Linho', 'Little $L'], ['O Rei', 'The King'], ['O Fenómeno', 'The Phenomenon'], ['O Menino', 'The Kid']],
+  },
+  nl: {
+    loyal: [['Meneer $C', 'Mr $C'], ['Clubicoon', 'Club Icon'], ['Hart van de Club', 'Heart of the Club'], ['De Trouwe', 'The Loyal One'], ['Mister $C', 'Mr $C']],
+    gk: [['De Kat', 'The Cat'], ['De Muur', 'The Wall'], ['De Octopus', 'The Octopus'], ['Veilige Handen', 'Safe Hands'], ['De Sluitpost', 'The Last Line'], ['Sint $L', 'Saint $L']],
+    def: [['De Rots', 'The Rock'], ['De Muur', 'The Wall'], ['De Tank', 'The Tank'], ['De Sloper', 'The Wrecker'], ['De Kolos', 'The Colossus'], ['IJzeren $L', 'Iron $L']],
+    cdm: [['De Stofzuiger', 'The Hoover'], ['Het Schild', 'The Shield'], ['De Motor', 'The Engine'], ['De Waakhond', 'The Watchdog'], ['De Pitbull', 'The Pitbull']],
+    goals: [['De Goaltjesdief', 'The Goal Thief'], ['De Beul', 'The Executioner'], ['Het Kanon', 'The Cannon'], ['De Doelpuntenmachine', 'The Goal Machine'], ['De Killer', 'The Killer'], ['De Spits', 'The Striker']],
+    assists: [['De Tovenaar', 'The Wizard'], ['De Maestro', 'The Maestro'], ['De Architect', 'The Architect'], ['De Dirigent', 'The Conductor'], ['De Professor', 'The Professor'], ['De Regisseur', 'The Director']],
+    sp: [['De Sluipschutter', 'The Sniper'], ['Vrijetrappenkoning', 'Free-Kick King'], ['Gouden Voet', 'Golden Foot'], ['De Specialist', 'The Specialist']],
+    pace: [['De Bliksem', 'The Lightning'], ['De Raket', 'The Rocket'], ['De Pijl', 'The Arrow'], ['De Sneltrein', 'The Express'], ['Turbo $L', 'Turbo $L']],
+    captain: [['De Kapitein', 'The Captain'], ['De Generaal', 'The General'], ['De Leider', 'The Leader'], ['De Baas', 'The Boss']],
+    loud: [['De Grote Mond', 'The Big Mouth'], ['De Showman', 'The Showman'], ['De Ster', 'The Star']],
+    humble: [['De Bescheidene', 'The Modest One'], ['De Gentleman', 'The Gentleman'], ['De Stille', 'The Quiet One']],
+    love: [['Onze $L', 'Our $L'], ['Koning $L', 'King $L'], ['De Prins', 'The Prince'], ['Kleine $L', 'Little $L']],
+  },
+  tr: {
+    loyal: [['$C Aşığı', '$C Lover'], ['Kulüp Efsanesi', 'Club Legend'], ['Sadık $L', 'Loyal $L'], ['Bayrak Adam', 'The Flag Man'], ['Kulübün Kalbi', 'Heart of the Club']],
+    gk: [['Kedi', 'The Cat'], ['Duvar', 'The Wall'], ['Ahtapot', 'The Octopus'], ['Güvenli Eller', 'Safe Hands'], ['Kale Bekçisi', 'The Goal Guard'], ['Örümcek', 'The Spider']],
+    def: [['Kaya', 'The Rock'], ['Çelik Duvar', 'The Steel Wall'], ['Tank', 'The Tank'], ['Dev Adam', 'The Giant'], ['Demir $L', 'Iron $L'], ['Kartal', 'The Eagle']],
+    cdm: [['Pitbull', 'The Pitbull'], ['Kalkan', 'The Shield'], ['Motor', 'The Engine'], ['Bekçi', 'The Watchman'], ['Savaşçı', 'The Warrior']],
+    goals: [['Gol Makinesi', 'The Goal Machine'], ['Cellat', 'The Executioner'], ['Bombacı', 'The Bomber'], ['Golcü', 'The Goalscorer'], ['Avcı', 'The Hunter'], ['Gol Kralı', 'The Goal King']],
+    assists: [['Sihirbaz', 'The Wizard'], ['Maestro', 'The Maestro'], ['Mimar', 'The Architect'], ['Orkestra Şefi', 'The Conductor'], ['Profesör', 'The Professor'], ['Usta', 'The Master']],
+    sp: [['Keskin Nişancı', 'The Sniper'], ['Frikik Kralı', 'Free-Kick King'], ['Altın Ayak', 'Golden Foot'], ['Uzman', 'The Specialist']],
+    pace: [['Şimşek', 'The Lightning'], ['Roket', 'The Rocket'], ['Kurşun', 'The Bullet'], ['Rüzgar', 'The Wind'], ['Hızlı Tren', 'The Express']],
+    captain: [['Kaptan', 'The Captain'], ['General', 'The General'], ['Lider', 'The Leader'], ['Komutan', 'The Commander']],
+    loud: [['Geveze', 'The Chatterbox'], ['Şovmen', 'The Showman'], ['Manşet Adam', 'The Headline Man']],
+    humble: [['Mütevazı', 'The Modest One'], ['Beyefendi', 'The Gentleman'], ['Sessiz Adam', 'The Quiet Man']],
+    love: [['Kral $L', 'King $L'], ['Bizim $L', 'Our $L'], ['Prens', 'The Prince'], ['Aslan $L', '$L the Lion']],
+  },
+  ar: {
+    loyal: [['Ibn $C', 'Son of $C'], ['Qalb $C', 'Heart of $C'], ['Al-Wafi', 'The Loyal One'], ['Usturat $C', '$C Legend']],
+    gk: [['Al-Qitt', 'The Cat'], ['Al-Jidar', 'The Wall'], ['Al-Akhtabut', 'The Octopus'], ['Haris Al-Marma', 'Keeper of the Goal'], ['Al-Sadd', 'The Dam']],
+    def: [['Al-Sakhra', 'The Rock'], ['Al-Jidar', 'The Wall'], ['Al-Dababa', 'The Tank'], ['Al-Asad', 'The Lion'], ['Al-Hadid', 'The Iron Man']],
+    cdm: [['Al-Dir', 'The Shield'], ['Al-Muharrik', 'The Engine'], ['Al-Haris', 'The Guardian'], ['Al-Muharib', 'The Warrior']],
+    goals: [['Al-Haddaf', 'The Goalscorer'], ['Al-Saffah', 'The Executioner'], ['Al-Midfa', 'The Cannon'], ['Al-Saqr', 'The Falcon'], ['Al-Sayyad', 'The Hunter']],
+    assists: [['Al-Sahir', 'The Magician'], ['Al-Maestro', 'The Maestro'], ['Al-Muhandis', 'The Engineer'], ['Al-Ustadh', 'The Professor'], ['Al-Abqari', 'The Genius']],
+    sp: [['Al-Qannas', 'The Sniper'], ['Malik Al-Darbat Al-Hurra', 'Free-Kick King'], ['Al-Qadam Al-Dhahabiya', 'The Golden Foot']],
+    pace: [['Al-Barq', 'The Lightning'], ['Al-Sarukh', 'The Rocket'], ['Al-Rasasa', 'The Bullet'], ['Al-Rih', 'The Wind'], ['Al-Fahd', 'The Cheetah']],
+    captain: [['Al-Qaid', 'The Leader'], ['Al-Jeneral', 'The General'], ['Al-Zaeem', 'The Chief']],
+    loud: [['Al-Najm', 'The Star'], ['Al-Mutakallim', 'The Talker']],
+    humble: [['Al-Mutawadi', 'The Humble One'], ['Al-Muhtaram', 'The Respected One'], ['Al-Hadi', 'The Calm One']],
+    love: [['Al-Malik', 'The King'], ['Al-Amir', 'The Prince'], ['Al-Mahboub', 'The Beloved']],
+  },
+};
 
 // ---------- achievements ----------
 // Goals to chase across every career on this device. Kept in their own storage, so they survive
