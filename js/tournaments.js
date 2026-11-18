@@ -1193,10 +1193,11 @@ function askNatShirt(key) {
 }
 
 // National captaincy. At a squad announcement, a coach who rates you highly (goodwill 80+) may hand
-// the armband to an established international (20+ caps, 24 or older) who is one of the best three in
+// the armband to an established international (20+ caps, 28 or older) who is one of the best three in
 // his squad. Turn it down and he waits a season. The captain is nearly always picked to start (95%).
 // It goes when you are left out of a squad, fall out with the coach (below 40), retire from
 // international football or switch country; you can also step down (the coach is disappointed, −8).
+const NAT_CAPTAIN_AGE = 28;
 const natCaptain = () => { const p = S.player; return !!p.natCap && p.natCap === p.nat && !p.intlRetired && holdsTeamNat(); };
 function natCaptainCheck() {
   const p = S.player;
@@ -1208,7 +1209,7 @@ function natCaptainCheck() {
   }
   if (natCaptain() || !natInSquad() || (p.natCapNo != null && p.natCapNo >= S.season)) return;
   const ovr = calcOVR(), better = S.natSnap.list.filter(x => !x.me && x.r > ovr).length;
-  if ((p.caps || 0) < 20 || ageOf(p.by) < 24 || natFavor() < 80 || better > 2 || Math.random() >= 1 / 3) return;
+  if ((p.caps || 0) < 20 || ageOf(p.by) < NAT_CAPTAIN_AGE || natFavor() < 80 || better > 2 || Math.random() >= 1 / 3) return;
   queueDecision({ type: 'natCaptain', nat: p.nat, text: `${natCoach(p.nat)} wants you to captain ${natName(p.nat)}. You would start nearly every game and your name would grow, but you would be expected in every squad.` });
 }
 function resolveNatCaptain(d, yes) {

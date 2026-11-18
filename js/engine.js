@@ -2664,8 +2664,8 @@ function addMilestone(text) {
 }
 
 // ---------- captaincy ----------
-// The manager offers the armband to a key player he adores (affection 95+), 22 or older, in at least
-// his second season at the club, or to a long-serving starter (fourth season, 27+). You can turn it
+// The manager offers the armband to a key player he adores (affection 95+), 22 or older, once he has
+// played two full seasons at the club, or to a long-serving starter (three full seasons, 27+). You can turn it
 // down (he is a little disappointed and waits a season). The captain lifts the side a little when he
 // plays, the manager's goodwill settles at 60 instead of 50, and the season shows the armband in your
 // history; but a club is keener to block its captain's move. Step down whenever you like (it costs
@@ -2674,6 +2674,13 @@ function addMilestone(text) {
 const CAPTAIN_EDGE = .5, CAPTAIN_AFF = 95, CAPTAIN_BLOCK = 1.25;
 const seasonsHere = () => new Set([...(S.player.career || []).filter(r => r.clubId === S.player.club).map(r => r.season), S.season]).size;
 const isCaptain = () => !!S.player.captain && S.player.captain === S.player.club && !S.player.loan;
+// Whole seasons already finished at your club: the season you joined mid-way (January) doesn't count,
+// nor does the one being played now.
+function fullSeasonsHere() {
+  const p = S.player, a = p.arrival;
+  const half = a && a.club === p.club && !a.loan && a.season === p.joinedSeason ? a.season : null;
+  return new Set((p.career || []).filter(r => r.clubId === p.club && r.season < S.season && r.season !== half).map(r => r.season)).size;
+}
 function captainWeek() {
   const p = S.player;
   if (p.needsContract || !p.club) return;
@@ -2689,8 +2696,8 @@ function captainWeek() {
     return;
   }
   if (p.loan || p.listed || S.phase !== 'season' || S.decision || (p.capNo && p.capNo.club === c.id && p.capNo.season >= S.season)) return;
-  const st = squadStatus(), age = ageOf(p.by), yrs = seasonsHere();
-  const ok = effAff() >= CAPTAIN_AFF && ((st === 'Key Player' && age >= 22 && yrs >= 2) || (st === 'Starter' && age >= 27 && yrs >= 4));
+  const st = squadStatus(), age = ageOf(p.by), full = fullSeasonsHere();
+  const ok = effAff() >= CAPTAIN_AFF && ((st === 'Key Player' && age >= 22 && full >= 2) || (st === 'Starter' && age >= 27 && full >= 3));
   if (!ok || Math.random() >= 1 / 6) return;
   queueDecision({ type: 'captain', club: c.id, text: `${c.mgr} wants you as ${c.name} captain. The team plays a little better with you leading it and he will think even more of you, but the club will be keener to block any move away.` });
 }
