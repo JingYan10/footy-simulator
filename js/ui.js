@@ -157,14 +157,14 @@ function topbar() {
   const p = S.player, c = myClub(), ovr = calcOVR();
   const e = Math.round(p.energy);
   const eClass = e < 30 ? 'low' : e < 55 ? 'mid' : '';
-  const status = S.phase === 'retired' ? 'Retired' : p.needsContract && p.free ? 'Free agent' : squadStatus();
+  const status = S.phase === 'retired' ? 'Retired' : p.needsContract ? 'Free agent' : squadStatus();
   return `
   <header class="topbar wrap">
     <div class="idrow">
       <div class="ovr card-${cardTier(ovr).toLowerCase()}"><b class="num">${ovr}</b><span>${p.pos}</span></div>
       <div class="who">
         <h1>${esc(p.name)}</h1>
-        <p>${c.name} · ${status}${p.loan ? ` · On loan from ${club(p.loan.parent).short}` : ''}</p>
+        <p>${p.needsContract && S.phase !== 'retired' ? status : `${c.name} · ${status}`}${p.loan ? ` · On loan from ${club(p.loan.parent).short}` : ''}</p>
       </div>
       ${altPositions().length || p.nextPos ? `<div class="altpos">${altPositions().map(x => x === p.nextPos
         // A position you can already play that becomes your main one next season: marked on its own chip.
@@ -395,7 +395,7 @@ function offersHtml() {
       ${o.boss ? `<div class="small good"><b>Your old boss:</b> ${o.boss.back ? `${esc(o.boss.n)} never forgot what you did for him and wants you back.` : `${esc(o.boss.n)} managed you at ${esc(S.clubs[o.boss.was] ? club(o.boss.was).name : 'your old club')} and wants you with him again.`}</div>` : ''}
       ${o.desperate ? `<div class="small good"><b>Desperate:</b> ${esc(c.name)} badly need a player like you and are paying well over the odds.</div>` : ''}
       ${o.type === 'transfer' ? signRoleNote(c) : ''}
-      <div class="small muted">Current wage ${money(S.player.wage)}/wk${o.promised ? ' · They promise you a starting place' : ''}</div>
+      <div class="small muted">${S.player.needsContract ? 'No wage now: you have no club' : `Current wage ${money(S.player.wage)}/wk`}${o.promised ? ' · They promise you a starting place' : ''}</div>
       ${o.type === 'renew' && !o.raise && ROLE_RANK[role] >= 2 ? `<div class="small good">Sign as ${role.toLowerCase()} and your starting place is protected for ${RENEW_PROMISE} games.</div>` : ''}
       ${dropped ? `<div class="small bad">Was offered as ${o.status.toLowerCase()}: your contract talks cost you affection with ${esc(c.mgr)}, and your place with it.</div>` : ''}
       ${o.type === 'transfer' && rivalBetrayal(o.club).length ? `<div class="small bad"><b>Rivals of ${rivalBetrayal(o.club).map(id => esc(club(id).name)).join(' and ')}.</b> Join them and ${rivalBetrayal(o.club).length > 1 ? 'those clubs' : 'that club'} will hate you and never approach you again. You could never be a legend at either club.</div>` : ''}
@@ -1440,7 +1440,7 @@ function viewShop() {
   if (shopView === 'invest') return seg + investView();
   const nat = homeNat(), away = oldLeases();
   const fin = `<section class="card"><h2>Finances</h2>
-    <div class="row small"><span class="muted">Wage</span><b class="num">${money(p.wage)}/wk</b></div>
+    <div class="row small"><span class="muted">Wage${p.needsContract ? ' (no club)' : ''}</span><b class="num">${money(paidWage())}/wk</b></div>
     <div class="row small"><span class="muted">Sponsors (${sponsorDeals().length} deal${sponsorDeals().length !== 1 ? 's' : ''} + image rights)</span><b class="num">${money(sponsorIncome())}/wk</b></div>
     <div class="row small"><span class="muted">Rent${away.length ? ` (incl. ${away.length} lease${away.length > 1 ? 's' : ''} abroad)` : ''}</span><b class="num bad">−${money(rentNow())}/wk</b></div>
     ${upkeepNow() ? `<div class="row small"><span class="muted">Home upkeep (${Object.keys(ownedHomes()).length} owned)</span><b class="num bad">−${money(upkeepNow())}/wk</b></div>` : ''}
@@ -1541,12 +1541,14 @@ const formDots = (f = '') => `<span class="fmrow">${[...f].map((x, i, a) => `<i 
 const natFlag = nat => typeof FLAG_DATA !== 'undefined' && FLAG_DATA[nat] ? `<img class="natflag" src="${FLAG_DATA[nat]}" alt="${esc(nat)}" title="${esc(natName(nat))}">` : `<span class="muted">${esc(nat)}</span>`;
 
 function viewClub() {
-  const c = myClub();
+  const c = myClub(), free = !!S.player.needsContract;
+  // Without a club there is no manager, squad or results of your own: just the tables and the cups.
+  if (free && !['table', 'cups'].includes(clubView)) clubView = 'table';
   const lid = viewLeague || c.league;
-  const head = `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${c.name}</b><div class="small muted">Manager: ${c.mgr} (${NATIONS[c.mgrNat] || c.mgrNat}) · Rating ${mgrOf(c).r} · ${jobLabel(mgrOf(c).job)}</div></div>${crest(c.id)}</div>
+  const head = free ? `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">Free agent</b><div class="small muted">You have no club. Follow the leagues and cups while you wait for a call.</div></div></div></section>` : `<section class="card"><div class="row"><div><b style="font:700 22px var(--display)">${c.name}</b><div class="small muted">Manager: ${c.mgr} (${NATIONS[c.mgrNat] || c.mgrNat}) · Rating ${mgrOf(c).r} · ${jobLabel(mgrOf(c).job)}</div></div>${crest(c.id)}</div>
     ${parentOf(c) ? `<div class="small flood">${esc(parentOf(c).name)}'s second team: play well and get called up to their first team (team rating ${Math.round(teamStrength(parentOf(c)))}).</div>` : ''}
     <div class="small muted">${league(c.league).name} (${TIER_LABEL[clubTier(c)].toLowerCase()}) · Team rating ${Math.round(teamStrength(c))} · Your role: <b style="color:var(--chalk)">${squadStatus()}</b>${isCaptain() ? ' · <b class="good">Captain</b>' : ''}</div>${isCaptain() ? '<button class="btn sm block" data-act="capQuitAsk">Step down as captain</button>' : ''}</section>`;
-  const seg = `<div class="seg">${[['table', 'Table'], ['results', 'Results'], ['rivals', 'Rivals'], ['squad', 'Squad'], ['scorers', 'Goals'], ['assists', 'Assists'], ['cups', 'Cups']].map(([k, l]) => `<button class="${clubView === k ? 'on' : ''}" data-act="clubView" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="seg">${(free ? [['table', 'Table'], ['cups', 'Cups']] : [['table', 'Table'], ['results', 'Results'], ['rivals', 'Rivals'], ['squad', 'Squad'], ['scorers', 'Goals'], ['assists', 'Assists'], ['cups', 'Cups']]).map(([k, l]) => `<button class="${clubView === k ? 'on' : ''}" data-act="clubView" data-v="${k}">${l}</button>`).join('')}</div>`;
   const countries = [...new Set(S.leagues.map(l => l.country))];
   const lgSel = ['table', 'scorers', 'assists'].includes(clubView) ?`<select class="btn block" data-act="league" aria-label="League">${countries.map(ct => `<optgroup label="${ct}">${S.leagues.filter(l => l.country === ct).sort((a, b) => a.tier - b.tier).map(l => `<option value="${l.id}" ${l.id === lid ? 'selected' : ''}>${l.name}</option>`).join('')}</optgroup>`).join('')}</select>` : '';
   let body = '';
@@ -1559,7 +1561,7 @@ function viewClub() {
   } else if (clubView === 'table') {
     const tbl = leagueTable(lid), n = tbl.length, tier = league(lid).tier;
     body = `<section class="card"><div class="tablewrap"><table class="lgt"><thead><tr><th>#</th><th>Club</th><th class="r">P</th><th class="r wdl">W</th><th class="r wdl">D</th><th class="r wdl">L</th><th class="r">GD</th><th class="r pts">Pts</th><th class="l5">Last 5</th></tr></thead><tbody>
-      ${tbl.map((r, i) => `<tr class="${r.id === S.player.club ? 'me' : ''} ${i < (tier === 1 ? 4 : PROMOTE) ? 'zone-cl' : i >= n - PROMOTE && tier < 3 ? 'zone-rel' : ''}"><td>${i + 1}</td><td class="clubname"><span class="clubcell">${crest(r.id, "mini")}${club(r.id).name}</span></td><td class="r">${r.p}</td><td class="r wdl">${r.w}</td><td class="r wdl">${r.d}</td><td class="r wdl">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r pts"><b>${r.pts}</b></td><td class="l5">${formDots(r.f)}</td></tr>`).join('')}
+      ${tbl.map((r, i) => `<tr class="${r.id === S.player.club && !free ? 'me' : ''} ${i < (tier === 1 ? 4 : PROMOTE) ? 'zone-cl' : i >= n - PROMOTE && tier < 3 ? 'zone-rel' : ''}"><td>${i + 1}</td><td class="clubname"><span class="clubcell">${crest(r.id, "mini")}${club(r.id).name}</span></td><td class="r">${r.p}</td><td class="r wdl">${r.w}</td><td class="r wdl">${r.d}</td><td class="r wdl">${r.l}</td><td class="r">${r.gf - r.ga > 0 ? '+' : ''}${r.gf - r.ga}</td><td class="r pts"><b>${r.pts}</b></td><td class="l5">${formDots(r.f)}</td></tr>`).join('')}
       </tbody></table></div></section>` + leagueAwardsCard(lid);
   } else if (clubView === 'squad') {
     const p = S.player;
@@ -1809,7 +1811,7 @@ const roundBlock = (name, meta, ties) => `<div class="round"><div class="roundhe
 // Where your team stands in a competition, in one line.
 function cupStatus(t, inIt, out) {
   if (t.winner) return `<div class="cupstatus ${myTeams().includes(t.winner) ? 'good' : ''}">${crest(t.winner, 'mini')}<span>Winner: <b>${esc(teamName(t.winner))}</b></span></div>`;
-  if (!inIt) return '<div class="cupstatus muted">You are not in this competition.</div>';
+  if (!inIt) return S.player.needsContract ? '' : '<div class="cupstatus muted">You are not in this competition.</div>';
   return out ? '<div class="cupstatus bad">You are out.</div>' : '<div class="cupstatus good">You are still in.</div>';
 }
 
@@ -1850,19 +1852,21 @@ function tournamentHtml(t) {
 
 // A domestic knockout cup: the next draw first, then every round played, newest first.
 function domesticCupHtml(t) {
-  const id = S.player.club;
-  // Early rounds of a big cup have dozens of ties: show yours, plus later rounds in full.
-  const show = (list, getHA) => list.filter(x => list.length <= 8 || getHA(x).includes(id));
+  // A free agent has no team in any cup.
+  const id = S.player.needsContract ? null : S.player.club;
+  // Early rounds of a big cup have dozens of ties: show yours, plus later rounds in full
+  // (without a club, the first eight of each round).
+  const show = (list, getHA) => !id ? list.slice(0, 8) : list.filter(x => list.length <= 8 || getHA(x).includes(id));
   const next = t.winner ? '' : (() => {
     const list = show(t.ties, x => x);
     const meta = `week ${t.weeks[t.r]}${t.r === 0 && t.byes.length ? ` · ${t.byes.length} byes` : ''}${list.length < t.ties.length ? ` · ${t.ties.length} ties` : ''}`;
-    return roundBlock(`Next: ${cupStage(t)}`, meta, list.map(([h, a]) => tieRow(h, a, null)).join('') || '<p class="small muted" style="margin:0">Your club is not in this round.</p>');
+    return roundBlock(`Next: ${cupStage(t)}`, meta, list.map(([h, a]) => tieRow(h, a, null)).join('') || `<p class="small muted" style="margin:0">${id ? 'Your club is not in this round.' : 'No ties drawn yet.'}</p>`);
   })();
   const rounds = t.rounds.slice().reverse().map(rd => {
     const list = show(rd.res, r => [r.h, r.a]);
     return list.length ? roundBlock(rd.name, list.length < rd.res.length ? `${rd.res.length} ties` : '', list.map(r => tieRow(r.h, r.a, r)).join('')) : '';
   }).join('');
-  const inIt = t.teams.includes(id);
+  const inIt = !!id && t.teams.includes(id);
   const out = !t.winner && !t.ties.some(x => x.includes(id)) && !(t.r === 0 && t.byes.includes(id));
   return `<section class="card"><div class="row"><h2>${esc(t.name)}</h2></div>${cupStatus(t, inIt, out)}${next}${rounds}</section>`;
 }
@@ -1872,8 +1876,8 @@ function cupsView() {
   // Other countries' domestic cups would crowd the list out.
   const foreignCups = new Set(Object.entries(DOMESTIC).filter(([n]) => n !== myNat).flatMap(([, defs]) => defs.map(d => d.key)));
   const comps = [
-    ...Object.values(S.cups || {}).filter(t => t.nat === myNat).map(t => ({ key: 'd:' + t.key, name: t.name, html: () => domesticCupHtml(t), mine: t.teams.includes(S.player.club) })),
-    ...Object.values(S.euro || {}).map(t => ({ key: 'e:' + t.key, name: t.name, html: () => tournamentHtml(t), mine: t === euroComp() })),
+    ...Object.values(S.cups || {}).filter(t => t.nat === myNat).map(t => ({ key: 'd:' + t.key, name: t.name, html: () => domesticCupHtml(t), mine: t.teams.some(id => myTeams().includes(id)) })),
+    ...Object.values(S.euro || {}).map(t => ({ key: 'e:' + t.key, name: t.name, html: () => tournamentHtml(t), mine: !S.player.needsContract && t === euroComp() })),
     ...(S.summer || []).map(t => ({ key: 's:' + t.key, name: t.name, html: () => tournamentHtml(t), mine: t.groups.flat().some(id => myTeams().includes(id)) })),
   ];
   const past = (S.history || []).slice().reverse().filter(h => !foreignCups.has(h.key)).slice(0, 20);
