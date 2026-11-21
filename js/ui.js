@@ -185,6 +185,29 @@ function topbar() {
   </header>`;
 }
 
+// Long club names slide sideways inside their cells; all the names in one table slide together, as one column.
+// The others only move when they are more than a pixel off, so the copies settle at once instead of echoing.
+document.addEventListener('scroll', e => {
+  const cell = e.target;
+  if (!cell.matches || !cell.matches('td.clubname .clubcell')) return;
+  for (const other of cell.closest('table').querySelectorAll('td.clubname .clubcell')) if (other !== cell && Math.abs(other.scrollLeft - cell.scrollLeft) > 1) other.scrollLeft = cell.scrollLeft;
+}, true);
+// Every name in a table gets the same slide distance (shorter ones are padded at the end), so the column moves
+// as one strip instead of only the long names shifting.
+function evenNameCells() {
+  for (const table of document.querySelectorAll('table')) {
+    const cells = [...table.querySelectorAll('td.clubname .clubcell')];
+    if (!cells.length) continue;
+    cells.forEach(c => c.style.removeProperty('--namepad'));
+    // The width of what's in the cell (crest and name), not of the cell itself.
+    const widths = cells.map(c => { const r = document.createRange(); r.selectNodeContents(c); return Math.ceil(r.getBoundingClientRect().width); });
+    const max = Math.max(...widths);
+    if (max <= cells[0].clientWidth) continue;
+    cells.forEach((c, i) => c.style.setProperty('--namepad', `${max - widths[i]}px`));
+  }
+}
+window.addEventListener('resize', () => evenNameCells());
+
 // On phones the top bar shrinks once you scroll down and grows back near the top. The two thresholds differ so
 // the bar's own change in height can't flip it back and forth.
 let compactTop = false;
@@ -218,6 +241,7 @@ function render() {
   if (chip) chip.parentElement.scrollLeft = chip.offsetLeft - chip.parentElement.offsetLeft - 24;
   // Tab rows that slide sideways on phones: keep the selected tab in view.
   for (const on of app.querySelectorAll('.seg .on')) { const s = on.parentElement; if (s.scrollWidth > s.clientWidth) s.scrollLeft = on.offsetLeft - s.offsetLeft - 24; }
+  evenNameCells();
   window.scrollTo(0, scrollY);
   nextPopup();
   // New club, or you gave your shirt away: pick a number before anything else.

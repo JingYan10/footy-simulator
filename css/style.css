@@ -151,6 +151,8 @@ td.clubname { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 /* A club name too long for its cell slides sideways inside the cell; the rest of the table stays put. */
 td.clubname .clubcell { overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
 td.clubname .clubcell::-webkit-scrollbar { display: none; }
+/* Spacing after shorter names so every name in a table slides the same distance (set by evenNameCells in ui.js). */
+td.clubname .clubcell { padding-right: var(--namepad, 0px); }
 .zone-cl td:first-child { box-shadow: inset 3px 0 0 var(--good); }
 .zone-po td:first-child { box-shadow: inset 3px 0 0 var(--flood); }
 .zone-out td { opacity: .6; }
