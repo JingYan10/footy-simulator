@@ -84,6 +84,8 @@ function renderLanding() {
     <button class="btn block" data-act="importAsk">Import a saved career</button>
     ${pausedHtml()}
     ${hallOfFameCard(past)}
+    ${STORE_BUILD ? (PRO ? '<p class="small good" style="margin:0;text-align:center">Pro: no ads, no waiting</p>' : '<button class="btn block" data-act="proShow">Go Pro: no ads, no waiting</button>') : ''}
+    ${STORE_BUILD ? '' : `<button class="btn block" data-act="badgeMode">Badges: ${BADGE_MODE === 'abstract' ? 'Abstract (store build)' : 'Real (development)'}</button>`}
     <button class="btn block" data-act="achvShow">Achievements ${Object.keys(achvList()).length}/${ACHIEVEMENTS.length}</button>
     ${past.length ? `<section class="card"><h2>Past careers</h2><div class="inbox">${past.map(r => {
       const t = careerTotals(r);
@@ -147,7 +149,9 @@ function renderChoose() {
   app.innerHTML = `<div class="create wrap">
     <h1 class="brand" style="font-size:36px">Pick your <em>club</em></h1>
     <p class="lede">${esc(S.player.name)}, ${POS_NAMES[S.player.pos].toLowerCase()}, age ${realAge()}, OVR <b style="color:var(--chalk)">${ovr}</b>. Five clubs have offered a 3-year youth contract.</p>
-    <button class="btn block" data-act="refresh" ${S.rerolls > 0 ? "" : "disabled"}>Refresh offers (${S.rerolls} left)</button>
+    ${S.rerolls <= 0 && STORE_BUILD && (S.adRolls || 0) < AD_ROLLS
+      ? `<button class="btn block" data-act="adRoll">${isPro() ? 'Extra roll' : 'Watch an ad for another roll'} (${AD_ROLLS - (S.adRolls || 0)} left)</button>`
+      : `<button class="btn block" data-act="refresh" ${S.rerolls > 0 ? "" : "disabled"}>Refresh offers (${S.rerolls} left)</button>`}
     ${cards}
   </div>`;
 }
@@ -181,6 +185,14 @@ function topbar() {
   </header>`;
 }
 
+// On phones the top bar shrinks once you scroll down and grows back near the top. The two thresholds differ so
+// the bar's own change in height can't flip it back and forth.
+let compactTop = false;
+window.addEventListener('scroll', () => {
+  const want = window.innerHeight < 900 && (compactTop ? window.scrollY > 8 : window.scrollY > 120);
+  if (want !== compactTop) { compactTop = want; document.body.classList.toggle('compact', want); }
+}, { passive: true });
+
 function nav() {
   const tabs = [['home', 'Home'], ['train', 'Train'], ['contract', 'Contract'], ['shop', 'Shop'], ['agent', 'Agent'], ['club', 'Club'], ['nation', 'Nation'], ['career', 'Career']];
   return `<nav class="tabs"><div class="in">${tabs.map(([k, l]) => `
@@ -204,11 +216,14 @@ function render() {
   app.innerHTML = topbar() + `<main class="wrap">${views[tab]()}</main>` + nav();
   const chip = app.querySelector('.cuptabs .on');
   if (chip) chip.parentElement.scrollLeft = chip.offsetLeft - chip.parentElement.offsetLeft - 24;
+  // Tab rows that slide sideways on phones: keep the selected tab in view.
+  for (const on of app.querySelectorAll('.seg .on')) { const s = on.parentElement; if (s.scrollWidth > s.clientWidth) s.scrollLeft = on.offsetLeft - s.offsetLeft - 24; }
   window.scrollTo(0, scrollY);
   nextPopup();
   // New club, or you gave your shirt away: pick a number before anything else.
   if (needShirt() && modal.hidden && !POPUPS.length && !S.decision) showShirtPicker();
   else if (needNatShirt() && modal.hidden && !POPUPS.length && !S.decision) showNatShirtPicker();
+  else if (STORE_BUILD && !S.decision) storeWindowAd();
 }
 
 // ---------- home ----------
@@ -218,9 +233,510 @@ const logoState = {}; // club id -> index into LOGO_EXTS that works, or -1 when 
 
 // Crests drawn in black on a clear background vanish on the dark pitch: these are shown in white.
 const INK_CRESTS = new Set(['Derby County']);
-const inkCrest = name => INK_CRESTS.has(name) ? ' class="ink"' : '';
+// Abstract badges are drawn in colour already, so only real crests get the white treatment.
+const inkCrest = name => INK_CRESTS.has(name) && BADGE_MODE !== 'abstract' ? ' class="ink"' : '';
+// ---------- abstract badges ----------
+// The commercial build can't ship real crests (trademarks). In 'abstract' mode every club gets a badge
+// drawn in code from the club's colours: a shape and an emblem picked from the club name, so a club always
+// gets the same badge. 'real' (the default, for development) keeps the real files. Switch on the start
+// screen, or with ?badges=abstract / ?badges=real in the address.
+const BADGE_MODE_KEY = 'fs-badges';
+// The store app (tools/build-app.ps1) sets window.STORE_BUILD: it ships no real crests, so it is always abstract
+// and has no switch.
+const STORE_BUILD = !!window.STORE_BUILD;
+
+// ---------- store names ----------
+// The store app also shows made-up names for trademarked leagues, cups, awards and football bodies. Only the
+// text on screen changes (a watcher rewrites it as it appears), so the game data and saves keep the real names
+// and a save moves between dev and the store app unchanged. Plain descriptive names (Turkish Cup, Golden Boot)
+// stay. Longer names are matched first, so "Club World Cup" is never read as "World Cup".
+const STORE_NAMES = [
+  // leagues
+  ['Premier League', 'English Premier Division'], ['Championship', 'English Second Division'], ['League One', 'English Third Division'],
+  ['La Liga', 'Primera División'], ['Primera Federación', 'Spanish Third Division'],
+  ['Serie A', 'Italian Prima Divisione'], ['Serie B', 'Italian Seconda Divisione'], ['Serie C', 'Italian Terza Divisione'],
+  ['Bundesliga', 'German Erste Liga'], ['2. Bundesliga', 'German Zweite Liga'], ['3. Liga', 'German Third Division'],
+  ['Ligue 1', 'French Première Division'], ['Ligue 2', 'French Deuxième Division'],
+  ['Liga Portugal', 'Portuguese Primeira Divisão'], ['Liga Portugal 2', 'Portuguese Segunda Divisão'], ['Liga 3', 'Portuguese Terceira Divisão'],
+  ['Eredivisie', 'Dutch Premier Division'], ['Süper Lig', 'Turkish Premier Division'],
+  ['Belgian Pro League', 'Belgian Premier Division'], ['Challenger Pro League', 'Belgian Second Division'], ['Saudi Pro League', 'Saudi Premier Division'],
+  ['MLS Eastern Conference', 'North American League East'], ['MLS Western Conference', 'North American League West'],
+  ['USL Championship', 'North American Second Division'], ['USL League One', 'North American Third Division'],
+  // domestic cups
+  ['FA Cup', 'English Cup'], ['Carabao Cup', 'English League Cup'], ['Community Shield', 'English Super Cup'],
+  ['Copa del Rey', 'Spanish Cup'], ['Supercopa de España', 'Spanish Super Cup'], ['Coppa Italia', 'Italian Cup'], ['Supercoppa Italiana', 'Italian Super Cup'],
+  ['DFB-Pokal', 'German Cup'], ['DFL-Supercup', 'German Super Cup'], ['Coupe de France', 'French Cup'], ['Trophée des Champions', 'French Super Cup'],
+  ['Taça de Portugal', 'Portuguese Cup'], ['Taça da Liga', 'Portuguese League Cup'], ['Supertaça', 'Portuguese Super Cup'],
+  ['KNVB Cup', 'Dutch Cup'], ['Johan Cruyff Shield', 'Dutch Super Cup'], ['MLS Cup', 'North American Cup'], ['U.S. Open Cup', 'American Open Cup'],
+  // club and international tournaments
+  ['Champions League', 'European Elite Cup'], ['Europa League', 'European Trophy'], ['Conference League', 'European Shield'],
+  ['Club World Cup', 'World Club Championship'], ['World Cup', 'World Championship'], ['European Championship', 'European Nations Cup'],
+  ['Nations League', 'Nations Series'], ['Copa América', 'South American Championship'], ['Africa Cup of Nations', 'African Championship'],
+  ['AFC Asian Cup', 'Asian Championship'], ['Gold Cup', 'North American Championship'],
+  // awards
+  ["Ballon d'Or", 'Golden Crown'], ["The Best FIFA Men's Player", 'Federation Player of the Year'], ['Kopa Trophy', 'Young Player Trophy'],
+  ['Golden Boy', 'Golden Prospect'], ['Yashin Trophy', 'Keeper of the Year'], ['FIFPRO World XI', 'World XI'], ['FIFPRO', 'Players Union'],
+  // football bodies
+  ['FIFA', 'World Football Federation'], ['UEFA', 'European Football Union'], ['CONMEBOL', 'South American Federation'],
+  ['CONCACAF', 'North American Federation'], ['CAF', 'African Federation'], ['AFC', 'Asian Federation'], ['OFC', 'Oceania Federation'],
+];
+const STORE_NAME_MAP = new Map(STORE_NAMES.map(([a, b]) => [a.replace(/['’]/g, "'"), b]));
+// Whole names only (not inside a longer word), case-sensitive. AFC Wimbledon is a club, not the Asian federation.
+const STORE_NAME_RE = new RegExp(`(?<![\\p{L}\\p{N}])(${[...STORE_NAME_MAP.keys()].sort((a, b) => b.length - a.length)
+  .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/'/g, "['’]"))
+  // The made-up tournament names end in "Championship" too: leave those alone when the text is checked again.
+  .map(n => n === 'Championship' ? '(?<!(?:World|Club|American|African|Asian|European|Nations) )Championship' : n).join('|')})(?![\\p{L}\\p{N}])(?! Wimbledon)`, 'gu');
+const storeText = s => s.replace(STORE_NAME_RE, m => STORE_NAME_MAP.get(m.replace(/’/g, "'")) || m);
+function storeRewrite(root) {
+  // Text in save boxes and inputs is data the player copies out, so it keeps the real names.
+  const skip = n => n.parentElement && n.parentElement.closest('textarea, input, script, style');
+  const fix = n => { if (!skip(n)) { const t = storeText(n.nodeValue); if (t !== n.nodeValue) n.nodeValue = t; } };
+  if (root.nodeType === 3) { fix(root); return; }
+  if (root.nodeType !== 1) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) fix(n);
+  for (const el of [root, ...root.querySelectorAll('[title], [aria-label], [placeholder]')]) for (const a of ['title', 'aria-label', 'placeholder']) {
+    const v = el.getAttribute && el.getAttribute(a);
+    if (v) { const t = storeText(v); if (t !== v) el.setAttribute(a, t); }
+  }
+}
+// ---------- store money: ads and Pro ----------
+// Only in the store app. Dev (GitHub, PC, phone artifact) counts as Pro: no ads, no waits, nothing to buy.
+//   - One full-screen ad when each transfer window opens (summer and January).
+//   - Rewarded ads the player chooses: one extra training session a week, and up to 3 extra club rolls at the start.
+//   - Every 5 seasons a free player waits 24 hours before the next season.
+//   - Pro (one purchase) removes the forced ads and the wait, and gives the rewards with a tap instead of a video.
+// In the app the ads come from AdMob (@capacitor-community/admob) and Pro from Google Play Billing
+// (cordova-plugin-purchase). In a browser (testing the store build) both are simulated.
+const MONEY = {
+  // Google's TEST ad units. Replace with your own from admob.google.com before release, together with the app id
+  // in app/android/app/src/main/AndroidManifest.xml, and set testing to false.
+  interstitial: 'ca-app-pub-3940256099942544/1033173712',
+  rewarded: 'ca-app-pub-3940256099942544/5224354917',
+  testing: true,
+  // The product id to create in the Play Console (Monetize > In-app products), as a one-time product.
+  proId: 'pro_unlock',
+};
+const WAIT_EVERY = 5, WAIT_MS = 24 * 3600 * 1000, AD_ROLLS = 3;
+const PRO_KEY = 'ptl-pro';
+let PRO = (() => { try { return localStorage.getItem(PRO_KEY) === '1'; } catch (e) { return false; } })();
+function setPro(v) { PRO = !!v; try { localStorage.setItem(PRO_KEY, PRO ? '1' : '0'); } catch (e) { /* storage unavailable */ } }
+const isPro = () => !STORE_BUILD || PRO;
+const admob = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob;
+const billing = () => window.CdvPurchase && window.CdvPurchase.store;
+let moneyReady = null;
+function moneyInit() {
+  if (!STORE_BUILD) return Promise.resolve();
+  if (moneyReady) return moneyReady;
+  return (moneyReady = (async () => {
+    const ad = admob();
+    if (ad && !moneyInit.ads) {
+      moneyInit.ads = true;
+      try {
+        await ad.initialize({ initializeForTesting: MONEY.testing });
+        // European players are asked for ad consent first (Google's consent form).
+        const c = await ad.requestConsentInfo();
+        if (c && c.isConsentFormAvailable && c.status === 'REQUIRED') await ad.showConsentForm();
+      } catch (e) { /* ads unavailable: the game carries on */ }
+    }
+    // The billing plugin only exists after Cordova's deviceready, so this part may run on a later call.
+    const store = billing();
+    if (store && !moneyInit.billing) {
+      moneyInit.billing = true;
+      try {
+        const { ProductType, Platform } = window.CdvPurchase;
+        store.register([{ id: MONEY.proId, type: ProductType.NON_CONSUMABLE, platform: Platform.GOOGLE_PLAY }]);
+        store.when()
+          .approved(t => t.verify())
+          .verified(r => { r.finish(); if (store.owned(MONEY.proId)) { setPro(true); render(); } })
+          .productUpdated(pr => { if (pr.id === MONEY.proId && pr.owned && !PRO) { setPro(true); render(); } });
+        await store.initialize([Platform.GOOGLE_PLAY]);
+        if (store.owned(MONEY.proId)) setPro(true);
+      } catch (e) { /* billing unavailable */ }
+    }
+  })());
+}
+document.addEventListener('deviceready', () => { moneyReady = null; moneyInit(); });
+// A stand-in ad for testing the store build in a browser.
+function fakeAd(kind) {
+  return new Promise(res => {
+    let n = 4;
+    openModal(`<h3>Ad</h3><p class="small muted" style="margin:0">In the store app a ${kind} ad plays here.</p><p class="small" id="adCount">Closes in ${n}s</p>`);
+    const t = setInterval(() => {
+      n--;
+      const el = document.getElementById('adCount');
+      if (el) el.textContent = `Closes in ${n}s`;
+      if (n <= 0 || !el) { clearInterval(t); closeModal(); res(!!el); }
+    }, 1000);
+  });
+}
+async function showInterstitial() {
+  if (isPro()) return;
+  await moneyInit();
+  const ad = admob();
+  if (!ad) { await fakeAd('full-screen'); return; }
+  try { await ad.prepareInterstitial({ adId: MONEY.interstitial, isTesting: MONEY.testing }); await ad.showInterstitial(); } catch (e) { /* no ad: carry on */ }
+}
+// Resolves true once the reward is earned. Pro players get it straight away.
+async function earnReward() {
+  if (isPro()) return true;
+  await moneyInit();
+  const ad = admob();
+  if (!ad) return fakeAd('rewarded');
+  try {
+    await ad.prepareRewardVideoAd({ adId: MONEY.rewarded, isTesting: MONEY.testing });
+    return !!(await ad.showRewardVideoAd());
+  } catch (e) { toast('No ad available right now. Try again later.'); return false; }
+}
+function showProSheet(why = '') {
+  openModal(`<h3>Pitch to Legend Pro</h3>
+    ${why ? `<p class="small" style="margin:0 0 6px">${why}</p>` : ''}
+    <p class="small muted" style="margin:0">One purchase, yours for good:</p>
+    <ul class="small" style="margin:6px 0 0;padding-left:18px"><li>No ads at the transfer windows</li><li>No 24-hour wait every ${WAIT_EVERY} seasons</li><li>Extra training sessions and club rolls with a tap, no videos</li></ul>
+    <div class="btns"><button class="btn primary sm" data-act="proBuy">Get Pro</button><button class="btn sm" data-act="proRestore">Restore purchase</button><button class="btn sm" data-act="close">Not now</button></div>`);
+}
+async function buyPro() {
+  await moneyInit();
+  const store = billing();
+  if (!store) { setPro(true); closeModal(); toast('Pro unlocked (test: no real payment outside the app)'); render(); return; }
+  const pr = store.get(MONEY.proId), offer = pr && pr.getOffer();
+  if (!offer) { toast('Pro is not available right now. Try again later.'); return; }
+  closeModal();
+  try { await offer.order(); } catch (e) { toast('The purchase did not go through.'); }
+}
+async function restorePro() {
+  await moneyInit();
+  const store = billing();
+  if (store) { try { await store.restorePurchases(); } catch (e) { /* ignore */ } }
+  closeModal();
+  toast(PRO ? 'Pro restored' : 'No Pro purchase found on this account');
+  render();
+}
+// One full-screen ad when a transfer window opens, once per window. Waits until no pop-up is showing.
+function storeWindowAd() {
+  if (isPro() || !S || S.phase === 'choose' || S.phase === 'retired' || !inWindow() || !modal.hidden || POPUPS.length) return;
+  const k = windowKey();
+  if (S.storeAdWindow === k) return;
+  S.storeAdWindow = k; save();
+  showInterstitial();
+}
+// Hours left before a free player may start the next season (0 when they may go on now).
+function seasonWaitLeft() {
+  if (isPro()) return 0;
+  if (S.storeStart == null) S.storeStart = S.season;
+  if ((S.season - S.storeStart + 1) % WAIT_EVERY) return 0;
+  if (!S.storeWait || S.storeWait.season !== S.season) { S.storeWait = { season: S.season, until: Date.now() + WAIT_MS }; save(); }
+  return Math.max(0, S.storeWait.until - Date.now());
+}
+function showWaitSheet(ms) {
+  const mins = Math.ceil(ms / 60000), h = Math.floor(mins / 60), m = mins % 60;
+  showProSheet(`You have played another ${WAIT_EVERY} seasons. Your next season unlocks in <b>${h}h ${m}m</b>. Come back then, or go Pro to play on now.`);
+}
+
+if (STORE_BUILD) {
+  new MutationObserver(list => { for (const m of list) { if (m.type === 'characterData') storeRewrite(m.target); else m.addedNodes.forEach(storeRewrite); } })
+    .observe(document.body, { childList: true, subtree: true, characterData: true });
+}
+let BADGE_MODE = (() => {
+  if (STORE_BUILD) return 'abstract';
+  const q =(location.search.match(/[?&]badges=(real|abstract)/) || [])[1];
+  // A build can pick its own default (the phone artifact sets window.BADGE_DEFAULT before this script).
+  const def = window.BADGE_DEFAULT === 'abstract' ? 'abstract' : 'real';
+  try { if (q) localStorage.setItem(BADGE_MODE_KEY, q); return q || localStorage.getItem(BADGE_MODE_KEY) || def; } catch (e) { return q || def; }
+})();
+function setBadgeMode(m) { BADGE_MODE = m; try { localStorage.setItem(BADGE_MODE_KEY, m); } catch (e) {} }
+// [main, second, trim] per club. Colours only: no names, shapes or symbols from the real crests.
+const BADGE_COLORS = {
+  'Arsenal': ['#DB0007', '#FFFFFF', '#9C824A'], 'Aston Villa': ['#670E36', '#95BFE5', '#F2B705'], 'Bournemouth': ['#DA291C', '#111111', '#FFFFFF'],
+  'Brentford': ['#E30613', '#FFFFFF', '#111111'], 'Brighton': ['#0057B8', '#FFFFFF', '#FFCD00'], 'Burnley': ['#6C1D45', '#99D6EA', '#FFFFFF'],
+  'Chelsea': ['#034694', '#FFFFFF', '#DBA111'], 'Crystal Palace': ['#1B458F', '#C4122E', '#FFFFFF'], 'Everton': ['#003399', '#FFFFFF', '#FFFFFF'],
+  'Fulham': ['#FFFFFF', '#111111', '#CC0000'], 'Leeds United': ['#FFFFFF', '#1D428A', '#FFCD00'], 'Liverpool': ['#C8102E', '#00B2A9', '#F6EB61'],
+  'Manchester City': ['#6CABDD', '#FFFFFF', '#1C2C5B'], 'Manchester United': ['#DA291C', '#FBE122', '#111111'], 'Newcastle United': ['#111111', '#FFFFFF', '#41B6E6'],
+  'Nottingham Forest': ['#DD0000', '#FFFFFF', '#111111'], 'Sunderland': ['#EB172B', '#FFFFFF', '#A68A0D'], 'Tottenham Hotspur': ['#132257', '#FFFFFF', '#FFFFFF'],
+  'West Ham United': ['#7A263A', '#1BB1E7', '#F3D459'], 'Wolverhampton': ['#FDB913', '#231F20', '#FFFFFF'],
+  'Real Madrid': ['#FFFFFF', '#00529F', '#FEBE10'], 'Barcelona': ['#004D98', '#A50044', '#EDBB00'], 'Atlético Madrid': ['#CB3524', '#FFFFFF', '#272E61'],
+  'Athletic Club': ['#EE2523', '#FFFFFF', '#111111'], 'Villarreal': ['#FFE667', '#005187', '#FFFFFF'], 'Real Betis': ['#00954C', '#FFFFFF', '#F2B705'],
+  'Celta Vigo': ['#8AC3EE', '#FFFFFF', '#E5254E'], 'Real Sociedad': ['#0067B1', '#FFFFFF', '#E4B21C'], 'Rayo Vallecano': ['#FFFFFF', '#E53027', '#111111'],
+  'Osasuna': ['#D91A21', '#0A346F', '#FFFFFF'], 'Mallorca': ['#E20613', '#111111', '#F2B705'], 'Valencia': ['#FFFFFF', '#111111', '#EE3524'],
+  'Getafe': ['#005999', '#FFFFFF', '#E30613'], 'Espanyol': ['#007FC8', '#FFFFFF', '#E30613'], 'Girona': ['#CD2534', '#FFFFFF', '#F2B705'],
+  'Sevilla': ['#FFFFFF', '#D71920', '#111111'], 'Alavés': ['#1E4C9A', '#FFFFFF', '#F2B705'], 'Elche': ['#FFFFFF', '#05642C', '#111111'],
+  'Levante': ['#004F9F', '#B4053F', '#F2B705'], 'Real Oviedo': ['#0055A4', '#FFFFFF', '#F2B705'],
+  'Inter': ['#0068A8', '#111111', '#D4AF37'], 'Napoli': ['#12A0D7', '#FFFFFF', '#003C82'], 'AC Milan': ['#FB090B', '#111111', '#FFFFFF'],
+  'Juventus': ['#111111', '#FFFFFF', '#D4AF37'], 'Atalanta': ['#1E71B8', '#111111', '#FFFFFF'], 'Roma': ['#8E1F2F', '#F0BC42', '#FFFFFF'],
+  'Lazio': ['#87D8F7', '#FFFFFF', '#15366F'], 'Fiorentina': ['#482E92', '#FFFFFF', '#E30613'], 'Bologna': ['#A21C26', '#1A2F48', '#FFFFFF'],
+  'Como': ['#00498C', '#FFFFFF', '#F2B705'], 'Torino': ['#8A1E03', '#FFFFFF', '#F2B705'], 'Udinese': ['#111111', '#FFFFFF', '#A08A55'],
+  'Genoa': ['#A51E36', '#002D62', '#F2B705'], 'Cagliari': ['#A6192E', '#002350', '#FFFFFF'], 'Lecce': ['#F6DA00', '#DA291C', '#002D62'],
+  'Parma': ['#FFFFFF', '#FFD200', '#0047AB'], 'Sassuolo': ['#00A752', '#111111', '#FFFFFF'], 'Hellas Verona': ['#002D72', '#FFD100', '#FFFFFF'],
+  'Cremonese': ['#BB1E3B', '#9EA3A8', '#FFFFFF'], 'Pisa': ['#111111', '#0A4E9F', '#FFFFFF'],
+  'Bayern Munich': ['#DC052D', '#FFFFFF', '#0066B2'], 'Borussia Dortmund': ['#FDE100', '#111111', '#FFFFFF'], 'RB Leipzig': ['#FFFFFF', '#DD0741', '#001F47'],
+  'Bayer Leverkusen': ['#E32221', '#111111', '#F2B705'], 'VfB Stuttgart': ['#FFFFFF', '#E32219', '#F2B705'], 'Eintracht Frankfurt': ['#E1000F', '#111111', '#FFFFFF'],
+  'SC Freiburg': ['#111111', '#E3001B', '#FFFFFF'], 'VfL Wolfsburg': ['#65B32E', '#FFFFFF', '#1D2A4D'], 'Borussia Mönchengladbach': ['#FFFFFF', '#111111', '#00A651'],
+  'TSG Hoffenheim': ['#1961B5', '#FFFFFF', '#111111'], 'Union Berlin': ['#EB1923', '#FFFFFF', '#F2B705'], 'FC Augsburg': ['#BA3733', '#46714D', '#FFFFFF'],
+  'Werder Bremen': ['#1D9053', '#FFFFFF', '#111111'], 'Mainz 05': ['#C3141E', '#FFFFFF', '#111111'], '1. FC Köln': ['#ED1C24', '#FFFFFF', '#111111'],
+  'Hamburger SV': ['#0A3F86', '#FFFFFF', '#E30613'], '1. FC Heidenheim': ['#E2001A', '#003B79', '#FFFFFF'], 'FC St. Pauli': ['#5C3A21', '#FFFFFF', '#E30613'],
+  'Paris Saint-Germain': ['#004170', '#DA291C', '#FFFFFF'], 'Marseille': ['#FFFFFF', '#2FAEE0', '#D4AF37'], 'Monaco': ['#E51B22', '#FFFFFF', '#D4AF37'],
+  'Lille': ['#E01E13', '#20325F', '#FFFFFF'], 'Lyon': ['#FFFFFF', '#14387F', '#DA001A'], 'Nice': ['#C8102E', '#111111', '#FFFFFF'],
+  'Lens': ['#FFD800', '#E30613', '#111111'], 'Rennes': ['#E13327', '#111111', '#FFFFFF'], 'Strasbourg': ['#009FE3', '#FFFFFF', '#E30613'],
+  'Toulouse': ['#6B3FA0', '#FFFFFF', '#111111'], 'Brest': ['#E30613', '#FFFFFF', '#111111'], 'Nantes': ['#FCD405', '#00843D', '#FFFFFF'],
+  'Auxerre': ['#FFFFFF', '#004B93', '#F2B705'], 'Angers': ['#111111', '#FFFFFF', '#F2B705'], 'Le Havre': ['#8CC3E6', '#1C2E5C', '#FFFFFF'],
+  'Lorient': ['#F58220', '#111111', '#FFFFFF'], 'Metz': ['#7A1235', '#FFFFFF', '#F2B705'], 'Paris FC': ['#1E2A4F', '#FFFFFF', '#E30613'],
+  // Other top flights: where the colours picked from the crest come out wrong (white or grey crests).
+  'Benfica': ['#E30613', '#FFFFFF', '#F2B705'], 'Porto': ['#003893', '#FFFFFF', '#F2B705'], 'Sporting CP': ['#008057', '#FFFFFF', '#F2B705'],
+  'Braga': ['#D2001F', '#FFFFFF', '#111111'], 'Vitória SC': ['#FFFFFF', '#111111', '#F2B705'],
+  'PSV': ['#ED1C24', '#FFFFFF', '#111111'], 'Feyenoord': ['#ED1C24', '#FFFFFF', '#111111'], 'Ajax': ['#FFFFFF', '#D2122E', '#111111'],
+  'AZ': ['#E30613', '#FFFFFF', '#111111'], 'FC Twente': ['#E30613', '#FFFFFF', '#111111'], 'FC Utrecht': ['#E30613', '#FFFFFF', '#111111'],
+  'Galatasaray': ['#A90432', '#FDB912', '#FFFFFF'], 'Fenerbahçe': ['#002D72', '#FFED00', '#FFFFFF'], 'Beşiktaş': ['#111111', '#FFFFFF', '#E30A17'],
+  'Trabzonspor': ['#7A1C3B', '#46B5E5', '#FFFFFF'], 'Başakşehir': ['#F26522', '#002D62', '#FFFFFF'],
+  'Club Brugge': ['#0070C0', '#111111', '#FFFFFF'], 'Union SG': ['#F2C300', '#0047AB', '#FFFFFF'], 'Anderlecht': ['#4D2C8B', '#FFFFFF', '#F2B705'],
+  'Genk': ['#0047AB', '#FFFFFF', '#F2B705'], 'Gent': ['#0047AB', '#FFFFFF', '#F2B705'], 'Antwerp': ['#E30613', '#FFFFFF', '#111111'],
+  'Standard Liège': ['#E30613', '#FFFFFF', '#111111'],
+  'Al Hilal': ['#0033A0', '#FFFFFF', '#F2B705'], 'Al Nassr': ['#FFD100', '#003DA5', '#FFFFFF'], 'Al Ittihad': ['#F2C300', '#111111', '#FFFFFF'],
+  'Al Ahli': ['#00843D', '#FFFFFF', '#111111'],
+  'Inter Miami': ['#F7B5CD', '#231F20', '#FFFFFF'], 'LA Galaxy': ['#00245D', '#FFD200', '#FFFFFF'], 'LAFC': ['#111111', '#C39E6D', '#FFFFFF'],
+  'Seattle Sounders': ['#5D9741', '#005595', '#FFFFFF'], 'New York City FC': ['#6CACE4', '#041E42', '#F15524'], 'Toronto FC': ['#B81137', '#FFFFFF', '#455560'],
+  'Atlanta United': ['#80000A', '#111111', '#A19060'], 'Orlando City': ['#633492', '#FFFFFF', '#FDE192'],
+};
+const badgeHash = s => { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.codePointAt(0), 16777619); return h >>> 0; };
+// Unknown clubs still get a steady colour pair from their name.
+const hueColor = (h, l) => `hsl(${h % 360},65%,${l}%)`;
+const badgeLum = c => { if (c[0] !== '#') return +c.match(/(\d+)%\)$/)[1] / 100; const n = parseInt(c.slice(1), 16); return (0.299 * (n >> 16) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255; };
+const BADGE_CACHE = {};
+// The outline family and colour layout of each well-known club's crest: 'outline layout [stars]'. Only the general
+// shape and how the colours sit, never the central symbol (no devils, cannons, lions, ships or birds).
+// Outlines: shield pointed french tall pear tallrect cut swiss hex banner rect round oval ringshield.
+// Layouts: plain vstripes hoops halves diag sash band chevron quarters chief.
+// Clubs that aren't listed get an outline and layout picked from their name.
+const BADGE_SHAPES = {
+  'Arsenal': 'shield chief', 'Aston Villa': 'banner chief', 'Bournemouth': 'rect vstripes', 'Brentford': 'round band', 'Brighton': 'round plain',
+  'Burnley': 'banner chief', 'Chelsea': 'round plain', 'Crystal Palace': 'french halves', 'Everton': 'swiss plain', 'Fulham': 'swiss band',
+  'Leeds United': 'shield chief', 'Liverpool': 'tall plain', 'Manchester City': 'round chief', 'Manchester United': 'ringshield plain', 'Newcastle United': 'round vstripes',
+  'Nottingham Forest': 'round plain', 'Sunderland': 'shield vstripes', 'Tottenham Hotspur': 'oval plain', 'West Ham United': 'shield chief', 'Wolverhampton': 'hex plain',
+  'Real Madrid': 'round sash', 'Barcelona': 'pear vstripes', 'Atlético Madrid': 'pointed vstripes', 'Athletic Club': 'shield vstripes', 'Villarreal': 'oval plain',
+  'Real Betis': 'round vstripes', 'Celta Vigo': 'swiss plain', 'Real Sociedad': 'round band', 'Rayo Vallecano': 'shield sash', 'Osasuna': 'shield chief',
+  'Mallorca': 'shield chief', 'Valencia': 'tall chief', 'Getafe': 'shield band', 'Espanyol': 'round vstripes', 'Girona': 'shield vstripes',
+  'Sevilla': 'pear chief', 'Alavés': 'round plain', 'Elche': 'shield band', 'Levante': 'shield vstripes', 'Real Oviedo': 'round plain',
+  'Inter': 'round plain 2', 'Napoli': 'ringshield plain', 'AC Milan': 'oval vstripes 1', 'Juventus': 'tallrect vstripes 2', 'Atalanta': 'round vstripes',
+  'Roma': 'pointed chief', 'Lazio': 'pointed plain', 'Fiorentina': 'pointed plain', 'Bologna': 'shield halves', 'Como': 'shield plain',
+  'Torino': 'banner plain', 'Udinese': 'banner vstripes', 'Genoa': 'shield halves', 'Cagliari': 'round halves', 'Lecce': 'shield vstripes',
+  'Parma': 'shield chief', 'Sassuolo': 'round plain', 'Hellas Verona': 'shield chief', 'Cremonese': 'shield vstripes', 'Pisa': 'round vstripes',
+  'Bayern Munich': 'round plain 5', 'Borussia Dortmund': 'round plain 1', 'RB Leipzig': 'tallrect plain', 'Bayer Leverkusen': 'round chief', 'VfB Stuttgart': 'shield band',
+  'Eintracht Frankfurt': 'round plain', 'SC Freiburg': 'shield chief', 'VfL Wolfsburg': 'round plain', 'Borussia Mönchengladbach': 'oval plain', 'TSG Hoffenheim': 'shield plain',
+  'Union Berlin': 'shield chief', 'FC Augsburg': 'rect halves', 'Werder Bremen': 'cut plain', 'Mainz 05': 'round plain', '1. FC Köln': 'shield chief',
+  'Hamburger SV': 'cut quarters', '1. FC Heidenheim': 'shield halves', 'FC St. Pauli': 'shield plain',
+  'Paris Saint-Germain': 'round band', 'Marseille': 'shield plain 1', 'Monaco': 'shield diag', 'Lille': 'shield chief', 'Lyon': 'swiss chief',
+  'Nice': 'shield vstripes', 'Lens': 'round halves', 'Rennes': 'banner chief', 'Strasbourg': 'round plain', 'Toulouse': 'round plain',
+  'Brest': 'round plain', 'Nantes': 'shield chief', 'Auxerre': 'shield chief', 'Angers': 'shield vstripes', 'Le Havre': 'round halves',
+  'Lorient': 'round plain', 'Metz': 'shield chief', 'Paris FC': 'round plain',
+  'Benfica': 'ringshield chief', 'Porto': 'french quarters', 'Sporting CP': 'shield hoops', 'Braga': 'round plain', 'Vitória SC': 'shield chief',
+  'Famalicão': 'shield chief', 'Gil Vicente': 'shield plain', 'Moreirense': 'shield chief', 'Estoril': 'shield vstripes', 'Santa Clara': 'round plain',
+  'Rio Ave': 'shield hoops', 'Casa Pia': 'round plain', 'Arouca': 'shield plain', 'Nacional': 'round halves',
+  'PSV': 'round vstripes', 'Feyenoord': 'swiss halves', 'Ajax': 'round plain', 'AZ': 'round plain', 'FC Twente': 'round plain',
+  'FC Utrecht': 'shield plain', 'NEC': 'shield vstripes', 'Go Ahead Eagles': 'round band', 'Heerenveen': 'shield chief', 'Sparta Rotterdam': 'shield vstripes',
+  'Fortuna Sittard': 'round plain', 'PEC Zwolle': 'shield plain', 'Groningen': 'round halves', 'Heracles': 'shield vstripes', 'NAC Breda': 'round plain',
+  'Galatasaray': 'round halves', 'Fenerbahçe': 'round vstripes', 'Beşiktaş': 'round halves', 'Trabzonspor': 'shield vstripes', 'Başakşehir': 'round plain',
+  'Göztepe': 'shield halves', 'Samsunspor': 'round plain', 'Konyaspor': 'shield plain', 'Kayserispor': 'shield halves', 'Antalyaspor': 'shield vstripes',
+  'Club Brugge': 'banner vstripes', 'Union SG': 'round plain', 'Anderlecht': 'shield plain', 'Genk': 'round plain', 'Gent': 'oval plain',
+  'Antwerp': 'shield plain', 'Standard Liège': 'shield vstripes', 'Mechelen': 'shield vstripes', 'Cercle Brugge': 'shield vstripes', 'Charleroi': 'round vstripes',
+  'Al Hilal': 'round plain', 'Al Nassr': 'round plain', 'Al Ittihad': 'shield vstripes', 'Al Ahli': 'round plain', 'Al Shabab': 'round plain',
+  'Al Ettifaq': 'shield plain', 'Al Qadsiah': 'round plain', 'Al Taawoun': 'shield plain',
+  'Inter Miami': 'round plain', 'LA Galaxy': 'shield sash', 'LAFC': 'shield plain', 'Seattle Sounders': 'shield chief', 'New York City FC': 'round plain',
+  'Toronto FC': 'round plain', 'Atlanta United': 'round vstripes', 'Orlando City': 'shield plain', 'Columbus Crew': 'round plain', 'Philadelphia Union': 'round plain',
+  'Portland Timbers': 'tall plain', 'Chicago Fire': 'round plain', 'Sporting Kansas City': 'round plain', 'Real Salt Lake': 'shield plain', 'Vancouver Whitecaps': 'round plain',
+};
+// Founding years shown as "EST. 1878" on the badge (a fact, not part of any crest). Clubs without one show none.
+const BADGE_YEARS = {
+  'Arsenal': 1886, 'Aston Villa': 1874, 'Bournemouth': 1899, 'Brentford': 1889, 'Brighton': 1901, 'Burnley': 1882, 'Chelsea': 1905, 'Crystal Palace': 1905,
+  'Everton': 1878, 'Fulham': 1879, 'Leeds United': 1919, 'Liverpool': 1892, 'Manchester City': 1880, 'Manchester United': 1878, 'Newcastle United': 1892,
+  'Nottingham Forest': 1865, 'Sunderland': 1879, 'Tottenham Hotspur': 1882, 'West Ham United': 1895, 'Wolverhampton': 1877,
+  'Real Madrid': 1902, 'Barcelona': 1899, 'Atlético Madrid': 1903, 'Athletic Club': 1898, 'Villarreal': 1923, 'Real Betis': 1907, 'Celta Vigo': 1923,
+  'Real Sociedad': 1909, 'Rayo Vallecano': 1924, 'Osasuna': 1920, 'Mallorca': 1916, 'Valencia': 1919, 'Getafe': 1983, 'Espanyol': 1900, 'Girona': 1930,
+  'Sevilla': 1890, 'Alavés': 1921, 'Elche': 1923, 'Levante': 1909, 'Real Oviedo': 1926,
+  'Inter': 1908, 'Napoli': 1926, 'AC Milan': 1899, 'Juventus': 1897, 'Atalanta': 1907, 'Roma': 1927, 'Lazio': 1900, 'Fiorentina': 1926, 'Bologna': 1909,
+  'Como': 1907, 'Torino': 1906, 'Udinese': 1896, 'Genoa': 1893, 'Cagliari': 1920, 'Lecce': 1908, 'Parma': 1913, 'Sassuolo': 1920, 'Hellas Verona': 1903,
+  'Cremonese': 1903, 'Pisa': 1909,
+  'Bayern Munich': 1900, 'Borussia Dortmund': 1909, 'RB Leipzig': 2009, 'Bayer Leverkusen': 1904, 'VfB Stuttgart': 1893, 'Eintracht Frankfurt': 1899,
+  'SC Freiburg': 1904, 'VfL Wolfsburg': 1945, 'Borussia Mönchengladbach': 1900, 'TSG Hoffenheim': 1899, 'Union Berlin': 1966, 'FC Augsburg': 1907,
+  'Werder Bremen': 1899, 'Mainz 05': 1905, '1. FC Köln': 1948, 'Hamburger SV': 1887, '1. FC Heidenheim': 1846, 'FC St. Pauli': 1910,
+  'Paris Saint-Germain': 1970, 'Marseille': 1899, 'Monaco': 1924, 'Lille': 1944, 'Lyon': 1950, 'Nice': 1904, 'Lens': 1906, 'Rennes': 1901, 'Strasbourg': 1906,
+  'Toulouse': 1970, 'Brest': 1950, 'Nantes': 1943, 'Auxerre': 1905, 'Angers': 1919, 'Le Havre': 1872, 'Lorient': 1926, 'Metz': 1932, 'Paris FC': 1969,
+  'Benfica': 1904, 'Porto': 1893, 'Sporting CP': 1906, 'Braga': 1921, 'Vitória SC': 1922, 'Famalicão': 1931, 'Gil Vicente': 1924, 'Moreirense': 1938,
+  'Estoril': 1939, 'Santa Clara': 1921, 'Rio Ave': 1939, 'Casa Pia': 1920, 'Arouca': 1951, 'Nacional': 1910, 'Alverca': 1939, 'Tondela': 1933,
+  'PSV': 1913, 'Feyenoord': 1908, 'Ajax': 1900, 'AZ': 1967, 'FC Twente': 1965, 'FC Utrecht': 1970, 'NEC': 1900, 'Go Ahead Eagles': 1902, 'Heerenveen': 1920,
+  'Sparta Rotterdam': 1888, 'Fortuna Sittard': 1968, 'PEC Zwolle': 1910, 'Groningen': 1971, 'Heracles': 1903, 'NAC Breda': 1912, 'Excelsior': 1902,
+  'FC Volendam': 1977, 'Telstar': 1963,
+  'Galatasaray': 1905, 'Fenerbahçe': 1907, 'Beşiktaş': 1903, 'Trabzonspor': 1967, 'Başakşehir': 1990, 'Göztepe': 1925, 'Samsunspor': 1965, 'Eyüpspor': 1919,
+  'Kasımpaşa': 1921, 'Kocaelispor': 1966, 'Antalyaspor': 1966, 'Alanyaspor': 1948, 'Konyaspor': 1922, 'Kayserispor': 1966, 'Gaziantep FK': 1988,
+  'Çaykur Rizespor': 1968, 'Gençlerbirliği': 1923, 'Fatih Karagümrük': 1926,
+  'Club Brugge': 1891, 'Union SG': 1897, 'Anderlecht': 1908, 'Genk': 1988, 'Antwerp': 1880, 'Standard Liège': 1898, 'Mechelen': 1904, 'Sint-Truiden': 1924,
+  'Westerlo': 1933, 'Charleroi': 1904, 'OH Leuven': 2002, 'Cercle Brugge': 1899, 'Zulte Waregem': 2001,
+  'Al Hilal': 1957, 'Al Nassr': 1955, 'Al Ittihad': 1927, 'Al Ahli': 1937, 'Al Qadsiah': 1967, 'Al Ettifaq': 1945, 'Al Shabab': 1947, 'Al Taawoun': 1956,
+  'Al Fateh': 1958, 'Al Khaleej': 1945, 'Al Fayha': 1953,
+  'Inter Miami': 2018, 'FC Cincinnati': 2015, 'Philadelphia Union': 2008, 'Charlotte FC': 2019, 'Orlando City': 2010, 'New York City FC': 2013,
+  'New York Red Bulls': 1995, 'Columbus Crew': 1994, 'Nashville SC': 2016, 'Chicago Fire': 1997, 'Atlanta United': 2014, 'Toronto FC': 2006,
+  'CF Montréal': 1992, 'D.C. United': 1994, 'New England Revolution': 1994, 'LAFC': 2014, 'San Diego FC': 2023, 'Vancouver Whitecaps': 1974,
+  'Seattle Sounders': 2007, 'Minnesota United': 2010, 'LA Galaxy': 1994, 'Portland Timbers': 2009, 'Austin FC': 2018, 'San Jose Earthquakes': 1994,
+  'Real Salt Lake': 2004, 'Colorado Rapids': 1995, 'Houston Dynamo': 2005, 'FC Dallas': 1995, 'Sporting Kansas City': 1995, 'St. Louis City SC': 2019,
+};
+const BADGE_OUTLINES = {
+  shield: ['M7 5 H57 V31 Q57 51 32 61 Q7 51 7 31 Z', 'M11 9 H53 V31 Q53 48 32 56.6 Q11 48 11 31 Z'],
+  pointed: ['M32 2 L58 8 V31 Q58 51 32 62 Q6 51 6 31 V8 Z', 'M32 6.2 L54 11.2 V31 Q54 48 32 57.6 Q10 48 10 31 V11.2 Z'],
+  french: ['M7 9 Q32 1 57 9 V32 Q57 52 32 62 Q7 52 7 32 Z', 'M11 12.2 Q32 5.4 53 12.2 V32 Q53 49 32 57.6 Q11 49 11 32 Z'],
+  // tall: a narrow shield with long straight sides
+  tall: ['M11 2 H53 V38 Q53 54 32 62 Q11 54 11 38 Z', 'M15 6 H49 V38 Q49 51 32 57.6 Q15 51 15 38 Z'],
+  // pear: wide shoulders, rounded belly, a point at the bottom
+  pear: ['M6 4 Q32 9 58 4 Q60 22 54 38 Q46 54 32 62 Q18 54 10 38 Q4 22 6 4 Z', 'M10 8.4 Q32 12.8 54 8.4 Q55.6 23 50.4 36.6 Q43.6 50.6 32 57.6 Q20.4 50.6 13.6 36.6 Q8.4 23 10 8.4 Z'],
+  // tallrect: an upright rectangle with a round bottom
+  tallrect: ['M12 2 H52 V46 Q52 62 32 62 Q12 62 12 46 Z', 'M16 6 H48 V46 Q48 58 32 58 Q16 58 16 46 Z'],
+  // cut: a shield with its top corners cut off
+  cut: ['M15 3 H49 L57 11 V32 Q57 52 32 62 Q7 52 7 32 V11 Z', 'M16.7 7 H47.3 L53 12.7 V32 Q53 49 32 57.6 Q11 49 11 32 V12.7 Z'],
+  rect: ['M8 4 H56 V44 L32 61 L8 44 Z', 'M12 8 H52 V42 L32 56.2 L12 42 Z'],
+  // hex: a six-sided badge standing on a point
+  hex: ['M32 2 L58 16 V46 L32 62 L6 46 V16 Z', 'M32 6.6 L54 18.4 V43.6 L32 57.4 L10 43.6 V18.4 Z'],
+  // swiss: a shield whose sides curve in at the top
+  swiss: ['M5 4 H59 Q54 14 56 30 Q56 50 32 62 Q8 50 8 30 Q10 14 5 4 Z', 'M11.4 8 H52.6 Q49.4 15 51.6 30 Q51.6 47 32 57.4 Q12.4 47 12.4 30 Q14.6 15 11.4 8 Z'],
+  // banner: a shield under an arched name banner (the banner itself is drawn with the lettering)
+  banner: ['M8 12 H56 V33 Q56 52 32 62 Q8 52 8 33 Z', 'M12 16 H52 V33 Q52 49 32 57.6 Q12 49 12 33 Z'],
+  // ringshield: a ring with the name around it and a small shield inside
+  ringshield: ['M32 2 A30 30 0 1 1 31.99 2 Z', 'M21 17 H43 V32 Q43 43 32 48 Q21 43 21 32 Z'],
+  round: ['M32 2 A30 30 0 1 1 31.99 2 Z', 'M32 11 A21 21 0 1 1 31.99 11 Z'],
+  oval: ['M32 2 A24 30 0 1 1 31.99 2 Z', 'M32 7 A19 25 0 1 1 31.99 7 Z'],
+};
+const badgeText = bg => badgeLum(bg) > 0.55 ? '#111111' : '#FFFFFF';
+// Hand-designed badges for clubs that need more than an outline and a pattern. Fields (all optional):
+//   o outline, l layout, s stars, e emblem ('none' for a clean field), c [main, second, trim],
+//   ink emblem colour, rt colour of the lettering on the ring or ribbon, disc colour inside a ringshield.
+// Colours follow the real club; shapes and emblems never copy the real crest's symbol.
+const BADGE_CUSTOM = {
+  'Manchester United': { o: 'ringshield', l: 'chevron', e: 'flame', c: ['#DA291C', '#111111', '#DA291C'], ink: '#FBE122', rt: '#FBE122', disc: '#FBE122' },
+  'Manchester City': { o: 'round', l: 'sunburst', e: 'star', c: ['#6CABDD', '#FFFFFF', '#1C2C5B'], ink: '#FFC659' },
+  'Hull City': { o: 'shield', l: 'tiger', e: 'none', c: ['#F5A12D', '#111111', '#111111'], rt: '#F5A12D' },
+  'Brighton': { o: 'round', l: 'vstripes', e: 'waves', c: ['#FFFFFF', '#0057B8', '#0057B8'], ink: '#0057B8' },
+  'Villarreal': { o: 'french', l: 'band', e: 'ball', c: ['#FFE667', '#005187', '#005187'], ink: '#005187', rt: '#FFE667' },
+  'Valencia': { o: 'tall', l: 'senyera', e: 'none', c: ['#FFFFFF', '#111111', '#111111'], rt: '#F2B705' },
+  // Getafe: the real crest's colours (red-gold-red beside green) on a different shape, with a blue outline.
+  'Getafe': { o: 'french', l: 'splitflag', e: 'none', c: ['#D52B1E', '#009A44', '#1B4FA8'], rt: '#FFFFFF', rim: '#1B4FA8' },
+  'Alavés': { o: 'pointed', l: 'vstripes', e: 'none', c: ['#FFFFFF', '#1E4C9A', '#1E4C9A'] },
+  'Sevilla': { o: 'pear', l: 'midstripes', e: 'none', c: ['#FFFFFF', '#D71920', '#C8A04B'], rt: '#111111' },
+  'Inter': { o: 'round', l: 'pinstripes', e: 'none', s: 2, c: ['#0068A8', '#111111', '#111111'], ink: '#D4AF37', rt: '#D4AF37' },
+  'Roma': { o: 'pointed', l: 'chief', e: 'none', c: ['#8E1F2F', '#F0BC42', '#F0BC42'] },
+  'Bayer Leverkusen': { o: 'cut', l: 'halves', e: 'bolt', c: ['#E32221', '#111111', '#111111'], ink: '#F2B705', rt: '#E32221' },
+  'Bayern Munich': { o: 'round', l: 'dstripes', e: 'none', s: 5, c: ['#FFFFFF', '#0066B2', '#DC052D'], ink: '#D4AF37' },
+  'Borussia Dortmund': { o: 'round', l: 'bands', e: 'none', s: 1, c: ['#FDE100', '#111111', '#111111'], ink: '#FDE100', rt: '#FDE100' },
+  'VfL Wolfsburg': { o: 'round', l: 'wmark', e: 'none', c: ['#FFFFFF', '#65B32E', '#65B32E'], rt: '#FFFFFF' },
+  'RB Leipzig': { o: 'tallrect', l: 'plain', e: 'ball', c: ['#FFFFFF', '#DD0741', '#001F47'], ink: '#DD0741' },
+  'Paris Saint-Germain': { o: 'round', l: 'centerstripe', e: 'none', c: ['#004170', '#DA291C', '#004170'] },
+  'Lyon': { o: 'banner', l: 'chevron2', e: 'none', c: ['#FFFFFF', '#14387F', '#DA001A'], rt: '#FFFFFF' },
+  'Al Hilal': { o: 'round', l: 'sunburst', e: 'star', c: ['#0033A0', '#4F8BFF', '#0033A0'], ink: '#FFFFFF', rt: '#FFFFFF' },
+  'Genk': { o: 'shield', l: 'chevron', e: 'star', c: ['#0047AB', '#FFFFFF', '#0B2A5B'], ink: '#FFFFFF' },
+  'Gent': { o: 'oval', l: 'hoops', e: 'crown', c: ['#0047AB', '#FFFFFF', '#FFFFFF'], ink: '#0047AB' },
+  'AC Milan': { o: 'round', l: 'vstripes', e: 'none', s: 1, c: ['#FB090B', '#111111', '#111111'], ink: '#D4AF37', rt: '#FB090B', rim: '#111111' },
+};
+const BADGE_EMBLEMS = {
+  star: 'M32 21 L35.2 29 L43.8 29 L36.9 34.1 L39.5 42.4 L32 37.4 L24.5 42.4 L27.1 34.1 L20.2 29 L28.8 29 Z',
+  ball: 'M32 21 A11 11 0 1 1 31.99 21 Z M32 26.5 L36.6 29.8 L34.8 35.2 L29.2 35.2 L27.4 29.8 Z M31.4 21.2 H32.6 V26.5 H31.4 Z M36.6 29.8 L41.6 28 L42 29.2 L37 31 Z M34.8 35.2 L37.8 39.6 L36.8 40.3 L33.8 35.9 Z M29.2 35.2 L26.2 39.6 L27.2 40.3 L30.2 35.9 Z M27.4 29.8 L22.4 28 L22 29.2 L27 31 Z',
+  bolt: 'M35 19 L25 34 L31 34 L28 45 L39 29 L33 29 Z',
+  tower: 'M23 44 V27 H26 V24 H29 V27 H30.5 V24 H33.5 V27 H35 V24 H38 V27 H41 V44 H35 V37 Q32 33 29 37 V44 Z',
+  waves: 'M20 27 Q26 21 32 27 Q38 33 44 27 V32 Q38 38 32 32 Q26 26 20 32 Z M20 36 Q26 30 32 36 Q38 42 44 36 V41 Q38 47 32 41 Q26 35 20 41 Z',
+  sun: 'M32 25 A7 7 0 1 1 31.99 25 Z M31 18 H33 V22 H31 Z M31 42 H33 V46 H31 Z M18 31 H22 V33 H18 Z M42 31 H46 V33 H42 Z M22 21.6 L23.4 20.2 L26.2 23 L24.8 24.4 Z M37.8 37 L39.2 35.6 L42 38.4 L40.6 39.8 Z M22 42.4 L24.8 39.6 L26.2 41 L23.4 43.8 Z M37.8 27 L40.6 24.2 L42 25.6 L39.2 28.4 Z',
+  diamond: 'M32 20 L43 32 L32 44 L21 32 Z M32 26 L37 32 L32 38 L27 32 Z',
+  chevron: 'M21 36 L32 24 L43 36 V42 L32 30 L21 42 Z',
+  // Only for hand-designed badges:
+  flame: 'M32 17 C35 23 42 26 41 35 C40 41 36 45 32 45 C28 45 24 41 23 35 C22.5 30 26 27 27.5 23 C29 27 30.5 28.5 32 29.5 C33.5 25.5 33 21 32 17 Z M32 33 C34 36 35.5 37.5 35 40 C34.6 42 33.4 43 32 43 C30.6 43 29.4 42 29 40 C28.6 38 30 36 32 33 Z',
+  crown: 'M21 40 L22 26 L27 32 L32 23 L37 32 L42 26 L43 40 Z',
+  arrow: 'M21 32 L32 21 L43 32 V37 L32 26 L21 37 Z M21 41 L32 30 L43 41 V46 L32 35 L21 46 Z',
+};
+const BADGE_RANDOM_EMBLEMS = ['star', 'ball', 'bolt', 'tower', 'waves', 'sun', 'diamond', 'chevron'];
+function abstractBadge(c, dir) {
+  const key = `${dir}/${c.name}`;
+  if (BADGE_CACHE[key]) return BADGE_CACHE[key];
+  const h = badgeHash(c.name), cu = BADGE_CUSTOM[c.name] || {};
+  const [a, b, t] = cu.c || BADGE_COLORS[c.name] || (typeof BADGE_PALETTE !== 'undefined' && BADGE_PALETTE[key]) || [hueColor(h, 42), '#FFFFFF', hueColor(h >> 8, 55)];
+  // Clubs without a hand-made shape get one from their name.
+  const spec = cu.o ? [cu.o, cu.l || 'plain', String(cu.s || 0)] : (BADGE_SHAPES[c.name] ||`${['shield', 'pointed', 'french', 'tall', 'pear', 'tallrect', 'cut', 'swiss', 'hex', 'banner', 'round', 'oval', 'ringshield', 'rect'][h % 14]} ${['plain', 'vstripes', 'chief', 'halves', 'band', 'sash', 'hoops', 'chevron'][(h >>> 3) % 8]}`).split(' ');
+  const outline = spec[0], ring = outline === 'round' || outline === 'ringshield', round = ring || outline === 'oval', stars = +spec[2] || 0;
+  // A round crest is cut in half, never in quarters (that reads as a car maker's roundel).
+  const layout = round && spec[1] === 'quarters' ? 'halves' : spec[1];
+  const [outer, field] = BADGE_OUTLINES[outline];
+  // The emblem takes whichever other colour stands out more on the main one, with an outline so it shows on stripes.
+  const ink = cu.ink || (Math.abs(badgeLum(b) - badgeLum(a)) >= Math.abs(badgeLum(t) - badgeLum(a)) ? b : t);
+  // Lettering on the ring or ribbon.
+  const tx = cu.rt || badgeText(t);
+  const halo = badgeLum(ink) > 0.55 ? '#111111' : '#FFFFFF';
+  const R = (x, y, w, hh, f) => `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="${f}"/>`;
+  const fill = {
+    plain: '',
+    vstripes: [14, 26, 38, 50].map(x => R(x - 3, 0, 6, 64, b)).join(''),
+    hoops: [14, 26, 38, 50].map(y => R(0, y - 3, 64, 6, b)).join(''),
+    halves: R(32, 0, 32, 64, b),
+    diag: `<path d="M64 0 L64 64 L0 64 Z" fill="${b}"/>`,
+    sash: `<path d="M0 6 L6 0 L64 58 L58 64 Z" fill="${b}"/>`,
+    band: R(0, 27, 64, 11, b),
+    chevron: `<path d="M0 40 L32 22 L64 40 L64 50 L32 32 L0 50 Z" fill="${b}"/>`,
+    quarters: R(0, 0, 32, 33, b) + R(32, 33, 32, 31, b),
+    chief: R(0, 0, 64, { round: 24, oval: 24, ringshield: 26, banner: 28 }[outline] || 21, b),
+    // Thin stripes all the way across.
+    pinstripes: [8, 16, 24, 32, 40, 48, 56].map(x => R(x - 2, 0, 4, 64, b)).join(''),
+    // Stripes in a framed panel in the middle only.
+    midstripes: [21, 28.5, 36, 43.5].map(x => R(x - 2, 20, 4, 26, b)).join('') + R(16, 18, 32, 2, b) + R(16, 46, 32, 2, b),
+    // One broad stripe down the middle, edged in white.
+    centerstripe: R(22, 0, 20, 64, '#FFFFFF') + R(25, 0, 14, 64, b),
+    // Faint rays from the centre.
+    sunburst: `<g fill="${b}" opacity=".22">${Array.from({ length: 12 }, (_, i) => `<path d="M32 32 L${(32 + 60 * Math.cos((i * 30 - 6) * Math.PI / 180)).toFixed(1)} ${(32 + 60 * Math.sin((i * 30 - 6) * Math.PI / 180)).toFixed(1)} L${(32 + 60 * Math.cos((i * 30 + 6) * Math.PI / 180)).toFixed(1)} ${(32 + 60 * Math.sin((i * 30 + 6) * Math.PI / 180)).toFixed(1)} Z"/>`).join('')}</g>`,
+    // Tiger-like wedges coming in from both sides.
+    tiger: `<path d="M0 10 L20 13 L0 15.5 Z M64 16 L44 19.5 L64 22 Z M0 23 L23 26.5 L0 29 Z M64 30 L41 33.5 L64 36 Z M0 37 L22 40.5 L0 43 Z M64 44 L43 47 L64 49.5 Z M0 51 L18 53.5 L0 56 Z M64 4 L48 6.5 L64 9 Z" fill="${b}"/>`,
+    // Broad diagonal stripes running up to the right.
+    dstripes: [-24, -2, 20, 42].map(o => `<path d="M${o} 64 L${o + 64} 0 L${o + 75} 0 L${o + 11} 64 Z" fill="${b}"/>`).join(''),
+    // Two broad vertical bands with the main colour between and outside them.
+    bands: R(14, 0, 11, 64, b) + R(39, 0, 11, 64, b),
+    // A big zigzag W across the field.
+    wmark: `<polyline points="12,21 22,46 32,20 42,46 52,21" fill="none" stroke="#1D2A4D" stroke-width="9.5" stroke-linejoin="miter" stroke-miterlimit="6"/><polyline points="12,21 22,46 32,20 42,46 52,21" fill="none" stroke="${b}" stroke-width="7" stroke-linejoin="miter" stroke-miterlimit="6"/>`,
+    // Two chevrons stacked, in the second and trim colours.
+    chevron2: `<path d="M0 30 L32 14 L64 30 L64 38 L32 22 L0 38 Z" fill="${t}"/><path d="M0 42 L32 26 L64 42 L64 51 L32 35 L0 51 Z" fill="${b}"/>`,
+    // A dark top band over a gold panel with orange stripes.
+    senyera: R(0, 0, 64, 21, b) + R(18, 25, 28, 29, '#F2B705') + [21, 27.5, 34, 40.5].map(x => R(x, 25, 3.5, 29, '#EE3524')).join(''),
+    // Left half red-gold-red stripes, right half in the second colour.
+    splitflag: R(0, 0, 32, 64, a) + R(18, 0, 7, 64, '#F6C700') + R(32, 0, 32, 64, b) + R(31.4, 0, 1.2, 64, '#FFFFFF'),
+    // Two diagonal bands side by side, in the second and trim colours.
+    sash2: `<path d="M0 2 L2 0 L64 46 L64 54 Z" fill="${b}"/><path d="M0 12 L0 20 L52 64 L60 64 Z" fill="${t}"/>`,
+  }[layout] || '';
+  // Round crests keep the middle clear of the ring; shields move it up to leave room for the ribbon.
+  const ey = round ? 0 : outline === 'banner' ? -1 : -3;
+  const emName = cu.e || BADGE_RANDOM_EMBLEMS[(h >>> 5) % BADGE_RANDOM_EMBLEMS.length];
+  const em = emName === 'none' ? '' : `<path d="${BADGE_EMBLEMS[emName]}" fill="${ink}" fill-rule="evenodd" stroke="${halo}" stroke-width="1.2" stroke-linejoin="round" paint-order="stroke" transform="${outline === 'ringshield' ? 'translate(32 33) scale(.55) translate(-32 -32)' : `translate(0 ${ey})`}"/>`;
+  const starRow = stars ? Array.from({ length: stars }, (_, i) => {
+    const x = 32 + (i - (stars - 1) / 2) * 6, y = { round: 16, oval: 14, ringshield: 21, banner: 24 }[outline] || 14;
+    return `<path d="M${x} ${y - 2.4} L${x + .7} ${y - .7} L${x + 2.4} ${y - .7} L${x + 1} ${y + .4} L${x + 1.5} ${y + 2.2} L${x} ${y + 1.1} L${x - 1.5} ${y + 2.2} L${x - 1} ${y + .4} L${x - 2.4} ${y - .7} L${x - .7} ${y - .7} Z" fill="${ink}" stroke="${halo}" stroke-width=".5"/>`;
+  }).join('') : '';
+  const font = 'font-family="Arial,Helvetica,sans-serif" font-weight="800"';
+  const name = esc(c.name.toUpperCase().slice(0, 30)), code = esc((c.short || c.name).replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase());
+  const year = BADGE_YEARS[c.name];
+  const yearText = (x, y, size, f) => year ? `<text x="${x}" y="${y}" text-anchor="middle" ${font} font-size="${size}" letter-spacing=".3" fill="${f}" stroke="${badgeText(f) === '#111111' ? '#FFFFFF' : '#111111'}" stroke-width=".25" paint-order="stroke">EST. ${year}</text>` : '';
+  const ringName = `<path id="arc" d="M13.6 47.4 A24 24 0 1 1 50.4 47.4" fill="none"/><text ${font} font-size="${Math.min(6, 118 / name.length).toFixed(2)}" fill="${tx}" letter-spacing=".3"><textPath href="#arc" startOffset="50%" text-anchor="middle">${name}</textPath></text>`;
+  // The ribbon carries the short name, and the founding year beside it when there is one.
+  const ribbon = `<path d="M2 43 H62 L59 47.5 L62 52 H2 L5 47.5 Z" fill="${t}" stroke="#F4F4F4" stroke-width="1"/><text x="32" y="${year ? 49.9 : 50.3}" text-anchor="middle" ${font} font-size="${year ? 5.4 : 6.4}" letter-spacing=".5" fill="${tx}">${code}${year ? ` · ${year}` : ''}</text>`;
+  // Ring crests carry the name around the ring and the year at the bottom; banner shields carry the name on an
+  // arch over the top; the rest get a ribbon with the short name and the year in the point below it.
+  const lettering = ring
+    // The arc runs about 250 degrees round the top; long names get smaller letters instead of being cut.
+    ? ringName + (year ? yearText(32, 58.4, 4.4, tx) : `<path d="M32 53.4 L33 55.6 L35.4 55.8 L33.6 57.3 L34.2 59.6 L32 58.4 L29.8 59.6 L30.4 57.3 L28.6 55.8 L31 55.6 Z" fill="${tx}"/>`)
+    : outline === 'oval' ? yearText(32, 50, 4.2, ink)
+    : outline === 'banner'
+      ? `<path d="M2 11 Q32 -1 62 11 L59 15.5 L62 20 Q32 8 2 20 L5 15.5 Z" fill="${t}" stroke="#F4F4F4" stroke-width="1"/><path id="arc" d="M5 17.6 Q32 6 59 17.6" fill="none"/><text ${font} font-size="${Math.min(5.6, 92 / name.length).toFixed(2)}" fill="${tx}" letter-spacing=".3"><textPath href="#arc" startOffset="50%" text-anchor="middle">${name}</textPath></text>${ribbon}`
+      : ribbon;
+  // Clubs with title stars get a gold rim; a hand-designed badge can set its own (rim).
+  const rimColor = cu.rim || (stars ? '#D4AF37' : '#F4F4F4');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">`
+    + `<path d="${outer}" fill="${t}" stroke="${rimColor}" stroke-width="${stars ? 2 : 1.6}"/>`
+    + (outline === 'ringshield' ? `<circle cx="32" cy="32" r="21" fill="${cu.disc || b}"/>` : '')
+    + `<clipPath id="f"><path d="${field}"/></clipPath><g clip-path="url(#f)">${R(0, 0, 64, 64, a)}${fill}</g>`
+    + `<path d="${field}" fill="none" stroke="${halo}" stroke-opacity=".35" stroke-width=".8"/>`
+    + `${starRow}${em}${lettering}</svg>`;
+  return (BADGE_CACHE[key] = `data:image/svg+xml,${encodeURIComponent(svg)}`);
+}
+
 function logoUrl(c, ext) {
   const dir = DB.leagues.find(l => l.id === c.id.split('-')[0]).name;
+  if (BADGE_MODE === 'abstract') return abstractBadge(c, dir);
   // Some crests are packed into one script (js/logos-tur.js) instead of separate files.
   const packed = typeof LOGO_DATA !== 'undefined' && LOGO_DATA[`${dir}/${c.name}`];
   if (packed) return packed;
@@ -913,7 +1429,7 @@ function summerCard() {
     if (t.winner) body = `<div class="award">${t.winner === me ? 'Champions!' : `Won by ${esc(teamName(t.winner))}`}</div>`;
     else {
       const f = stageFixture(t, me), opp = f ? (f[0] === me ? f[1] : f[0]) : null;
-      body = `<div class="small flood"><b>Next: ${st.name}</b>${opp ? ` vs ${esc(teamName(opp))} <span class="muted">(${Math.round(teamStr(opp))} rated)</span>` : ''}</div>`;
+      body = `<div class="small flood"><b>Next: ${esc(stageNameFor(t, me))}</b>${opp ? ` vs ${esc(teamName(opp))} <span class="muted">(${Math.round(teamStr(opp))} rated)</span>` : ''}</div>`;
     }
     const g = t.groups.findIndex(gr => gr.includes(me));
     const table = `<div class="tablewrap"><table><thead><tr><th>Group ${'ABCDEFGH'[g]}</th><th class="r">P</th><th class="r">GD</th><th class="r">Pts</th></tr></thead><tbody>
@@ -1331,6 +1847,7 @@ function viewTrain() {
     ${p.injured ? '<p class="bad small" style="margin:0">You are injured and cannot train.</p>' : ''}
     ${S.phase !== 'season' ? '<p class="small muted" style="margin:0">Training resumes when the season starts.</p>' : ''}
     ${S.phase === 'season' && !p.injured && p.slots <= 0 ? `<p class="bad small" style="margin:0">You have already trained ${TRAIN_SLOTS} times this week. Training opens again next week${leagueDone() ? ', after the midweek game' : ''}.</p>` : ''}
+    ${STORE_BUILD && S.phase === 'season' && !p.injured && p.slots <= 0 && S.storeTrain !== `${S.season}-${S.week}` ? `<button class="btn block" data-act="adTrain">${isPro() ? 'Extra session this week' : 'Watch an ad for an extra session this week'}</button>` : ''}
   </section>`;
   const cards = keys.map(k => {
     const v = p.attrs[k], gain = trainGain(k), held = trainGain(k, 'pitch');
@@ -1998,16 +2515,22 @@ function potmMonths(awards) {
 function honoursCardTabs(p = S.player) {
   const natNames = new Set(Object.keys({ ...NATIONS, ...(typeof EXTRA_NATIONS !== 'undefined' ? EXTRA_NATIONS : {}) }).map(natName));
   const isNatTrophy = t => t.nat || natNames.has(t.club);
+  // Finals lost and second places, then third places (World Cup and Euros only), listed after the wins like on
+  // Wikipedia ("FA Cup runner-up: 2024–25"). They don't count towards the trophy numbers on the tabs.
+  const ru = p.runnerUps || [], third = p.thirdPlaces || [];
   const groups = {
     ind: (S && p === S.player ? potmMonths(p.awards) : p.awards).filter(a => !(a.nat || NAT_EVENT.test(a.name))).map(a => ({ name: a.name, season: a.season, ord: a.month != null ? a.year * 12 + a.month : null })),
-    club: p.trophies.filter(t => !isNatTrophy(t)).map(t => ({ name: t.name, sub: t.club, season: t.season })),
-    nat: [...p.trophies.filter(isNatTrophy).map(t => ({ name: t.name, season: t.season })), ...p.awards.filter(a => a.nat || NAT_EVENT.test(a.name)).map(a => ({ name: a.name, season: a.season }))],
+    club: [...p.trophies.filter(t => !isNatTrophy(t)).map(t => ({ name: t.name, sub: t.club, season: t.season })),
+      ...ru.filter(t => !isNatTrophy(t)).map(t => ({ name: `${t.name} runner-up`, sub: t.club, season: t.season, ru: 1 }))],
+    nat: [...p.trophies.filter(isNatTrophy).map(t => ({ name: t.name, season: t.season })), ...p.awards.filter(a => a.nat || NAT_EVENT.test(a.name)).map(a => ({ name: a.name, season: a.season })),
+      ...ru.filter(isNatTrophy).map(t => ({ name: `${t.name} runner-up`, season: t.season, ru: 1 })),
+      ...third.map(t => ({ name: `${t.name} third place`, season: t.season, ru: 2 }))],
   };
   // The same honour won more than once shows as one line with a count and every season.
   const grouped = list => {
     const m = new Map();
     list.forEach(h => { const k = h.name + '|' + (h.sub || ''); const g = m.get(k) || { ...h, seasons: [], ords: [] }; g.seasons.push(h.season); g.ords.push(h.ord ?? null); m.set(k, g); });
-    return [...m.values()].sort((a, b) => b.seasons.length - a.seasons.length || Math.min(...a.seasons) - Math.min(...b.seasons));
+    return [...m.values()].sort((a, b) => (a.ru || 0) - (b.ru || 0) || b.seasons.length - a.seasons.length || Math.min(...a.seasons) - Math.min(...b.seasons));
   };
   const tabs = [['ind', 'Individual'], ['club', 'Club'], ['nat', 'Country']];
   const list = grouped(groups[honTab] || []);
@@ -2028,7 +2551,7 @@ function honoursCardTabs(p = S.player) {
       .map(([name, items]) => { const c = S && S.clubs ? clubByName(name) : null; return teamBlock(name, items, c ? crest(c.id, 'mini') : ''); }).join('');
   } else if (honTab === 'nat') body = teamBlock(natName(p.nat), list, natFlag(p.nat), `${p.caps || 0} caps · ${p.intlGoals || 0} goals · ${intlAssists(p)} assist${intlAssists(p) === 1 ? '' : 's'}`);
   else body = `<div class="honteam">${list.map(hline).join('')}</div>`;
-  return `<section class="card"><h2>Honours</h2><div class="seg">${tabs.map(([k, l]) => `<button class="${honTab === k ? 'on' : ''}" data-act="honTab" data-v="${k}">${l} (${grouped(groups[k]).reduce((n, g) => n + g.seasons.length, 0)})</button>`).join('')}</div>
+  return `<section class="card"><h2>Honours</h2><div class="seg">${tabs.map(([k, l]) => `<button class="${honTab === k ? 'on' : ''}" data-act="honTab" data-v="${k}">${l} (${grouped(groups[k]).reduce((n, g) => n + (g.ru ? 0 : g.seasons.length), 0)})</button>`).join('')}</div>
     ${list.length ? body : honTab === 'nat' ? teamBlock(natName(p.nat), [], natFlag(p.nat), `${p.caps || 0} caps · ${p.intlGoals || 0} goals · ${intlAssists(p)} assist${intlAssists(p) === 1 ? '' : 's'} · nothing won yet`) : `<span class="small muted">${empty}</span>`}</section>`;
 }
 
@@ -2478,7 +3001,7 @@ function showSummerMatchday() {
   const sheet = (c, s) => `<div><h4>${esc(c.short)} · ${s.shape}</h4>${pitchHtml(s)}<div class="lp-bench"><b>Bench</b>${benchHtml(s)}</div></div>`;
   const sheets = isHome ? sheet(mySide, mine) + sheet(oppSide, theirs) : sheet(oppSide, theirs) + sheet(mySide, mine);
   const side = id => `<div class="team">${crest(id)}<b>${esc(teamName(id))}</b></div>`;
-  openModal(`<div class="row"><h3 style="margin:0">${esc(t.name.replace(/ \d{4}$/, ''))} · ${esc(st.name)}</h3><span class="small muted">${nation ? esc(natName(p.nat)) : ''}</span></div>
+  openModal(`<div class="row"><h3 style="margin:0">${esc(t.name.replace(/ \d{4}$/, ''))} · ${esc(stageNameFor(t, me))}</h3><span class="small muted">${nation ? esc(natName(p.nat)) : ''}</span></div>
     <div class="fixture">${side(f[0])}<div class="vs">VS</div>${side(f[1])}</div>
     <p class="small" style="margin:0;text-align:center">${where}</p>
     <div class="sheet-tabs">${sheets}</div>
@@ -2764,6 +3287,12 @@ document.addEventListener('click', e => {
     case 'pastDelAsk': { const r = loadArchive().find(x => x.id === +v); if (r) confirmSheet(`Delete ${esc(r.name)}?`, `This career (${r.career.length} season${r.career.length !== 1 ? 's' : ''}, ${esc(r.lastClub)}) will be gone for good. This cannot be undone.`, 'pastDel', 'Delete', v); return; }
     case 'pastDel': deleteArchived(+v); closeModal(); toast('Career deleted'); pastView = null; landing = true; render(); return;
     case 'freshStart': archiveCurrent(); wipe(); pastView = null; landing = false; draft.name = ''; render(); window.scrollTo(0, 0); return;
+    case 'adRoll': earnReward().then(ok => { if (ok && S.phase === 'choose') { S.adRolls = (S.adRolls || 0) + 1; S.rerolls++; save(); } render(); }); return;
+    case 'adTrain': earnReward().then(ok => { if (ok && S.storeTrain !== `${S.season}-${S.week}`) { S.storeTrain = `${S.season}-${S.week}`; S.player.slots++; save(); toast('Extra session unlocked'); } render(); }); return;
+    case 'proShow': showProSheet(); return;
+    case 'proBuy': buyPro(); return;
+    case 'proRestore': restorePro(); return;
+    case 'badgeMode': setBadgeMode(BADGE_MODE === 'abstract' ? 'real' : 'abstract'); for (const k in logoState) delete logoState[k]; render(); return;
     case 'landingNew': if (!S || S.phase === 'retired') { archiveCurrent(); wipe(); landing = false; draft.name = ''; render(); window.scrollTo(0, 0); }
       else openModal(`<h3>Start a new career?</h3><p class="muted" style="margin:0">${esc(S.player.name)} has not retired yet. Put the career aside and pick it up any time from Careers in progress, or delete it for good.</p>
         <div class="btns"><button class="btn primary" data-act="pauseNew">Put it aside</button><button class="btn danger" data-act="newGame">Delete it</button><button class="btn" data-act="close">Cancel</button></div>`);
@@ -2791,7 +3320,8 @@ document.addEventListener('click', e => {
     case 'negAsk': showNegotiate(v); return;
     case 'neg': { const [id, i] = v.split(':'); const r = negotiate(id, +i); closeModal(); toast(r === 'accepted' ? 'They agreed!' : r === 'withdrawn' ? 'Offer withdrawn' : 'They said no'); render(); return; }
     case 'decline': declineOffer(v); render(); return;
-    case 'nextSeason': if (startNextSeason()) { tab = 'home'; window.scrollTo(0, 0); } render(); return;
+    case 'nextSeason': { const wait = STORE_BUILD ? seasonWaitLeft() : 0; if (wait > 0) { showWaitSheet(wait); return; } }
+      if (startNextSeason()) { tab = 'home'; window.scrollTo(0, 0); } render(); return;
     case 'intlRetireAsk': confirmSheet('Retire from international football?', `You stop playing for ${esc(natName(S.player.nat))} for good: no more call-ups or tournaments. In return your body ages a little slower. This cannot be undone.`, 'intlRetire', 'Retire from internationals'); return;
     case 'intlRetire': retireIntl(); closeModal(); render(); nextPopup(); return;
     case 'achvShow': showAchievements(); return;
@@ -2830,5 +3360,6 @@ load();
 // The IndexedDB copy may be newer than localStorage's (see save): wait a moment for it before the first screen.
 let booted = false;
 const boot = () => { if (!booted) { booted = true; render(); } };
+moneyInit();
 Promise.all([loadNewest().catch(() => false), loadArchiveStore().catch(() => {})]).then(() => { if (booted) render(); boot(); });
 setTimeout(boot, 1500);

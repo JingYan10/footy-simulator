@@ -1,6 +1,10 @@
 /* Layout: one-column phone app. Sticky top bar with player card, scrolling view, fixed bottom tab bar.
    Look: floodlit night match. Deep navy stand, chalk-white lines, amber floodlight accent. Single dark theme by choice. */
 :root {
+  /* Screen edges (notch, status bar, gesture bar). The Android app (Capacitor) also passes them as --safe-area-inset-*
+     because older Android WebViews report env() as 0. */
+  --sat: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --sab: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
   --stand: #0c1524;
   --surface: #14213a;
   --surface-2: #1b2b48;
@@ -36,13 +40,15 @@ button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--flood); outline-offset: 2px; }
 .num { font-variant-numeric: tabular-nums; }
 
-#app { max-width: 520px; margin: 0 auto; min-height: 100%; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 16px); }
+#app { max-width: 520px; margin: 0 auto; min-height: 100%;
+  /* Start below the status bar. The sticky top bar stops at the same line, so it never slides down over the page. */
+  padding-top: var(--sat); padding-bottom: calc(var(--nav-h) + var(--sab) + 16px); }
 .wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 
 /* ---------- top bar ---------- */
-body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--stand); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--sat); z-index: 10; background: var(--stand); }
 .topbar {
-  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  position: sticky; top: var(--sat); z-index: 5;
   background: linear-gradient(180deg, var(--stand) 70%, rgba(12, 21, 36, .92));
   padding-block: 12px 10px;
   border-bottom: 1px solid var(--line);
@@ -66,6 +72,14 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .chip.bad { border-color: var(--bad); color: var(--bad); }
 .chip.good { border-color: var(--good); color: var(--good); }
 .energy { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+/* Scrolled down on a phone: the top bar shrinks to OVR, name and energy so it covers less of the game (js/ui.js adds .compact). */
+body.compact .topbar { padding-block: 6px; }
+body.compact .topbar .chips, body.compact .topbar .who p, body.compact .topbar .altpos { display: none; }
+body.compact .topbar .ovr { width: 40px; height: 40px; border-radius: 8px; }
+body.compact .topbar .ovr b { font-size: 20px; }
+body.compact .topbar .ovr span { font-size: 9px; }
+body.compact .topbar .who h1 { font-size: 18px; }
+body.compact .topbar .energy { margin-top: 6px; }
 .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--good); border-radius: 3px; transition: width .3s; }
 .bar i.low { background: var(--bad); }
@@ -134,6 +148,9 @@ td { padding: 7px 4px; border-bottom: 1px solid rgba(42, 61, 90, .5); white-spac
 td.r, th.r { text-align: right; }
 tr.me td { color: var(--flood); font-weight: 700; }
 td.clubname { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+/* A club name too long for its cell slides sideways inside the cell; the rest of the table stays put. */
+td.clubname .clubcell { overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+td.clubname .clubcell::-webkit-scrollbar { display: none; }
 .zone-cl td:first-child { box-shadow: inset 3px 0 0 var(--good); }
 .zone-po td:first-child { box-shadow: inset 3px 0 0 var(--flood); }
 .zone-out td { opacity: .6; }
@@ -157,8 +174,10 @@ table.grp.lp td:last-child, table.grp.lp th:last-child { padding: 5px 4px 5px 5p
 .zone-rel td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
 .pos-tag { display: inline-block; min-width: 34px; text-align: center; font: 700 11px var(--display); letter-spacing: .06em; padding: 2px 4px; border-radius: 4px; background: var(--surface-2); color: var(--muted); }
 
-.seg { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
-.seg button { flex: 1; border: 0; background: transparent; padding: 8px; border-radius: 7px; font-weight: 600; font-size: 13px; color: var(--muted); }
+/* Segmented tabs stay on one line; when they do not fit (phones) the row slides sideways. */
+.seg { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { flex: 1 0 auto; white-space: nowrap; border: 0; background: transparent; padding: 8px 10px; border-radius: 7px; font-weight: 600; font-size: 13px; color: var(--muted); }
 .seg button.on { background: var(--surface-2); color: var(--chalk); }
 .md-tabs { margin-bottom: 10px; }
 
@@ -172,7 +191,8 @@ table.grp.lp td:last-child, table.grp.lp th:last-child { padding: 5px 4px 5px 5p
 .offer { border: 1px solid var(--flood); border-radius: var(--radius); padding: 12px; display: grid; gap: 8px; background: rgba(255, 181, 71, .05); }
 .offer .club { font: 700 20px/1.1 var(--display); }
 .kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.kv div { background: var(--surface-2); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+/* Label at the top, value at the bottom, so the values line up even when a label wraps ("National team"). */
+.kv div { background: var(--surface-2); border-radius: 8px; padding: 6px 8px; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 2px; }
 .kv small { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .kv b { font-size: 14px; }
 
@@ -183,11 +203,13 @@ table.grp.lp td:last-child, table.grp.lp th:last-child { padding: 5px 4px 5px 5p
 nav.tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
   background: var(--surface); border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--sab);
   padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px);
 }
-nav.tabs .in { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: repeat(8, 1fr); height: var(--nav-h); }
-nav.tabs button { border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; align-content: center; gap: 3px; font-size: 10.5px; min-width: 0; font-weight: 600; position: relative; }
+/* Buttons take the width of their label and share the space left over, so the gaps between labels are even. */
+nav.tabs .in { max-width: 520px; margin: 0 auto; display: flex; justify-content: space-evenly; height: var(--nav-h); padding: 0 2px; }
+nav.tabs button { flex: 0 1 auto; min-width: 36px; padding: 0 2px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; align-content: center; gap: 3px; font-size: 10.5px; font-weight: 600; position: relative; white-space: nowrap; }
+@media (max-width: 340px) { nav.tabs button { font-size: 9.5px; min-width: 32px; } }
 nav.tabs button svg { width: 22px; height: 22px; }
 nav.tabs button.on { color: var(--flood); }
 nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
@@ -210,12 +232,12 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .posgrid button.on { background: var(--flood); color: var(--flood-ink); border-color: var(--flood); }
 
 /* ---------- modal ---------- */
-#modal { position: fixed; inset: 0; z-index: 20; background: rgba(5, 10, 18, .72); display: grid; align-items: end; justify-items: center; padding-top: env(safe-area-inset-top, 0px); }
+#modal { position: fixed; inset: 0; z-index: 20; background: rgba(5, 10, 18, .72); display: grid; align-items: end; justify-items: center; padding-top: var(--sat); }
 #modal[hidden] { display: none; }
 .sheet {
   width: 100%; max-width: 520px; max-height: 88vh; overflow-y: auto;
   background: var(--surface); border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
-  padding-block: 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  padding-block: 20px calc(20px + var(--sab));
   padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px));
   display: grid; gap: 14px;
   animation: up .22s ease-out;
@@ -253,7 +275,7 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 .award { padding: 8px 10px; border-radius: 8px; background: rgba(255, 181, 71, .12); color: var(--flood); font-weight: 700; }
 @keyframes up { from { transform: translateY(30px); opacity: .4; } to { transform: none; opacity: 1; } }
 
-.toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 14px); transform: translateX(-50%); background: var(--chalk); color: var(--stand); padding: 8px 14px; border-radius: 999px; font-weight: 700; font-size: 13px; z-index: 30; animation: up .2s ease-out; white-space: nowrap; }
+.toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + var(--sab) + 14px); transform: translateX(-50%); background: var(--chalk); color: var(--stand); padding: 8px 14px; border-radius: 999px; font-weight: 700; font-size: 13px; z-index: 30; animation: up .2s ease-out; white-space: nowrap; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 .attr .val .dec { font-size: 15px; color: var(--muted); font-weight: 700; }
@@ -285,7 +307,7 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 /* Event pop-ups: fireworks for good news, rain for bad news */
 #fx {
   position: fixed; inset: 0; z-index: 40; display: grid; place-items: center;
-  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  padding: max(16px, var(--sat)) max(16px, env(safe-area-inset-right, 0px)) max(16px, var(--sab)) max(16px, env(safe-area-inset-left, 0px));
 }
 #fx[hidden] { display: none; }
 #fx.good { background: radial-gradient(circle at 50% 38%, rgba(255, 181, 71, .2), rgba(5, 10, 18, .88) 70%); }
@@ -335,8 +357,6 @@ nav.tabs .dot { position: absolute; top: 10px; right: calc(50% - 18px); width: 8
 @keyframes glow { 50% { filter: drop-shadow(0 0 10px rgba(255, 181, 71, .8)); transform: scale(1.06); } }
 
 /* Cups, tournaments, save tools */
-.seg { flex-wrap: wrap; }
-.seg button { padding: 8px 4px; min-width: 0; }
 .crest.nation { border-radius: 8px; color: var(--chalk); }
 .attr .key.brief { color: var(--good); }
 .cupgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
@@ -627,7 +647,7 @@ select.pick { width: 100%; margin: 8px 0; background: var(--surface); border: 1p
 /* League table, laid out like Google's standings: even rows, every crest whole in the same small
    square, muted positions, bold points, a thin coloured bar for the top and bottom places. */
 table.lgt { font-size: 13.5px; }
-table.lgt th { font-size: 11px; text-transform: none; letter-spacing: 0; padding: 8px 4px; }
+table.lgt th { font-size: 11px; text-transform: none; letter-spacing: 0; padding: 8px 4px; white-space: nowrap; }
 table.lgt td { padding: 0 4px; height: 40px; vertical-align: middle; }
 table.lgt td:first-child, table.lgt th:first-child { width: 26px; text-align: center; color: var(--muted); padding-left: 6px; }
 table.lgt tr.me td:first-child { color: var(--flood); }
@@ -638,9 +658,9 @@ table.lgt .clubcell { gap: 10px; }
 .lgcrest { display: contents; }
 table.lgt .crest.mini, .sqmove .crest.mini, .lgcrest .crest.mini:not(.nation), .spell .crest.mini, .stint .crest.mini, .honteam .crest.mini:not(.nation), .offer .clubcell .crest:not(.nation) { width: 22px; height: 22px; border: 0; border-radius: 0; overflow: visible; background: none; }
 table.lgt .crest.mini img, .lgcrest .crest.mini:not(.nation) img, .spell .crest.mini img, .stint .crest.mini img, .honteam .crest.mini:not(.nation) img, .offer .clubcell .crest:not(.nation) img { width: 100%; height: 100%; object-fit: contain; }
-table.lgt td.clubname { max-width: 140px; }
-@media (max-width: 479px) { table.lgt td.clubname { max-width: 128px; } }
-table.lgt td.clubname .clubcell > :last-child, table.lgt td.clubname .clubcell { overflow: hidden; text-overflow: ellipsis; }
+/* League tables always fit the screen: the club column takes the width left after the number columns. */
+table.lgt td.clubname { width: 100%; max-width: 0; }
+table.lgt td.clubname .clubcell { max-width: 100%; }
 /* On a phone the W, D and L columns make way for the form. */
 @media (max-width: 479px) { table.lgt .wdl { display: none; } }
 /* Last 5: green tick for a win, red cross for a loss, grey dash for a draw; the latest is ringed.
@@ -746,7 +766,10 @@ td.clubcrest .crest { margin: 0; }
 .hof { display: flex; align-items: center; gap: 10px; text-align: left; }
 .hofrank { flex: none; width: 24px; font: 800 18px var(--display); color: var(--muted); text-align: center; }
 .captag { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 3px; background: var(--flood); color: var(--flood-ink); font: 800 10px var(--display); vertical-align: 2px; }
-.natchip { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+.natchip { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; max-width: 100%; }
+/* Flag and country side by side when they fit; otherwise the name goes under the flag as a whole word. */
+.kv .natchip { margin-right: 4px; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
+@media (max-width: 400px) { .kv b { font-size: 12.5px; } .kv .natchip { column-gap: 4px; } .kv .natchip .natflag { width: 17px; } }
 .natchip .natflag { width: 20px; }
 summary .natflag { display: inline-block; vertical-align: middle; }
 

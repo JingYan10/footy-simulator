@@ -5542,6 +5542,8 @@ function endSeason() {
   const give = (short, full, rep) => { awards.push(short); p.awards.push({ name: full, season: S.season }); addRep(rep); };
   const gone = p.needsContract;
   if (pos === 1 && !gone) { awards.push(`${L.name} champion`); p.trophies.push({ name: L.name, club: c.name, season: S.season }); addRep(6); }
+  // Second place goes in the honours as runner-up (like Wikipedia), kept apart from the trophies.
+  if (pos === 2 && !gone) { awards.push(`${L.name} runner-up`); (p.runnerUps = p.runnerUps || []).push({ name: L.name, club: c.name, season: S.season }); }
   // You said in the press you would win the league: now the papers judge it.
   if (p.titleBoast && p.titleBoast.season === S.season && !gone) {
     const k = p.titleBoast.k;
@@ -6696,7 +6698,7 @@ function retiredRecord() {
   const p = S.player;
   return {
     startYear: baseYear(),
-    id: p.careerId || (p.careerId = Date.now()), name: p.name, nat: p.nat, pos: p.pos, career: p.career, trophies: p.trophies, awards: p.awards,
+    id: p.careerId || (p.careerId = Date.now()), name: p.name, nat: p.nat, pos: p.pos, career: p.career, trophies: p.trophies, runnerUps: p.runnerUps || [], thirdPlaces: p.thirdPlaces || [], awards: p.awards,
     caps: p.caps, intlGoals: p.intlGoals || 0, attrs: roundAttrs(p.attrs), money: p.money, by: p.by, lastClub: p.club ? myClub().name : '–', retiredAge: ageOf(p.by),
     peak: Math.max(calcOVR(), ...p.career.map(r => r.ovr)), rep: Math.round(p.rep), media: p.media || 0,
     nickname: p.nickname || null, milestones: p.milestones || [], capsBy: p.capsBy || null, birthNat: p.birthNat || null, passports: passports(), switched: p.switched ?? null,

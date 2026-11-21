@@ -1,0 +1,16 @@
+{
+  "appId": "com.pitchtolegend.game",
+  "appName": "Pitch to Legend",
+  "webDir": "www",
+  "backgroundColor": "#0c1524",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover",
+      "style": "DARK"
+    }
+  }
+}

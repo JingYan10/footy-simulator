@@ -338,7 +338,18 @@ function pendingTies(t) {
     return ties;
   }
   for (let i = 0; i < w.length; i += 2) ties.push([w[i], w[i + 1]]);
+  // World Cup: the beaten semi-finalists play for third place in the same round as the final (second tie).
+  if (wcThirdStage(t) && last.name === 'Semi-final' && last.res.length === 2) ties.push(last.res.map(r => r.winner === r.h ? r.a : r.h));
   return ties;
+}
+// The World Cup's last stage, which also holds its third-place play-off.
+const wcThirdStage = t => t.key === 'WC' && t.stages[t.stage] && stRound(t.stages[t.stage]) === 'Final';
+// What the round is called for one team: the World Cup's beaten semi-finalists play the third-place play-off.
+function stageNameFor(t, id) {
+  const st = t.stages[t.stage];
+  if (!st) return '';
+  if (wcThirdStage(t)) { const ties = pendingTies(t); if (ties[1] && ties[1].includes(id)) return 'Third place play-off'; }
+  return st.name;
 }
 
 // Play one stage of a tournament. userFor(h, a) returns the user's match object when they
@@ -383,17 +394,19 @@ function playStage(t, userFor) {
     k.legs.push(res.map(x => x.legs[1]));
     k.res = res;
   } else {
-    const ties = pendingTies(t), res = [];
-    ties.forEach(([h, a]) => {
+    const ties = pendingTies(t), res = [], third = wcThirdStage(t) && ties.length === 2;
+    ties.forEach(([h, a], i) => {
       const u = userFor(h, a);
       const r = simTeams(h, a, u, 0);
       if (r.gh === r.ga) decidePens(r, h, a);
       r.winner = r.gh > r.ga ? h : r.gh < r.ga ? a : r.pens;
       res.push(r);
       if (u) mine = r;
-      logNatGame(t, h, a, r, u);
+      logNatGame(t, h, a, r, u, third && i === 1 ? 'Third place play-off' : null);
     });
-    t.ko.push({ name: stRound(st), ties, res });
+    // The World Cup's third-place play-off is kept as its own round, just before the final.
+    if (third) { t.ko.push({ name: 'Third place play-off', ties: [ties[1]], res: [res[1]] }); t.ko.push({ name: stRound(st), ties: [ties[0]], res: [res[0]] }); }
+    else t.ko.push({ name: stRound(st), ties, res });
     if (stRound(st) === 'Final') t.winner = res[0].winner;
   }
   t.stage++;
@@ -1000,6 +1013,24 @@ function finishTournament(t) {
   } else if (!t.cup || t.nat === league(myClub().league).nat) {
     msg(`${teamName(t.winner)} won the ${t.name}.`);
   }
+  // Losing the final (or finishing second where there is no final) goes in the honours as runner-up, like on
+  // Wikipedia: leagues, cups, super cups, European and world club competitions and international tournaments.
+  const second = runnerUp && !mine && ((runnerUp === p.club && !p.needsContract) || (isNation(runnerUp) && runnerUp === t.mine));
+  if (second) {
+    (p.runnerUps = p.runnerUps || []).push({ name: label, club: teamName(runnerUp), season: t.season, nat: isNation(runnerUp) });
+    note(`${label} runner-up`);
+  }
+  // Third place only for the World Cup and the European Championship. The World Cup plays a third-place
+  // play-off (its own round before the final); the Euros have none, so both beaten semi-finalists count, as UEFA
+  // has done since 1984.
+  if ((t.key === 'WC' || t.key === 'EURO') && t.mine && t.ko) {
+    const po = t.ko.find(k => k.name === 'Third place play-off'), semi = t.ko.find(k => k.name === 'Semi-final');
+    const third = po ? po.res.map(r => r.winner) : t.key === 'EURO' && semi && semi.res.length === 2 ? semi.res.map(r => r.winner === r.h ? r.a : r.h) : [];
+    if (third.includes(t.mine)) {
+      (p.thirdPlaces = p.thirdPlaces || []).push({ name: label, club: teamName(t.mine), season: t.season, nat: true });
+      note(`${label} third place`);
+    }
+  }
   // Player awards for the big tournaments, judged on your own numbers in them.
   const my = t.my;
   if (!my || !my.apps || !(t.key === 'UCL' || SUMMER_EVENTS.some(e => e.key === t.key))) return;
@@ -1056,10 +1087,14 @@ function changeNatCoach(nat, why) {
 // How far a team went: Winners, Runners-up, the knockout round it went out in, or the group stage.
 function natReach(t, id) {
   if (t.winner === id) return 'Winners';
-  for (let i = (t.ko || []).length - 1; i >= 0; i--) if (t.ko[i].ties.some(x => x.includes(id))) return t.ko[i].name === 'Final' ? 'Runners-up' : t.ko[i].name;
+  for (let i = (t.ko || []).length - 1; i >= 0; i--) if (t.ko[i].ties.some(x => x.includes(id))) {
+    const k = t.ko[i];
+    if (k.name === 'Third place play-off') return k.res[0] && k.res[0].winner === id ? 'Third place' : 'Fourth place';
+    return k.name === 'Final' ? 'Runners-up' : k.name;
+  }
   return 'Group stage';
 }
-const NAT_SACK = { 'Did not qualify': [.5, .85], 'Group stage': [.35, .7], 'Round of 16': [.12, .4], 'Quarter-final': [.08, .2], 'Semi-final': [.08, .1], 'Runners-up': [.08, .08], Winners: [.1, .1] };
+const NAT_SACK = { 'Did not qualify': [.5, .85], 'Group stage': [.35, .7], 'Round of 16': [.12, .4], 'Quarter-final': [.08, .2], 'Semi-final': [.08, .1], 'Fourth place': [.08, .1], 'Third place': [.08, .1], 'Runners-up': [.08, .08], Winners: [.1, .1] };
 function natTournamentDone(t, entry) {
   const p = S.player, ev = NAT_EVENTS.find(e => e.key === t.key);
   if (!p || !ev || !natEventFor(ev, p.nat)) return;
@@ -1073,11 +1108,11 @@ function natTournamentDone(t, entry) {
 }
 
 // Your country's games: the international windows and its finals.
-function logNatGame(t, h, a, r, u) {
+function logNatGame(t, h, a, r, u, stageName = null) {
   const p = S.player, id = p && 'N:' + p.nat;
   if (!id || (h !== id && a !== id) || !NAT_EVENTS.some(e => e.key === t.key)) return;
   const st = t.stages[t.stage];
-  addNatGame({ comp: t.name, stage: st ? stRound(st) : '', h, a, gh: r.gh, ga: r.ga, pens: r.pens || null, pensScore: r.pensScore || null, winner: r.winner || null, scorers: r.scorers, mins: u ? u.mins || 0 : 0, start: !!(u && u.start), goals: u ? u.goals || 0 : 0, assists: u ? u.assists || 0 : 0, summer: true });
+  addNatGame({ comp: t.name, stage: stageName || (st ? stRound(st) : ''), h, a, gh: r.gh, ga: r.ga, pens: r.pens || null, pensScore: r.pensScore || null, winner: r.winner || null, scorers: r.scorers, mins: u ? u.mins || 0 : 0, start: !!(u && u.start), goals: u ? u.goals || 0 : 0, assists: u ? u.assists || 0 : 0, summer: true });
 }
 function addNatGame(g) {
   S.natGames = [...(S.natGames || []), { nat: S.player.nat, season: S.season, week: S.week, ...g }].slice(-80);

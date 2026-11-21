@@ -2,3 +2,15 @@
 .claude/settings.local.json
 
 upload/
+
+# Store app (tools/build-app.ps1): built files, installed packages and Android build output
+app/www/
+app/node_modules/
+app/android/.gradle/
+app/android/build/
+app/android/app/build/
+app/android/local.properties
+# Signing keys must never be committed
+*.jks
+*.keystore
+keystore.properties
